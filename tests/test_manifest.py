@@ -40,6 +40,34 @@ def test_hash_changes_when_the_image_changes(tmp_path):
                         **{**BASE, "runtime_image_id": "sha256:" + "9"*64})
     assert bundle_hash(m1) != bundle_hash(m2)
 
+# The three remaining scalar inputs. Half the manifest's scalars were pinned
+# by no assertion at all: dropping any of them from the hashed record left the
+# whole suite green, so "the manifest covers every input that changes the
+# experiment" was an untested claim for runtime_lock, profile_config and
+# environment_adapter — the dependency lock, the agent's profile, and the
+# environment adapter, each of which changes what the agent does.
+
+def test_hash_changes_when_the_runtime_lock_changes(tmp_path):
+    write(tmp_path, "inputs/f", b"x")
+    m1 = build_manifest(tmp_path, files=["inputs/f"], **BASE)
+    m2 = build_manifest(tmp_path, files=["inputs/f"],
+                        **{**BASE, "runtime_lock_sha256": "1"*64})
+    assert bundle_hash(m1) != bundle_hash(m2)
+
+def test_hash_changes_when_the_profile_config_changes(tmp_path):
+    write(tmp_path, "inputs/f", b"x")
+    m1 = build_manifest(tmp_path, files=["inputs/f"], **BASE)
+    m2 = build_manifest(tmp_path, files=["inputs/f"],
+                        **{**BASE, "profile_config_sha256": "2"*64})
+    assert bundle_hash(m1) != bundle_hash(m2)
+
+def test_hash_changes_when_the_environment_adapter_changes(tmp_path):
+    write(tmp_path, "inputs/f", b"x")
+    m1 = build_manifest(tmp_path, files=["inputs/f"], **BASE)
+    m2 = build_manifest(tmp_path, files=["inputs/f"],
+                        **{**BASE, "environment_adapter_sha256": "3"*64})
+    assert bundle_hash(m1) != bundle_hash(m2)
+
 def test_file_order_does_not_affect_the_hash(tmp_path):
     write(tmp_path, "inputs/x", b"1"); write(tmp_path, "inputs/y", b"2")
     m1 = build_manifest(tmp_path, files=["inputs/x", "inputs/y"], **BASE)
