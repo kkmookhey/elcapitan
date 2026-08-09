@@ -798,8 +798,13 @@ def test_valid_proposal_passes():
     assert validate_doc("remediation-proposal", PROPOSAL) == []
 
 def test_ref_to_evidence_schema_resolves():
-    # Would raise RefResolutionError if the registry were not wired up.
-    validator_for("finding-record")
+    # $ref resolution in `referencing` is LAZY — constructing the validator
+    # succeeds even with a broken registry. The reference only resolves during
+    # validation, so this must validate a document to prove the wiring.
+    errors = validate_doc("finding-record", {"finding_id": "FIND-001"})
+    assert errors, "expected schema errors, not a resolution failure"
+    assert not any("unresolvable" in e.lower() or "pointer" in e.lower()
+                   for e in errors), f"registry not wired: {errors}"
 
 def test_format_checker_rejects_a_malformed_timestamp():
     doc = copy.deepcopy(PROPOSAL); doc["created_at"] = "not-a-date"
@@ -940,10 +945,27 @@ def _registry() -> Registry:
     ]
     return Registry().with_resources(resources)
 
+# jsonschema's built-in "date-time" check is a NO-OP unless the optional
+# rfc3339-validator package is installed — supplying FormatChecker() alone
+# leaves the format decorative. Adding a dependency is barred by the pinning
+# constraint, so register a strict project-owned checker: RFC3339 requires a
+# full date, a full time, and an offset. datetime.fromisoformat alone is too
+# permissive — it accepts "2026-08-08" and "2026-08-08T12:00:00".
+_FORMAT_CHECKER = FormatChecker()
+
+@_FORMAT_CHECKER.checks("date-time", raises=ValueError)
+def _is_rfc3339_date_time(instance) -> bool:
+    if not isinstance(instance, str):
+        return True                      # non-strings are the type keyword's job
+    if not re.match(r"^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}", instance):
+        return False                     # date-only or missing time component
+    parsed = datetime.fromisoformat(instance.replace("Z", "+00:00"))
+    return parsed.tzinfo is not None     # RFC3339 requires an offset
+
 @lru_cache(maxsize=None)
 def validator_for(name: str) -> Draft202012Validator:
     return Draft202012Validator(load_schema(name), registry=_registry(),
-                                format_checker=FormatChecker())
+                                format_checker=_FORMAT_CHECKER)
 
 def validate_doc(name: str, doc: dict) -> list[str]:
     """Human-readable errors. Empty list means valid."""

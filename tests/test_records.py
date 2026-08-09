@@ -1,6 +1,6 @@
 import copy, pytest
 from elcapitan.records import (RESOLUTION_TYPES, TERMINAL_STATUSES,
-                               validate_doc, validator_for)
+                               validate_doc)
 
 CMD = {"command_id": "CMD-001", "tool": "terraform",
        "argv": ["plan", "-detailed-exitcode"], "exit_code": 2,
@@ -29,12 +29,47 @@ def test_valid_proposal_passes():
     assert validate_doc("remediation-proposal", PROPOSAL) == []
 
 def test_ref_to_evidence_schema_resolves():
-    # Would raise RefResolutionError if the registry were not wired up.
-    validator_for("finding-record")
+    # $ref resolution in `referencing` is LAZY — constructing the validator
+    # succeeds even with a broken registry, and a document that never touches
+    # the `raw_event` key never dereferences it either (the `properties`
+    # keyword only applies to keys actually present). So the document below
+    # deliberately includes `raw_event` with an invalid inner value, forcing
+    # the $ref to actually resolve during iter_errors. With the registry wired
+    # correctly this surfaces the evidence-ref schema's own field errors
+    # (proving real resolution, not just "any string got accepted"); with a
+    # broken registry, `referencing` raises Unresolvable instead of yielding
+    # errors, which fails this test loudly rather than passing vacuously.
+    doc = {"finding_id": "FIND-001", "raw_event": {"evidence_id": "not-a-match"}}
+    errors = validate_doc("finding-record", doc)
+    assert errors, "expected schema errors, not a resolution failure"
+    assert any(e.startswith("raw_event") for e in errors), (
+        f"expected errors from inside the resolved evidence-ref schema: {errors}")
 
 def test_format_checker_rejects_a_malformed_timestamp():
     doc = copy.deepcopy(PROPOSAL); doc["created_at"] = "not-a-date"
     assert validate_doc("remediation-proposal", doc) != []
+
+def test_format_checker_rejects_a_date_only_string():
+    doc = copy.deepcopy(PROPOSAL); doc["created_at"] = "2026-08-08"
+    assert validate_doc("remediation-proposal", doc) != []
+
+def test_format_checker_rejects_a_datetime_with_no_offset():
+    doc = copy.deepcopy(PROPOSAL); doc["created_at"] = "2026-08-08T12:00:00"
+    assert validate_doc("remediation-proposal", doc) != []
+
+def test_format_checker_accepts_a_z_offset():
+    doc = copy.deepcopy(PROPOSAL); doc["created_at"] = "2026-08-08T12:00:00Z"
+    assert validate_doc("remediation-proposal", doc) == []
+
+def test_format_checker_accepts_a_numeric_offset():
+    doc = copy.deepcopy(PROPOSAL); doc["created_at"] = "2026-08-08T12:00:00+05:30"
+    assert validate_doc("remediation-proposal", doc) == []
+
+def test_format_checker_leaves_non_strings_to_the_type_keyword():
+    doc = copy.deepcopy(PROPOSAL); doc["created_at"] = 12345
+    errors = validate_doc("remediation-proposal", doc)
+    assert errors != []
+    assert any("is not of type 'string'" in e for e in errors)
 
 def test_command_record_requires_exit_code():
     doc = copy.deepcopy(PROPOSAL); del doc["verification"]["commands_run"][0]["exit_code"]

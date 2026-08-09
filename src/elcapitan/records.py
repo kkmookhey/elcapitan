@@ -11,9 +11,18 @@ one, so a bare `FormatChecker()` would silently accept `"not-a-date"` for
 `format: date-time` — format-checking would still be decorative even with a
 checker "supplied". We register our own date-time check below so the format
 is actually enforced without a new dependency.
+
+`datetime.fromisoformat` alone is not sufficient either: it happily parses
+`"2026-08-08"` (date only, no time) and `"2026-08-08T12:00:00"` (no offset),
+both of which RFC3339 `date-time` forbids — a full date, a full time, and an
+offset are all required. These fields (`created_at`, `started_at`,
+`completed_at`) are audit-trail timestamps for a validator whose whole job is
+to be the final authority, so the checker below requires the time component
+up front via regex and then requires a parsed, timezone-aware result.
 """
-import datetime
 import json
+import re
+from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 
@@ -30,20 +39,25 @@ TERMINAL_STATUSES = ("READY_FOR_REVIEW", "NEEDS_HUMAN_CONTEXT")
 _FORMAT_CHECKER = FormatChecker()
 
 @_FORMAT_CHECKER.checks("date-time", raises=ValueError)
-def _is_date_time(instance: object) -> bool:
+def _is_rfc3339_date_time(instance: object) -> bool:
     if not isinstance(instance, str):
-        return True
-    datetime.datetime.fromisoformat(instance)
-    return True
+        return True                      # non-strings are the type keyword's job
+    if not re.match(r"^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}", instance):
+        return False                     # date-only or missing time component
+    parsed = datetime.fromisoformat(instance.replace("Z", "+00:00"))
+    return parsed.tzinfo is not None     # RFC3339 requires an offset
+
+def _read_json(path: Path) -> dict:
+    return json.loads(path.read_text())
 
 @lru_cache(maxsize=None)
 def load_schema(name: str) -> dict:
-    return json.loads((SCHEMA_DIR / f"{name}.schema.json").read_text())
+    return _read_json(SCHEMA_DIR / f"{name}.schema.json")
 
 @lru_cache(maxsize=None)
 def _registry() -> Registry:
     resources = [
-        (path.name, Resource.from_contents(json.loads(path.read_text()),
+        (path.name, Resource.from_contents(_read_json(path),
                                            default_specification=DRAFT202012))
         for path in sorted(SCHEMA_DIR.glob("*.schema.json"))
     ]
