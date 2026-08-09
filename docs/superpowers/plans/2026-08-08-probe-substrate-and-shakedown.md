@@ -1448,6 +1448,39 @@ git commit -m "feat(validate): per-tool exit-code semantics"
 
 **Signature change from review:** the validator now takes the *repository path* and the *pre-run state*, and recomputes. It no longer accepts a digest string from the caller.
 
+> **Implementation note — the code below is the starting point, not the final state.**
+> `src/elcapitan/validate.py` is authoritative. Review found thirteen defects in
+> the sketch below, every one demonstrated by probe rather than argued. They are
+> recorded here because most are instances of one root pattern, and the next
+> person to extend this module will reintroduce them otherwise:
+>
+> **A check must never derive its scope from the thing it is checking.**
+>
+> - `proposal.json` containing JSON `null` → `passed=True`, zero failures. A
+>   truthy non-dict proposal crashed on `.get`. Fixed by shape-gating `_read_json`.
+> - The bundle hash compared the proposal's copy against a hash of the manifest
+>   *document* — both agent-visible. A forged manifest passed while lying about
+>   the file it described. Fixed by re-deriving each file's hash and size from disk.
+> - The manifest then still chose *what* it was audited against: an empty or
+>   decoy-only `files` list verified nothing. Fixed by `REQUIRED_MANIFEST_PATHS`.
+> - `_evidence_ids` matched keys ending in `_evidence_id` (12 chars), missing the
+>   embedded `evidence_id` (11 chars) inside `raw_event` — tampered raw evidence
+>   passed unnoticed.
+> - `patch_file` was joined to `run_dir` uncontained; `"/etc/hosts"` satisfied
+>   `.is_file()`.
+> - Non-UTF-8 `transcript.log`, a directory in place of a JSON file, and an
+>   unreadable manifest entry each crashed the validator outright.
+> - No `false_positive`-with-patch check existed despite §3.3 requiring one.
+> - Four regression tests asserted only `not r.passed` and so could not tell a
+>   guard from a schema failure — verified by neutering each guard and re-running.
+>
+> **Still open, and Task 12's to close:** the whole manifest chain lives inside
+> the agent-writable run directory, so a *coherent* forgery — mutate
+> `inputs/finding.json`, update its hash in the manifest, recompute both hashes —
+> is undetectable. The harness already writes `inputs/bundle.sha256` pre-trial and
+> the validator never reads it. Task 12 must pass the pre-trial bundle hash
+> out-of-band, exactly as it already does for `repo-state-before.json`.
+
 - [ ] **Step 1: Write the failing test**
 
 Build on the previous draft's `build_run()` fixture, with these changes: write an `input-manifest.json`, set `input_bundle_hash` from `bundle_hash()`, include a valid `CommandRecord`, and pass a real git repository. Then:
@@ -1644,7 +1677,14 @@ def validate_run(run_dir, *, canonical_repo, repo_state_before: RepoState) -> Va
                 failures.append(f"AMBIGUOUS: verification cannot be trusted: "
                                 f"{command['tool']} — {verdict.meaning}")
 
-    failures += assert_unchanged(canonical_repo, repo_state_before)
+    try:
+        failures += assert_unchanged(canonical_repo, repo_state_before)
+    except ValueError as exc:
+        # repo.py raises when the path is missing or is not a repository at
+        # all. That must become a structured failure, not a crash: a trial
+        # that kills the validator is indistinguishable from one that never
+        # ran, and this validator is the final authority on both.
+        failures.append(f"canonical repository could not be inspected: {exc}")
 
     try:
         transcript = (run_dir / "transcript.log").read_text()
