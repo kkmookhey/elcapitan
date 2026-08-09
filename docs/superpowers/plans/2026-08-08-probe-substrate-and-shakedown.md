@@ -1935,14 +1935,46 @@ git commit -m "feat(isolation): names-only secrets, hardening flags, credential-
 ### Task 11: Runtime shim using the proven invocation
 
 **Files:**
-- Create: `src/elcapitan/shim.py`, `bin/agent-run.sh`
-- Test: `tests/test_shim.py`
+- Create: `src/elcapitan/session.py`, `src/elcapitan/shim.py`, `bin/agent-run.sh`
+- Test: `tests/test_session.py`, `tests/test_shim.py`
 
 **Interfaces:**
-- Consumes: `docs/spike-findings.md` Q2 and Q3 (Task 0), `container.ContainerSpec`
-- Produces: `AgentResult(exit_code, transcript)`; `run_agent(spec, prompt_path, *, secret_env, stub=None) -> AgentResult`; `SCANNER_ENV_MAP`, `MODEL_ENV_MAP`
+- Consumes: `docs/spike-findings.md` (Task 0), `container.ContainerSpec`
+- Produces: `SessionRecord(session_id, finish_reason, tool_call_count, transcript, usage, commands)`; `read_session(db_path) -> SessionRecord`; `AgentResult` (§ above); `run_agent(spec, prompt_path, *, secret_env, stub=None) -> AgentResult`; `SCANNER_ENV_MAP`, `MODEL_ENV_MAP`
 
 **Fixes from review:** the invocation comes from the spike, not from invention. The prefix bug is gone — an explicit map translates `ELCAP_SCANNER_AWS_ACCESS_KEY_ID` on the host into `AWS_ACCESS_KEY_ID` inside the container, and the observer prefix is never applied twice.
+
+**`session.py` — the transcript reader.** Reads the agent runtime's own SQLite
+store rather than scraping stdout. Schema observed in the spike:
+
+```sql
+-- messages: id, session_id, role, content, tool_call_id, tool_calls, tool_name,
+--           timestamp, token_count, finish_reason, reasoning, …
+-- session_model_usage: session_id, model, billing_provider, api_call_count,
+--           input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+--           reasoning_tokens, estimated_cost_usd, cost_status, cost_source
+-- sessions: id, model, started_at, ended_at, end_reason, message_count,
+--           tool_call_count, …
+```
+
+`read_session` must:
+- take the **latest** session by `started_at` (a fresh `HERMES_HOME` per trial means
+  exactly one, but do not assume it — assert and fail loudly if there is more than one);
+- parse `messages.tool_calls` JSON into `CommandRecord`-shaped entries: the command
+  text lives at `function.arguments.command`, and the matching tool message's
+  `content` is `{"output": …, "exit_code": …, "error": …}`;
+- return `usage` as the `session_model_usage` row, for `TrialResult.trial`;
+- **never raise on a malformed or absent database** — return a `SessionRecord` with
+  `finish_reason=""` and `tool_call_count=0` so the caller reports a structured
+  failure. Same contract as the validator, for the same reason.
+
+Open the database **read-only** (`file:…?mode=ro` URI) — the host must not write to
+an artifact the agent produced.
+
+> **Task 11's test helper must give the shim spec three distinct paths.** The earlier
+> draft used `run_dir=canonical_repo=host_hermes_home=str(tmp_path)`; `container.py`
+> now rejects that, because mounting one host path read-only at `/work/canonical` and
+> writable at `/work/run` was a real defect the final review closed.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2041,8 +2073,18 @@ MODEL_ENV_MAP = {"ELCAP_MODEL_API_KEY": "ANTHROPIC_API_KEY"}
 
 @dataclass(frozen=True)
 class AgentResult:
+    # The spike (docs/spike-findings.md §6) measured this: a run with no API
+    # key, and a run whose model 404'd nine times, BOTH exit 0. Only the
+    # pre-start --user guard exits non-zero. So exit_code is recorded for
+    # diagnosis and is never the verdict.
     exit_code: int
-    transcript: str
+    succeeded: bool          # derived from the session record, not exit_code
+    session_id: str
+    finish_reason: str       # "stop" on a real completion
+    tool_call_count: int
+    transcript: str          # extracted from state.db, NOT scraped from stdout
+    usage: dict              # session_model_usage row: tokens, cost, provider
+    stdout: str              # kept for debugging only; not evidence
 
 def resolve_secret_env(host_env: dict, mapping: dict) -> dict:
     resolved = {}
@@ -2061,18 +2103,39 @@ def run_agent(spec: ContainerSpec, prompt_path, *, secret_env: dict,
     ]
 
     if stub is not None:
-        exit_code, transcript = stub(argv, prompt_text, secret_env)
+        exit_code, stdout = stub(argv, prompt_text, secret_env)
     else:
         # Secret values reach docker only through this environment, never argv.
         completed = subprocess.run(argv, capture_output=True, text=True,
                                    check=False, env={"PATH": "/usr/bin:/bin",
                                                      **secret_env})
         exit_code = completed.returncode
-        transcript = completed.stdout + completed.stderr
+        stdout = completed.stdout + completed.stderr
 
     run_dir = next(Path(m.source) for m in spec.mounts if m.target == "/work/run")
-    (run_dir / "transcript.log").write_text(transcript)
-    return AgentResult(exit_code=exit_code, transcript=transcript)
+    (run_dir / "stdout.log").write_text(stdout)
+
+    # The transcript comes from the session store, not from stdout. The -q
+    # preview truncates ("mkdir -p /work/run + 3 commands") and carries no
+    # command output and no exit codes — see docs/spike-findings.md §3.
+    # state.db gives command text, {output, exit_code, error}, timestamps and
+    # per-session token accounting, which is closer to the CommandRecord
+    # schema than a scraped terminal stream could ever be.
+    session = read_session(Path(spec.host_hermes_home) / "state.db")
+    (run_dir / "transcript.log").write_text(session.transcript)
+
+    return AgentResult(
+        exit_code=exit_code,
+        # A run that did nothing still exits 0. Success is a property of the
+        # session, not of the process.
+        succeeded=(session.finish_reason == "stop" and session.tool_call_count > 0),
+        session_id=session.session_id,
+        finish_reason=session.finish_reason,
+        tool_call_count=session.tool_call_count,
+        transcript=session.transcript,
+        usage=session.usage,
+        stdout=stdout,
+    )
 ```
 
 - [ ] **Step 4: Write `bin/agent-run.sh`** — reads `runtime.lock.json` for `runtime_image_id`, seeds a home via `elcapitan.home.seed_hermes_home`, resolves secrets through the maps above, and calls `run_agent`.
