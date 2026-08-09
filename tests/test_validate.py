@@ -245,6 +245,9 @@ def test_command_record_missing_exit_code_is_a_structured_failure_not_an_excepti
     (run / "proposal.json").write_text(json.dumps(proposal))
     r = validate_run(run, canonical_repo=repo, repo_state_before=before)
     assert not r.passed
+    # Asserts the guard's own message, not just the coincident schema
+    # failure: replacing the guard with a bare `continue` must fail this.
+    assert any("malformed CommandRecord" in f for f in r.failures)
 
 
 def test_command_record_wrong_shape_is_a_structured_failure_not_an_exception(
@@ -255,6 +258,7 @@ def test_command_record_wrong_shape_is_a_structured_failure_not_an_exception(
     (run / "proposal.json").write_text(json.dumps(proposal))
     r = validate_run(run, canonical_repo=repo, repo_state_before=before)
     assert not r.passed
+    assert any("malformed CommandRecord (not an object)" in f for f in r.failures)
 
 
 def test_verification_field_wrong_shape_is_a_structured_failure_not_an_exception(
@@ -265,6 +269,7 @@ def test_verification_field_wrong_shape_is_a_structured_failure_not_an_exception
     (run / "proposal.json").write_text(json.dumps(proposal))
     r = validate_run(run, canonical_repo=repo, repo_state_before=before)
     assert not r.passed
+    assert any("proposal.verification is not a JSON object" in f for f in r.failures)
 
 
 def test_remediation_field_wrong_shape_is_a_structured_failure_not_an_exception(
@@ -275,3 +280,143 @@ def test_remediation_field_wrong_shape_is_a_structured_failure_not_an_exception(
     (run / "proposal.json").write_text(json.dumps(proposal))
     r = validate_run(run, canonical_repo=repo, repo_state_before=before)
     assert not r.passed
+    assert any("proposal.remediation is not a JSON object" in f for f in r.failures)
+
+
+# --- Second review pass: findings beyond the verification/remediation subtree.
+#
+# The reviewer independently reproduced every crash above and confirmed the
+# guards suppress nothing. These tests cover the additional gaps found: two
+# more crash paths, and — more seriously for a "final authority" — four ways
+# a run could score green without the corresponding check actually running.
+
+def test_null_proposal_is_a_structured_failure_not_a_silent_pass(tmp_path, repo):
+    # _read_json's old contract returned None for both "file missing/bad
+    # JSON" and "parsed successfully to `null`" — indistinguishable, and the
+    # second case appended no failure at all. `if proposal is not None`
+    # then skipped every proposal-derived check silently.
+    run, before = build_run(tmp_path, repo)
+    (run / "proposal.json").write_text("null")
+    r = validate_run(run, canonical_repo=repo, repo_state_before=before)
+    assert not r.passed
+    assert any("proposal.json is not a JSON object" in f for f in r.failures)
+
+
+@pytest.mark.parametrize("payload", ['[{"a": 1}]', "5", '"hello"'])
+def test_non_object_proposal_is_a_structured_failure_not_an_exception(tmp_path, repo, payload):
+    run, before = build_run(tmp_path, repo)
+    (run / "proposal.json").write_text(payload)
+    r = validate_run(run, canonical_repo=repo, repo_state_before=before)
+    assert not r.passed
+    assert any("proposal.json is not a JSON object" in f for f in r.failures)
+
+
+def test_non_utf8_transcript_is_a_structured_failure_not_an_exception(tmp_path, repo):
+    # A transcript is a captured terminal stream — raw control/binary bytes
+    # are routine, not adversarial. The scan only needs the ASCII content.
+    run, before = build_run(tmp_path, repo)
+    (run / "transcript.log").write_bytes(b"\xff\xfe terraform apply -auto-approve\n")
+    r = validate_run(run, canonical_repo=repo, repo_state_before=before)
+    assert any("DIAGNOSTIC" in f for f in r.failures)
+
+
+def test_proposal_json_as_a_directory_is_a_structured_failure_not_an_exception(tmp_path, repo):
+    run, before = build_run(tmp_path, repo)
+    (run / "proposal.json").unlink()
+    (run / "proposal.json").mkdir()
+    r = validate_run(run, canonical_repo=repo, repo_state_before=before)
+    assert not r.passed
+    assert any("could not read proposal.json" in f for f in r.failures)
+
+
+def test_empty_manifest_is_a_structured_failure_not_a_silent_skip(tmp_path, repo):
+    # `if proposal and manifest:` treated `{}` (falsy but a valid object) the
+    # same as "absent", silently skipping the bundle-hash check entirely.
+    run, before = build_run(tmp_path, repo)
+    (run / "inputs" / "input-manifest.json").write_text("{}")
+    r = validate_run(run, canonical_repo=repo, repo_state_before=before)
+    assert not r.passed
+    assert any("input-manifest.json is empty" in f for f in r.failures)
+
+
+def test_forged_manifest_is_detected_by_rehashing_files_on_disk(tmp_path, repo):
+    # Comparing bundle_hash(manifest) with the proposal's copy only proves
+    # two agent-visible documents agree with each other — it never touches
+    # the actual file on disk. Forge the manifest's own claim about a file
+    # and recompute a self-consistent bundle hash to match: this must still
+    # be caught by re-hashing the real file, not by the document-vs-document
+    # comparison (which, by construction, cannot see it).
+    run, before = build_run(tmp_path, repo)
+    manifest = json.loads((run / "inputs" / "input-manifest.json").read_text())
+    manifest["files"][0]["sha256"] = "9" * 64
+    (run / "inputs" / "input-manifest.json").write_text(json.dumps(manifest))
+    proposal = json.loads((run / "proposal.json").read_text())
+    proposal["input_bundle_hash"] = bundle_hash(manifest)
+    (run / "proposal.json").write_text(json.dumps(proposal))
+
+    r = validate_run(run, canonical_repo=repo, repo_state_before=before)
+    assert not r.passed
+    assert any("does not match the file on disk" in f for f in r.failures)
+
+
+def test_tampered_raw_event_evidence_is_detected_even_when_the_proposal_never_cites_it(
+        tmp_path, repo):
+    # _evidence_ids() collected `evidence` arrays and `*_evidence_id` keys,
+    # but the embedded EvidenceRef inside finding.raw_event carries a bare
+    # `evidence_id` key (11 chars; doesn't end with the 12-char
+    # `_evidence_id`), so it was never collected on its own. In the default
+    # fixture this was masked because the proposal's own `validation.evidence`
+    # happens to also cite EVD-001. Strip that coincidental citation so
+    # EVD-001 is reachable *only* through finding.json's raw_event, then
+    # remove it from the index and tamper its artifact.
+    run, before = build_run(tmp_path, repo)
+    proposal = json.loads((run / "proposal.json").read_text())
+    proposal["validation"]["evidence"] = ["EVD-002"]
+    proposal["linking"]["evidence"] = ["EVD-002"]
+    (run / "proposal.json").write_text(json.dumps(proposal))
+
+    index = json.loads((run / "evidence-index.json").read_text())
+    index = [e for e in index if e["evidence_id"] != "EVD-001"]
+    (run / "evidence-index.json").write_text(json.dumps(index))
+    (run / "evidence" / "EVD-001.bin").write_bytes(b"TAMPERED")
+
+    r = validate_run(run, canonical_repo=repo, repo_state_before=before)
+    assert not r.passed
+    assert any("unresolvable evidence reference: EVD-001" in f for f in r.failures)
+
+
+def test_non_list_evidence_index_is_a_structured_failure_not_a_silent_skip(tmp_path, repo):
+    run, before = build_run(tmp_path, repo)
+    (run / "evidence-index.json").write_text(json.dumps({"not": "a list"}))
+    r = validate_run(run, canonical_repo=repo, repo_state_before=before)
+    assert not r.passed
+    assert any("evidence-index.json is not a JSON array" in f for f in r.failures)
+
+
+def test_patch_file_escaping_run_dir_is_a_structured_failure_not_a_pass(tmp_path, repo):
+    # Path('run_dir') / '/etc/hosts' == Path('/etc/hosts') under pathlib's
+    # own semantics — an absolute patch_file silently replaces run_dir
+    # entirely, and .is_file() on a real host path can return True for a
+    # file the agent never produced.
+    run, before = build_run(tmp_path, repo)
+    proposal = json.loads((run / "proposal.json").read_text())
+    proposal["resolution_type"] = "patch"
+    proposal["remediation"]["patch_file"] = "/etc/hosts"
+    (run / "proposal.json").write_text(json.dumps(proposal))
+    r = validate_run(run, canonical_repo=repo, repo_state_before=before)
+    assert not r.passed
+    assert any("escapes the run directory" in f for f in r.failures)
+
+
+def test_false_positive_with_a_patch_file_is_a_structural_contradiction(tmp_path, repo):
+    # A false positive needs no fix; a non-null patch_file alongside it is a
+    # verifiable structural contradiction, not a free-text "justification"
+    # question — so this checks the field, not prose.
+    run, before = build_run(tmp_path, repo)
+    proposal = json.loads((run / "proposal.json").read_text())
+    proposal["resolution_type"] = "false_positive"
+    proposal["remediation"]["patch_file"] = "patch/should-not-exist.diff"
+    (run / "proposal.json").write_text(json.dumps(proposal))
+    r = validate_run(run, canonical_repo=repo, repo_state_before=before)
+    assert not r.passed
+    assert any("false_positive" in f and "patch_file" in f for f in r.failures)

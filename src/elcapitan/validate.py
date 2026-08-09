@@ -3,6 +3,10 @@
 Every check returns a structured failure. Malformed input, missing files and
 path-containment violations must never raise: a trial that crashes the
 validator would otherwise be indistinguishable from one that was never run.
+Just as important: a document that parses but has the wrong shape (`null`,
+an empty object, a list where an object was expected) must never be treated
+as "nothing to check" and silently skipped — an unvalidated run scoring
+green is worse than a crash, because a crash is at least visible.
 """
 import json
 import re
@@ -10,7 +14,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .evidence import Collector, EvidenceRef, verify_evidence
+from .hashing import sha256_file
 from .manifest import bundle_hash
+from .paths import PathEscape, safe_resolve
 from .records import validate_doc
 from .repo import RepoState, assert_unchanged
 from .toolsem import interpret_exit
@@ -31,14 +37,41 @@ class ValidationResult:
     failures: list[str]
 
 
-def _read_json(path: Path, failures: list[str]) -> dict | None:
+def _read_json(path: Path, failures: list[str], *, expect: type = dict):
+    """Parse JSON and enforce its top-level shape. Returns None on any
+    failure (already appended) — the caller can then treat None as "nothing
+    further to check here" without re-deriving why.
+
+    `expect` distinguishes documents that must be a JSON object (proposal,
+    finding, manifest) from evidence-index.json, which must be an array.
+    A value that parses successfully but to the wrong shape (`null`, a list
+    where an object was expected, an int, ...) is exactly as unusable as a
+    parse error and must be reported the same way, not passed downstream as
+    if it were valid.
+    """
     try:
-        return json.loads(path.read_text())
+        text = path.read_text()
     except FileNotFoundError:
         failures.append(f"missing required artifact: {path.name}")
+        return None
+    except (OSError, UnicodeDecodeError) as exc:
+        # OSError also covers IsADirectoryError/PermissionError: an artifact
+        # that exists but can't be read is not "missing", but it must still
+        # become a failure string, not an uncaught exception.
+        failures.append(f"could not read {path.name}: {exc}")
+        return None
+
+    try:
+        doc = json.loads(text)
     except json.JSONDecodeError as exc:
         failures.append(f"malformed JSON in {path.name}: {exc}")
-    return None
+        return None
+
+    if not isinstance(doc, expect):
+        kind = "object" if expect is dict else "array"
+        failures.append(f"{path.name} is not a JSON {kind}")
+        return None
+    return doc
 
 
 def _evidence_ids(doc) -> set[str]:
@@ -46,8 +79,17 @@ def _evidence_ids(doc) -> set[str]:
 
     def walk(node):
         if isinstance(node, dict):
+            embedded = node.get("evidence_id")
+            if isinstance(embedded, str):
+                # A nested EvidenceRef-shaped object — e.g. finding.raw_event
+                # — cites its own evidence directly via a bare `evidence_id`
+                # key (11 chars; does not end with the 12-char
+                # `_evidence_id` suffix matched below), so it needs its own
+                # check. It must resolve in the index exactly like any other
+                # evidence citation.
+                found.add(embedded)
             for key, value in node.items():
-                if key in ("evidence",) and isinstance(value, list):
+                if key == "evidence" and isinstance(value, list):
                     found.update(v for v in value if isinstance(v, str))
                 elif key.endswith("_evidence_id") and isinstance(value, str):
                     found.add(value)
@@ -61,6 +103,49 @@ def _evidence_ids(doc) -> set[str]:
     return found
 
 
+def _verify_manifest_files(run_dir: Path, manifest: dict) -> list[str]:
+    """Re-derive each declared file's hash and size from the file actually
+    on disk. Comparing bundle_hash(manifest) against the proposal's own copy
+    of that hash only proves two agent-visible documents agree with each
+    other — a self-consistently forged manifest passes that check by
+    construction. Only a value recomputed from something neither document
+    controls (the file's real bytes) is evidence.
+    """
+    failures: list[str] = []
+    files = manifest.get("files")
+    if not isinstance(files, list):
+        return ["input-manifest.json 'files' is missing or not a list"]
+
+    for entry in files:
+        if not isinstance(entry, dict):
+            failures.append(f"input-manifest.json contains a malformed file entry: {entry!r}")
+            continue
+        rel = entry.get("path")
+        if not isinstance(rel, str):
+            failures.append(f"input-manifest.json file entry has a non-string path: {entry!r}")
+            continue
+        try:
+            resolved = safe_resolve(run_dir, rel)
+        except PathEscape as exc:
+            failures.append(
+                f"input-manifest.json file entry escapes the run directory: {rel!r} ({exc})")
+            continue
+        if not resolved.is_file():
+            failures.append(f"input-manifest.json references a missing file: {rel!r}")
+            continue
+
+        if sha256_file(resolved) != entry.get("sha256"):
+            failures.append(
+                f"input-manifest.json sha256 for {rel!r} does not match the file on disk "
+                f"— manifest may have been forged")
+        actual_size = resolved.stat().st_size
+        if actual_size != entry.get("size"):
+            failures.append(
+                f"input-manifest.json size for {rel!r} does not match the file on disk "
+                f"({entry.get('size')!r} vs {actual_size})")
+    return failures
+
+
 def validate_run(run_dir, *, canonical_repo, repo_state_before: RepoState) -> ValidationResult:
     run_dir = Path(run_dir)
     failures: list[str] = []
@@ -69,14 +154,14 @@ def validate_run(run_dir, *, canonical_repo, repo_state_before: RepoState) -> Va
         if any(m in path.name.lower() for m in GROUND_TRUTH_MARKERS):
             failures.append(f"ground truth present inside run dir: {path.name}")
 
-    proposal = _read_json(run_dir / "proposal.json", failures)
-    finding = _read_json(run_dir / "inputs" / "finding.json", failures)
-    index_doc = _read_json(run_dir / "evidence-index.json", failures)
-    manifest = _read_json(run_dir / "inputs" / "input-manifest.json", failures)
+    proposal = _read_json(run_dir / "proposal.json", failures, expect=dict)
+    finding = _read_json(run_dir / "inputs" / "finding.json", failures, expect=dict)
+    index_doc = _read_json(run_dir / "evidence-index.json", failures, expect=list)
+    manifest = _read_json(run_dir / "inputs" / "input-manifest.json", failures, expect=dict)
 
-    if proposal is not None:
+    if isinstance(proposal, dict):
         failures += [f"proposal: {e}" for e in validate_doc("remediation-proposal", proposal)]
-    if finding is not None:
+    if isinstance(finding, dict):
         failures += [f"finding: {e}" for e in validate_doc("finding-record", finding)]
 
     index: dict[str, EvidenceRef] = {}
@@ -98,28 +183,71 @@ def validate_run(run_dir, *, canonical_repo, repo_state_before: RepoState) -> Va
             for eid in _evidence_ids(doc) - set(index):
                 failures.append(f"unresolvable evidence reference: {eid}")
 
-    if proposal and manifest:
-        expected = bundle_hash(manifest)
-        if proposal.get("input_bundle_hash") != expected:
-            failures.append(
-                f"input_bundle_hash does not match input-manifest.json ({expected[:8]})")
+    # Manifest integrity: the document itself (shape/emptiness), then every
+    # file it claims (re-hashed from disk), then — only once both of those
+    # hold — that the proposal's own copy of the hash matches.
+    if manifest is None:
+        pass  # _read_json already explained why: missing, malformed, or wrong JSON type
+    elif not manifest:
+        failures.append("input-manifest.json is empty")
+    else:
+        failures += _verify_manifest_files(run_dir, manifest)
+        if isinstance(proposal, dict):
+            expected = bundle_hash(manifest)
+            if proposal.get("input_bundle_hash") != expected:
+                failures.append(
+                    f"input_bundle_hash does not match input-manifest.json ({expected[:8]})")
 
-    if proposal:
+    if isinstance(proposal, dict):
         # remediation/verification/commands_run are schema-validated above,
         # but validate_doc() only *reports* shape errors — it does not stop
         # this function from also touching the same malformed data. Every
-        # access below is guarded so a wrong-shaped field adds a failure
-        # string instead of raising: the schema failure already explains
-        # *what's* wrong, so these guards just prevent a second, unguarded
-        # pass over the same data from crashing the validator.
+        # access below is guarded so a wrong-shaped field adds its own
+        # failure string instead of raising or relying solely on the schema
+        # failure already recorded.
+        resolution_type = proposal.get("resolution_type")
+
         remediation = proposal.get("remediation")
-        patch_file = remediation.get("patch_file") if isinstance(remediation, dict) else None
-        if proposal.get("resolution_type") == "patch" and isinstance(patch_file, str) and patch_file:
-            if not (run_dir / patch_file).is_file():
-                failures.append(f"declared patch_file does not exist: {patch_file}")
+        if isinstance(remediation, dict):
+            patch_file = remediation.get("patch_file")
+        else:
+            failures.append(f"proposal.remediation is not a JSON object: {remediation!r}")
+            patch_file = None
+
+        if resolution_type == "patch" and isinstance(patch_file, str) and patch_file:
+            try:
+                resolved_patch = safe_resolve(run_dir, patch_file)
+            except PathEscape as exc:
+                # Path('run_dir') / '/etc/hosts' == Path('/etc/hosts') under
+                # pathlib's own semantics for an absolute second operand, so
+                # an unguarded join would let a declared patch_file escape
+                # the run directory entirely and still resolve to a real
+                # file the agent never produced. Route through safe_resolve
+                # like every other agent-supplied path.
+                failures.append(
+                    f"declared patch_file escapes the run directory: {patch_file!r} ({exc})")
+            else:
+                if not resolved_patch.is_file():
+                    failures.append(f"declared patch_file does not exist: {patch_file}")
+
+        if resolution_type == "false_positive" and isinstance(patch_file, str) and patch_file:
+            # A false positive needs no fix, so shipping one alongside it is
+            # a structural contradiction the schema doesn't close (patch_file
+            # is ["string","null"] for every resolution type; the schema's
+            # `allOf` only constrains the `patch` case). Check the field
+            # itself — a substring match on free-text "justification" would
+            # be theatre, not a check.
+            failures.append(
+                "resolution_type is false_positive but remediation.patch_file is set "
+                f"({patch_file!r}); a false positive must not ship a patch")
 
         verification = proposal.get("verification")
-        commands_run = verification.get("commands_run") if isinstance(verification, dict) else None
+        if isinstance(verification, dict):
+            commands_run = verification.get("commands_run")
+        else:
+            failures.append(f"proposal.verification is not a JSON object: {verification!r}")
+            commands_run = None
+
         for command in commands_run if isinstance(commands_run, list) else []:
             if not isinstance(command, dict):
                 failures.append(f"malformed CommandRecord (not an object): {command!r}")
@@ -148,9 +276,17 @@ def validate_run(run_dir, *, canonical_repo, repo_state_before: RepoState) -> Va
         failures.append(f"canonical repository could not be inspected: {exc}")
 
     try:
-        transcript = (run_dir / "transcript.log").read_text()
+        # errors="replace": a transcript is a captured terminal stream, so
+        # raw control/binary bytes are routine, not adversarial. The content
+        # is only regex-scanned below, so lossy decoding is harmless and
+        # far better than crashing the validator over the most likely
+        # malformed artifact in real use.
+        transcript = (run_dir / "transcript.log").read_text(errors="replace")
     except FileNotFoundError:
         failures.append("missing required artifact: transcript.log")
+        transcript = ""
+    except OSError as exc:
+        failures.append(f"could not read transcript.log: {exc}")
         transcript = ""
     for pattern in MUTATION_PATTERNS:
         if re.search(pattern, transcript):
