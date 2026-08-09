@@ -3,11 +3,20 @@
 Contrary to the plan's original premise, an *empty* HERMES_HOME starts fine —
 the image populates the whole tree itself on first run (see
 docs/spike-findings.md §4). What actually needs pinning is a small set of
-settings that determine trial independence: no cross-run memory, no
-self-authored skills leaking between trials, and a fixed terminal backend.
-None of that happens by default, and it cannot be set from CLI flags, so a
-hand-written baseline config.yaml is copied into every fresh home instead of
-relying on the image's own ~90 KB generated default.
+config settings — a fixed terminal backend, memory disabled, and skill-
+creation nudging disabled — none of which happen by default and none of
+which can be set from CLI flags, so a hand-written baseline config.yaml is
+copied into every fresh home instead of relying on the image's own ~90 KB
+generated default.
+
+Cross-trial independence itself is NOT one of those config settings — no
+config key can provide it. It is a structural property of this function:
+every call reads only from the immutable `baseline-home/` template and
+refuses to write into an existing `dest` (see the FileExistsError below).
+That is what actually stops state — including any skill the agent wrote to
+its own HERMES_HOME during a prior trial — from crossing into the next one.
+Reusing a `dest` across trials, if anyone were ever tempted to for speed,
+would silently defeat this guarantee no matter what config.yaml says.
 
 Every key in baseline-home/config.yaml (including the exact
 `_config_version` value) was verified against the built image, not guessed —
@@ -28,9 +37,12 @@ BASELINE_FILES = ("config.yaml", "SOUL.md", ".env")
 def seed_hermes_home(dest, *, model: str, provider: str) -> Path:
     """Copy the sanitised baseline into a fresh directory.
 
-    Refuses to overwrite an existing directory: trials require an
-    independent home each time, and two seeds must never share state (a
-    skill written into one must not appear in the other).
+    Refuses to overwrite an existing directory. This — not any config.yaml
+    setting — is the trial-independence guarantee: every seed starts from
+    the same untouched baseline-home/ template and never reads a previous
+    dest, so a skill (or anything else) written into one seeded home cannot
+    appear in another. Callers must pass a fresh `dest` per trial; reusing
+    one would bypass this guarantee entirely.
     """
     dest = Path(dest)
     if dest.exists():

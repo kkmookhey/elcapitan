@@ -32,22 +32,37 @@ model:
 terminal:
   backend: "local"
 
-# Scored trials must not accumulate cross-run state. The real keys are
-# memory.memory_enabled and memory.user_profile_enabled (nested under a
-# top-level `memory:` block) — NOT a single `memory.enabled` flag, which
-# does not exist in this schema. Confirmed false/false via `hermes config get`.
+# Disables Hermes's own persistent-memory feature (notes + user profile
+# written to disk and re-injected into later sessions) so a single trial's
+# behaviour cannot drift as it accumulates its own notes turn over turn.
+# The real keys are memory.memory_enabled and memory.user_profile_enabled
+# (nested under a top-level `memory:` block) — NOT a single `memory.enabled`
+# flag, which does not exist in this schema. Confirmed false/false via
+# `hermes config get`. Note this is about within-trial determinism, not
+# cross-trial isolation — cross-trial isolation never depended on this
+# setting; it comes from seed_hermes_home() always starting a trial from a
+# fresh directory (see src/elcapitan/home.py and the note by `skills:` below).
 memory:
   memory_enabled: false
   user_profile_enabled: false
 
-# Self-authoring is measured separately, not during trials. There is no
-# `skills.auto_create` key in this schema (that name does not exist) — the
-# real, verified lever is the periodic "consider saving a skill" nudge:
-# skills.creation_nudge_interval, in tool-calling iterations, 0 = disabled.
-# The `skills` toolset itself only exposes read tools (skills_list,
-# skill_view); skill *creation* goes through the file-write tool the agent
-# already needs for remediation work, so the nudge interval is the only
-# real dial available, and it is the one this schema actually has.
+# There is no `skills.auto_create` key in this schema (that name does not
+# exist) — the real, verified lever is the periodic "consider saving a
+# skill" nudge: skills.creation_nudge_interval, in tool-calling iterations,
+# 0 = disabled. The `skills` toolset itself only exposes read tools
+# (skills_list, skill_view); skill *creation* goes through the file-write
+# tool the agent already needs for remediation work, so the nudge interval
+# is the only real dial available, and it is the one this schema has.
+#
+# IMPORTANT — this is NOT what makes trials independent. This key only
+# suppresses the periodic in-transcript reminder to save a skill; it
+# cannot stop the agent writing a skill file via write_file if it decides
+# to on its own, and it does nothing about a skill already written to a
+# previously-used home. Independence across trials is a structural
+# property of seed_hermes_home() instead — every trial gets a fresh
+# directory copied from this untouched template, never a reused one (see
+# src/elcapitan/home.py). This key exists only to keep a single trial's
+# own transcript free of nudge-driven self-authoring.
 skills:
   creation_nudge_interval: 0
 
