@@ -11,6 +11,7 @@ from dataclasses import dataclass
 class ExitVerdict:
     ok: bool
     meaning: str
+    ambiguous: bool = False    # exit code cannot distinguish success from tool failure
 
 def _terraform(argv: list[str], code: int) -> ExitVerdict:
     sub = argv[0] if argv else ""
@@ -26,7 +27,10 @@ def _cdk(argv: list[str], code: int) -> ExitVerdict:
         if code == 0:
             return ExitVerdict(True, "cdk diff: no differences")
         if code == 1:
-            return ExitVerdict(True, "cdk diff: differences present")
+            return ExitVerdict(True,
+                               "cdk diff: differences present OR cdk error — "
+                               "exit 1 cannot distinguish them",
+                               ambiguous=True)
         return ExitVerdict(False, f"cdk diff error (exit {code})")
     return ExitVerdict(code == 0, f"cdk exit {code}")
 
@@ -39,6 +43,11 @@ def _trivy(argv: list[str], code: int) -> ExitVerdict:
         if code == 0:
             return ExitVerdict(True, "trivy: no findings")
         if configured is not None and code == configured:
+            if configured == 1:
+                return ExitVerdict(True,
+                                   "trivy: findings present OR trivy error — "
+                                   "exit 1 cannot distinguish them",
+                                   ambiguous=True)
             return ExitVerdict(True, "trivy: findings present")
     return ExitVerdict(code == 0, f"trivy exit {code}")
 

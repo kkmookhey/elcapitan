@@ -52,3 +52,32 @@ def test_absent_exit_code_is_never_treated_as_success():
     from elcapitan.toolsem import interpret_exit
     with pytest.raises(TypeError):
         interpret_exit("terraform", ["plan"])   # code is required, never defaulted
+
+def test_cdk_diff_with_fail_flag_one_is_ambiguous():
+    # cdk has no separate exit code for "differences present" vs. "cdk error"
+    # (synth failure, bad credentials, missing stack) — exit 1 covers both.
+    v = interpret_exit("cdk", ["diff", "--fail"], 1)
+    assert v.ok is True
+    assert v.ambiguous is True
+
+def test_cdk_diff_with_fail_flag_zero_is_not_ambiguous():
+    v = interpret_exit("cdk", ["diff", "--fail"], 0)
+    assert v.ok is True
+    assert v.ambiguous is False
+
+def test_trivy_exit_code_one_is_ambiguous():
+    # trivy also uses exit 1 for its own scan-level errors, so --exit-code 1
+    # collides with findings-present.
+    v = interpret_exit("trivy", ["config", ".", "--exit-code", "1"], 1)
+    assert v.ok is True
+    assert v.ambiguous is True
+
+def test_trivy_exit_code_two_is_not_ambiguous():
+    # A configured code other than 1 doesn't collide with trivy's own error
+    # code, so this verdict is unambiguous.
+    v = interpret_exit("trivy", ["config", ".", "--exit-code", "2"], 2)
+    assert v.ok is True
+    assert v.ambiguous is False
+
+def test_terraform_verdict_defaults_to_not_ambiguous():
+    assert interpret_exit("terraform", ["validate"], 0).ambiguous is False

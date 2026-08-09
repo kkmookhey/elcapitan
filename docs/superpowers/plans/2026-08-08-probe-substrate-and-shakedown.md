@@ -1396,7 +1396,26 @@ caller-supplied copy of itself and therefore could never fail."
 **Interfaces:**
 - Produces: `ExitVerdict(ok: bool, meaning: str)`; `interpret_exit(tool, argv, code) -> ExitVerdict`
 
-Implementation is unchanged from the previous draft — `terraform plan -detailed-exitcode` maps `0`/`2` to success and everything else to failure; `cdk diff --fail` treats `1` as "differences present"; `trivy --exit-code N` treats `N` as "findings present"; unknown tools fall back to `code == 0` with `"generic semantics"` in the message. Reuse that module and its twelve tests verbatim, plus one addition:
+Base behaviour: `terraform plan -detailed-exitcode` maps `0`/`2` to success and everything else to failure; unknown tools fall back to `code == 0` with `"generic semantics"` in the message.
+
+**Two exit codes are genuinely ambiguous, and the model must say so rather than guess.** `cdk diff --fail` exits `1` both for "differences found" and for ordinary CLI failures (synth error, bad credentials, missing stack) — the CDK CLI has no separate code. `trivy --exit-code N` exits `N` when findings exist, but trivy also exits `1` for scan-level errors, so `--exit-code 1` collides. Neither is distinguishable from the exit code alone. Reporting these as plain success would let a genuinely failed verification be scored as a passing one — the same mis-scoring this module exists to prevent, in the opposite direction.
+
+So `ExitVerdict` carries a third field:
+
+```python
+@dataclass(frozen=True)
+class ExitVerdict:
+    ok: bool
+    meaning: str
+    ambiguous: bool = False    # exit code cannot distinguish success from tool failure
+```
+
+- `cdk diff --fail` + code `1` → `ok=True, ambiguous=True`, meaning names both possibilities.
+- `trivy --exit-code N` + code `N`: `ambiguous=True` only when `N == 1`, since that is the code trivy also uses for its own errors. A caller using `--exit-code 2` gets an unambiguous verdict.
+
+Task 9's validator surfaces ambiguity as an `AMBIGUOUS:` finding, mirroring its `DIAGNOSTIC:` prefix — never silent success.
+
+Reuse the rest of the module and its twelve tests verbatim, plus these additions:
 
 - [ ] **Step 1: Add the missing-exit-code test**
 
@@ -1618,6 +1637,11 @@ def validate_run(run_dir, *, canonical_repo, repo_state_before: RepoState) -> Va
             verdict = interpret_exit(command["tool"], command["argv"], command["exit_code"])
             if not verdict.ok:
                 failures.append(f"verification command failed: "
+                                f"{command['tool']} — {verdict.meaning}")
+            elif verdict.ambiguous:
+                # The exit code cannot distinguish a passing verification from a
+                # tool failure. Surfacing it beats scoring a failed run green.
+                failures.append(f"AMBIGUOUS: verification cannot be trusted: "
                                 f"{command['tool']} — {verdict.meaning}")
 
     failures += assert_unchanged(canonical_repo, repo_state_before)
