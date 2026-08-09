@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "evidence-ref.schema.json",
+  "title": "EvidenceRef",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["evidence_id","type","artifact_path","sha256","collected_at",
+               "sensitivity","command_id","collector"],
+  "properties": {
+    "evidence_id":   { "type": "string", "pattern": "^EVD-[0-9]{3,}$" },
+    "type":          { "type": "string", "minLength": 1 },
+    "artifact_path": { "type": "string",
+                       "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$" },
+    "sha256":        { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "collected_at":  { "type": "string", "format": "date-time" },
+    "sensitivity":   { "enum": ["public","internal","confidential","restricted"] },
+    "command_id":    { "type": "string" },
+    "collector": {
+      "type": "object", "additionalProperties": false,
+      "required": ["tool","version","identity"],
+      "properties": {
+        "tool":     { "type": "string", "minLength": 1 },
+        "version":  { "type": "string", "minLength": 1 },
+        "identity": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

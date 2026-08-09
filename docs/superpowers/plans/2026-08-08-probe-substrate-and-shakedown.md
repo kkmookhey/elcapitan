@@ -688,14 +688,20 @@ def write_evidence(run_dir, evidence_id, type, payload: bytes, collector: Collec
                        collector=collector)
 
 def verify_evidence(run_dir, ref: EvidenceRef) -> bool:
-    """False on tamper, absence, or containment violation — never raises."""
+    """False on tamper, absence, or containment violation — never raises.
+
+    The hash read is inside the guard too: an artifact can disappear or become
+    unreadable between the is_file() check and the open, and a validator
+    iterating many refs must mark that one entry invalid rather than abort the
+    whole batch. Task 9 depends on this returning structured failures.
+    """
     try:
         path = safe_resolve(run_dir, ref.artifact_path)
+        if not path.is_file():
+            return False
+        return sha256_file(path) == ref.sha256
     except (PathEscape, FileNotFoundError, OSError):
         return False
-    if not path.is_file():
-        return False
-    return sha256_file(path) == ref.sha256
 ```
 
 - [ ] **Step 5: Write the evidence schema**
@@ -792,8 +798,21 @@ def test_valid_proposal_passes():
     assert validate_doc("remediation-proposal", PROPOSAL) == []
 
 def test_ref_to_evidence_schema_resolves():
-    # Would raise RefResolutionError if the registry were not wired up.
-    validator_for("finding-record")
+    # $ref resolution in `referencing` is LAZY — constructing the validator
+    # succeeds even with a broken registry, and a document that never touches
+    # the `raw_event` key never dereferences it either (the `properties`
+    # keyword only applies to keys actually present). So the document below
+    # deliberately includes `raw_event` with an invalid inner value, forcing
+    # the $ref to actually resolve during iter_errors. With the registry wired
+    # correctly this surfaces the evidence-ref schema's own field errors
+    # (proving real resolution, not just "any string got accepted"); with a
+    # broken registry, `referencing` raises Unresolvable instead of yielding
+    # errors, which fails this test loudly rather than passing vacuously.
+    doc = {"finding_id": "FIND-001", "raw_event": {"evidence_id": "not-a-match"}}
+    errors = validate_doc("finding-record", doc)
+    assert errors, "expected schema errors, not a resolution failure"
+    assert any(e.startswith("raw_event") for e in errors), (
+        f"expected errors from inside the resolved evidence-ref schema: {errors}")
 
 def test_format_checker_rejects_a_malformed_timestamp():
     doc = copy.deepcopy(PROPOSAL); doc["created_at"] = "not-a-date"
@@ -934,10 +953,27 @@ def _registry() -> Registry:
     ]
     return Registry().with_resources(resources)
 
+# jsonschema's built-in "date-time" check is a NO-OP unless the optional
+# rfc3339-validator package is installed — supplying FormatChecker() alone
+# leaves the format decorative. Adding a dependency is barred by the pinning
+# constraint, so register a strict project-owned checker: RFC3339 requires a
+# full date, a full time, and an offset. datetime.fromisoformat alone is too
+# permissive — it accepts "2026-08-08" and "2026-08-08T12:00:00".
+_FORMAT_CHECKER = FormatChecker()
+
+@_FORMAT_CHECKER.checks("date-time", raises=ValueError)
+def _is_rfc3339_date_time(instance) -> bool:
+    if not isinstance(instance, str):
+        return True                      # non-strings are the type keyword's job
+    if not re.match(r"^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}", instance):
+        return False                     # date-only or missing time component
+    parsed = datetime.fromisoformat(instance.replace("Z", "+00:00"))
+    return parsed.tzinfo is not None     # RFC3339 requires an offset
+
 @lru_cache(maxsize=None)
 def validator_for(name: str) -> Draft202012Validator:
     return Draft202012Validator(load_schema(name), registry=_registry(),
-                                format_checker=FormatChecker())
+                                format_checker=_FORMAT_CHECKER)
 
 def validate_doc(name: str, doc: dict) -> list[str]:
     """Human-readable errors. Empty list means valid."""
@@ -1145,18 +1181,24 @@ and environment adapter all change the experiment.
 from pathlib import Path
 
 from .hashing import sha256_file, sha256_record
+from .paths import safe_resolve
 
 def build_manifest(run_dir, *, files: list[str], repository_commit: str,
                    runtime_image_id: str, runtime_lock_sha256: str,
                    profile_config_sha256: str,
                    environment_adapter_sha256: str) -> dict:
     run_dir = Path(run_dir)
-    entries = [
-        {"path": rel,
-         "size": (run_dir / rel).stat().st_size,
-         "sha256": sha256_file(run_dir / rel)}
-        for rel in sorted(files)
-    ]
+    entries = []
+    for rel in sorted(files):
+        # Containment lives here, not in the caller. Today's harness passes
+        # literals, but the Global Constraint ("resolve, prove
+        # is_relative_to(run_dir), reject symlinks") is an invariant of the
+        # manifest, and a future caller must not be able to hash a file from
+        # outside the run directory into a bundle that never carries it.
+        path = safe_resolve(run_dir, rel)
+        entries.append({"path": rel,
+                        "size": path.stat().st_size,
+                        "sha256": sha256_file(path)})
     return {
         "files": entries,
         "repository_commit": repository_commit,
@@ -1272,13 +1314,21 @@ repository after the container exits and compares it with state captured
 before — never with a value supplied by the caller.
 """
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
+
+# git's wording for "HEAD exists but points nowhere yet"
+_UNBORN_MARKERS = ("unknown revision", "ambiguous argument 'HEAD'",
+                   "does not have any commits")
 
 @dataclass(frozen=True)
 class RepoState:
     commit: str
-    dirty_files: list[str] = field(default_factory=list)
+    # A tuple, not a list: frozen=True blocks attribute reassignment but not
+    # in-place mutation, and this baseline is what tamper detection diffs
+    # against. A mutated baseline yields false negatives — real tampering that
+    # goes unreported. Records are immutable.
+    dirty_files: tuple[str, ...] = ()
 
 def _git(path, *args) -> str:
     result = subprocess.run(["git", "-C", str(path), *args],
@@ -1292,10 +1342,17 @@ def capture_repo_state(path) -> RepoState:
     try:
         commit = _git(path, "rev-parse", "HEAD").strip()
     except ValueError as exc:
-        raise ValueError(f"repository has no commits (unborn branch): {path}") from exc
+        # Only claim "unborn branch" when git actually said so. A missing path
+        # or a directory that is not a repository at all must not be reported
+        # as "no commits" — asserting a specific wrong cause is worse than a
+        # generic one, because it sends the reader somewhere else entirely.
+        detail = str(exc)
+        if any(marker in detail for marker in _UNBORN_MARKERS):
+            raise ValueError(f"repository has no commits (unborn branch): {path}") from exc
+        raise ValueError(f"not a usable git repository: {path} — {detail}") from exc
     porcelain = _git(path, "status", "--porcelain", "--untracked-files=all")
     return RepoState(commit=commit,
-                     dirty_files=sorted(porcelain.splitlines()))
+                     dirty_files=tuple(sorted(porcelain.splitlines())))
 
 def assert_unchanged(path, before: RepoState) -> list[str]:
     """Return failures. Empty list means the repository is untouched."""
@@ -1339,7 +1396,26 @@ caller-supplied copy of itself and therefore could never fail."
 **Interfaces:**
 - Produces: `ExitVerdict(ok: bool, meaning: str)`; `interpret_exit(tool, argv, code) -> ExitVerdict`
 
-Implementation is unchanged from the previous draft — `terraform plan -detailed-exitcode` maps `0`/`2` to success and everything else to failure; `cdk diff --fail` treats `1` as "differences present"; `trivy --exit-code N` treats `N` as "findings present"; unknown tools fall back to `code == 0` with `"generic semantics"` in the message. Reuse that module and its twelve tests verbatim, plus one addition:
+Base behaviour: `terraform plan -detailed-exitcode` maps `0`/`2` to success and everything else to failure; unknown tools fall back to `code == 0` with `"generic semantics"` in the message.
+
+**Two exit codes are genuinely ambiguous, and the model must say so rather than guess.** `cdk diff --fail` exits `1` both for "differences found" and for ordinary CLI failures (synth error, bad credentials, missing stack) — the CDK CLI has no separate code. `trivy --exit-code N` exits `N` when findings exist, but trivy also exits `1` for scan-level errors, so `--exit-code 1` collides. Neither is distinguishable from the exit code alone. Reporting these as plain success would let a genuinely failed verification be scored as a passing one — the same mis-scoring this module exists to prevent, in the opposite direction.
+
+So `ExitVerdict` carries a third field:
+
+```python
+@dataclass(frozen=True)
+class ExitVerdict:
+    ok: bool
+    meaning: str
+    ambiguous: bool = False    # exit code cannot distinguish success from tool failure
+```
+
+- `cdk diff --fail` + code `1` → `ok=True, ambiguous=True`, meaning names both possibilities.
+- `trivy --exit-code N` + code `N`: `ambiguous=True` only when `N == 1`, since that is the code trivy also uses for its own errors. A caller using `--exit-code 2` gets an unambiguous verdict.
+
+Task 9's validator surfaces ambiguity as an `AMBIGUOUS:` finding, mirroring its `DIAGNOSTIC:` prefix — never silent success.
+
+Reuse the rest of the module and its twelve tests verbatim, plus these additions:
 
 - [ ] **Step 1: Add the missing-exit-code test**
 
@@ -1371,6 +1447,39 @@ git commit -m "feat(validate): per-tool exit-code semantics"
 - Produces: `ValidationResult(passed: bool, failures: list[str])`; `validate_run(run_dir, *, canonical_repo, repo_state_before) -> ValidationResult`
 
 **Signature change from review:** the validator now takes the *repository path* and the *pre-run state*, and recomputes. It no longer accepts a digest string from the caller.
+
+> **Implementation note — the code below is the starting point, not the final state.**
+> `src/elcapitan/validate.py` is authoritative. Review found thirteen defects in
+> the sketch below, every one demonstrated by probe rather than argued. They are
+> recorded here because most are instances of one root pattern, and the next
+> person to extend this module will reintroduce them otherwise:
+>
+> **A check must never derive its scope from the thing it is checking.**
+>
+> - `proposal.json` containing JSON `null` → `passed=True`, zero failures. A
+>   truthy non-dict proposal crashed on `.get`. Fixed by shape-gating `_read_json`.
+> - The bundle hash compared the proposal's copy against a hash of the manifest
+>   *document* — both agent-visible. A forged manifest passed while lying about
+>   the file it described. Fixed by re-deriving each file's hash and size from disk.
+> - The manifest then still chose *what* it was audited against: an empty or
+>   decoy-only `files` list verified nothing. Fixed by `REQUIRED_MANIFEST_PATHS`.
+> - `_evidence_ids` matched keys ending in `_evidence_id` (12 chars), missing the
+>   embedded `evidence_id` (11 chars) inside `raw_event` — tampered raw evidence
+>   passed unnoticed.
+> - `patch_file` was joined to `run_dir` uncontained; `"/etc/hosts"` satisfied
+>   `.is_file()`.
+> - Non-UTF-8 `transcript.log`, a directory in place of a JSON file, and an
+>   unreadable manifest entry each crashed the validator outright.
+> - No `false_positive`-with-patch check existed despite §3.3 requiring one.
+> - Four regression tests asserted only `not r.passed` and so could not tell a
+>   guard from a schema failure — verified by neutering each guard and re-running.
+>
+> **Still open, and Task 12's to close:** the whole manifest chain lives inside
+> the agent-writable run directory, so a *coherent* forgery — mutate
+> `inputs/finding.json`, update its hash in the manifest, recompute both hashes —
+> is undetectable. The harness already writes `inputs/bundle.sha256` pre-trial and
+> the validator never reads it. Task 12 must pass the pre-trial bundle hash
+> out-of-band, exactly as it already does for `repo-state-before.json`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1562,8 +1671,20 @@ def validate_run(run_dir, *, canonical_repo, repo_state_before: RepoState) -> Va
             if not verdict.ok:
                 failures.append(f"verification command failed: "
                                 f"{command['tool']} — {verdict.meaning}")
+            elif verdict.ambiguous:
+                # The exit code cannot distinguish a passing verification from a
+                # tool failure. Surfacing it beats scoring a failed run green.
+                failures.append(f"AMBIGUOUS: verification cannot be trusted: "
+                                f"{command['tool']} — {verdict.meaning}")
 
-    failures += assert_unchanged(canonical_repo, repo_state_before)
+    try:
+        failures += assert_unchanged(canonical_repo, repo_state_before)
+    except ValueError as exc:
+        # repo.py raises when the path is missing or is not a repository at
+        # all. That must become a structured failure, not a crash: a trial
+        # that kills the validator is indistinguishable from one that never
+        # ran, and this validator is the final authority on both.
+        failures.append(f"canonical repository could not be inspected: {exc}")
 
     try:
         transcript = (run_dir / "transcript.log").read_text()
@@ -2348,6 +2469,52 @@ Exploratory only: Anna changes cloud, IaC language and environment-reality
 simultaneously and has no constructed ground truth, so it cannot demonstrate
 generalisation. Telemetry blocked by explicit IAM deny, not merely by intent."
 ```
+
+---
+
+## Handoff — where this plan is now STALE
+
+Tasks 3–10 (the deterministic core) are built, reviewed and merged. Tasks 0, 1b, 2,
+11, 12, 13 remain. Execution changed four things this document still describes the
+old way. **Read this before executing any remaining task.**
+
+1. **`validate_run` has a fourth keyword parameter.** It is now
+   `validate_run(run_dir, *, canonical_repo, repo_state_before, expected_bundle_hash=None)`.
+   The code at Task 9 Step 3 and in Task 12's harness still shows the three-argument
+   form. When `expected_bundle_hash` is `None`, validation **fails** with
+   `"input bundle integrity is unanchored"` — deliberately, so a missing anchor is
+   loud rather than silent.
+
+2. **`bin/run-trial.sh` as written always fails.** Task 12's invocation passes the
+   wrapper three arguments and therefore hits that failure. It must pass a fourth:
+   the pre-trial bundle hash.
+
+3. **That anchor must NOT come from `inputs/bundle.sha256`.** Task 12 currently
+   writes the hash into the run directory and `stub_engineer.py` reads it back. That
+   file is agent-writable, so sourcing the anchor from it defeats the whole fix — a
+   coherent forgery recomputes it along with everything else. Hold the hash in the
+   harness process, or beside `repo-state-before.json` outside the run directory.
+   *Nothing inside `run_dir` can anchor `run_dir`.*
+
+4. **Task 11's shim test helper will not construct.** It builds
+   `engineer_spec(run_dir=str(tmp_path), canonical_repo=str(tmp_path), host_hermes_home=str(tmp_path))`.
+   `container.py` now rejects that: mounting one host path read-only at
+   `/work/canonical` and writable at `/work/run` was exactly the defect the final
+   review closed. Give the shim spec three distinct paths.
+
+**Known-accepted residuals**, verified and deliberately left: `MAX_DOC_DEPTH = 200`
+is a policy number, well below the interpreter's observed ~9979 ceiling;
+`_reject_overbroad_mounts` is lexical-only and a symlink defeats it, as its own
+docstring states; `engineer_spec` still accepts `run_dir == host_hermes_home`, which
+would land agent session state in the scored artifact directory; the validator CLI
+now requires `uv` on `PATH`.
+
+**Process note for the next plan.** The dominant defect class here was *tests that
+cannot fail* — found by mutation testing, not by reading. Four separate reviews
+passed code whose guards were deletable with a green suite. Budget a mutation pass on
+every module a Global Constraint names by behaviour, regardless of which task last
+touched it: `paths.py` had both its guards mutually masking for seven tasks because
+no per-task review owned it after Task 3.
 
 ---
 

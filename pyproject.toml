@@ -1,0 +1,23 @@
+[project]
+name = "elcapitan"
+version = "0.1.0"
+requires-python = "==3.12.*"
+dependencies = ["jsonschema==4.23.0", "referencing==0.35.1", "PyYAML==6.0.2"]
+
+[dependency-groups]
+dev = ["pytest==8.3.3"]
+
+[build-system]
+requires = ["setuptools==75.1.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+# Without this, `pytest` imports whatever `elcapitan` the ambient venv happens
+# to have installed, so a green run proves nothing about *this* checkout —
+# every "N passing" claim would be conditional on venv state nobody recorded.
+# pythonpath entries are prepended to sys.path, so src/ wins over any install.
+pythonpath = ["src"]
+testpaths = ["tests"]
