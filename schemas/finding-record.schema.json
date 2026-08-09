@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "finding-record.schema.json",
+  "title": "FindingRecord",
+  "type": "object",
+  "required": ["finding_id", "ocsf", "provenance", "resource", "severity",
+               "raw_event", "vendor_extensions"],
+  "additionalProperties": false,
+  "properties": {
+    "finding_id": { "type": "string", "pattern": "^FIND-[0-9]{3,}$" },
+    "ocsf": {
+      "type": "object",
+      "required": ["version", "class_uid", "original_uid", "title"],
+      "additionalProperties": false,
+      "properties": {
+        "version":      { "type": "string", "minLength": 1 },
+        "class_uid":    { "type": "integer" },
+        "original_uid": { "type": "string", "minLength": 1 },
+        "title":        { "type": "string" }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["product", "product_version", "provider", "account",
+                   "region", "observed_at"],
+      "additionalProperties": false,
+      "properties": {
+        "product":         { "type": "string", "minLength": 1 },
+        "product_version": { "type": "string", "minLength": 1 },
+        "provider":        { "type": "string", "minLength": 1 },
+        "account":         { "type": "string", "minLength": 1 },
+        "region":          { "type": "string" },
+        "observed_at":     { "type": "string" }
+      }
+    },
+    "resource": {
+      "type": "object",
+      "required": ["uid", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "uid":  { "type": "string", "minLength": 1 },
+        "type": { "type": "string" }
+      }
+    },
+    "severity":          { "type": "string" },
+    "raw_event":         { "$ref": "evidence-ref.schema.json" },
+    "vendor_extensions": { "type": "object" }
+  }
+}

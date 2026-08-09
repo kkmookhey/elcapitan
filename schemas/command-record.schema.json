@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "command-record.schema.json",
+  "title": "CommandRecord",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["command_id","tool","argv","exit_code","started_at",
+               "completed_at","stdout_evidence_id","stderr_evidence_id"],
+  "properties": {
+    "command_id":         { "type": "string", "pattern": "^CMD-[0-9]{3,}$" },
+    "tool":               { "type": "string", "minLength": 1 },
+    "argv":               { "type": "array", "items": { "type": "string" } },
+    "exit_code":          { "type": "integer" },
+    "started_at":         { "type": "string", "format": "date-time" },
+    "completed_at":       { "type": "string", "format": "date-time" },
+    "stdout_evidence_id": { "type": "string", "pattern": "^EVD-[0-9]{3,}$" },
+    "stderr_evidence_id": { "type": "string", "pattern": "^EVD-[0-9]{3,}$" }
+  }
+}
