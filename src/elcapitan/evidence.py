@@ -49,11 +49,17 @@ def write_evidence(run_dir, evidence_id, type, payload: bytes, collector: Collec
                        collector=collector)
 
 def verify_evidence(run_dir, ref: EvidenceRef) -> bool:
-    """False on tamper, absence, or containment violation — never raises."""
+    """False on tamper, absence, or containment violation — never raises.
+
+    The hash read is inside the guard too: an artifact can disappear or become
+    unreadable between the is_file() check and the open, and a validator
+    iterating many refs must mark that one entry invalid rather than abort the
+    whole batch. Task 9 depends on this returning structured failures.
+    """
     try:
         path = safe_resolve(run_dir, ref.artifact_path)
+        if not path.is_file():
+            return False
+        return sha256_file(path) == ref.sha256
     except (PathEscape, FileNotFoundError, OSError):
         return False
-    if not path.is_file():
-        return False
-    return sha256_file(path) == ref.sha256

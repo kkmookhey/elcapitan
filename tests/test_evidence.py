@@ -1,3 +1,5 @@
+import os
+
 import pytest
 from elcapitan.evidence import Collector, write_evidence, verify_evidence
 from elcapitan.paths import PathEscape
@@ -37,3 +39,13 @@ def test_duplicate_evidence_id_is_rejected_atomically(tmp_path):
 def test_now_must_be_supplied(tmp_path):
     with pytest.raises(ValueError, match="now"):
         write_evidence(tmp_path, "EVD-001", "api", b"x", C)
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses permission bits")
+def test_unreadable_artifact_is_false_not_an_exception(tmp_path):
+    ref = write_evidence(tmp_path, "EVD-001", "api", b"x", C, now=NOW)
+    artifact = tmp_path / ref.artifact_path
+    artifact.chmod(0o000)
+    try:
+        assert verify_evidence(tmp_path, ref) is False
+    finally:
+        artifact.chmod(0o644)
