@@ -799,12 +799,20 @@ def test_valid_proposal_passes():
 
 def test_ref_to_evidence_schema_resolves():
     # $ref resolution in `referencing` is LAZY — constructing the validator
-    # succeeds even with a broken registry. The reference only resolves during
-    # validation, so this must validate a document to prove the wiring.
-    errors = validate_doc("finding-record", {"finding_id": "FIND-001"})
+    # succeeds even with a broken registry, and a document that never touches
+    # the `raw_event` key never dereferences it either (the `properties`
+    # keyword only applies to keys actually present). So the document below
+    # deliberately includes `raw_event` with an invalid inner value, forcing
+    # the $ref to actually resolve during iter_errors. With the registry wired
+    # correctly this surfaces the evidence-ref schema's own field errors
+    # (proving real resolution, not just "any string got accepted"); with a
+    # broken registry, `referencing` raises Unresolvable instead of yielding
+    # errors, which fails this test loudly rather than passing vacuously.
+    doc = {"finding_id": "FIND-001", "raw_event": {"evidence_id": "not-a-match"}}
+    errors = validate_doc("finding-record", doc)
     assert errors, "expected schema errors, not a resolution failure"
-    assert not any("unresolvable" in e.lower() or "pointer" in e.lower()
-                   for e in errors), f"registry not wired: {errors}"
+    assert any(e.startswith("raw_event") for e in errors), (
+        f"expected errors from inside the resolved evidence-ref schema: {errors}")
 
 def test_format_checker_rejects_a_malformed_timestamp():
     doc = copy.deepcopy(PROPOSAL); doc["created_at"] = "not-a-date"
