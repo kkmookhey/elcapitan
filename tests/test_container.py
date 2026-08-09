@@ -113,10 +113,61 @@ def test_ground_truth_mount_is_rejected():
     with pytest.raises(ValueError, match="ground truth"):
         eng(extra_mounts=[Mount("/w/ground-truth", "/gt", True)])
 
+# the same parent-directory trick applied to the socket itself: no path string
+# here contains "docker.sock", but /var/run holds it
+def test_parent_directory_of_the_docker_socket_is_rejected():
+    with pytest.raises(ValueError, match="docker socket"):
+        eng(extra_mounts=[Mount("/var/run", "/var/run", False)])
+
+def test_alternate_docker_socket_location_parent_is_rejected():
+    with pytest.raises(ValueError, match="docker socket"):
+        eng(extra_mounts=[Mount("/run", "/host-run", False)])
+
+def test_root_mount_is_rejected_because_it_contains_the_socket():
+    with pytest.raises(ValueError, match="docker socket"):
+        eng(extra_mounts=[Mount("/", "/host", True)])
+
 # finding 9: substring matching alone can't catch a parent-directory mount
 def test_ancestor_of_run_dir_mount_is_rejected():
     with pytest.raises(ValueError, match="ancestor"):
         eng(extra_mounts=[Mount("/w", "/work/all", False)])
+
+# "Canonical repository is mounted read-only. The mount is the enforcement."
+# An exact re-mount is the one case the ancestor guard never checks: it skips
+# when source == protected (it must, or the spec's own mounts reject each
+# other), and it never consults read_only at all.
+def test_writable_remount_of_the_canonical_repo_is_rejected():
+    with pytest.raises(ValueError, match="read-only"):
+        eng(extra_mounts=[Mount("/w/repos/anna", "/work/rw", False)])
+
+def test_writable_remount_of_a_path_inside_the_canonical_repo_is_rejected():
+    with pytest.raises(ValueError, match="read-only"):
+        eng(extra_mounts=[Mount("/w/repos/anna/modules", "/work/rw", False)])
+
+def test_a_second_read_only_mount_of_the_canonical_repo_is_allowed():
+    # The objection is to writability, not to the second mount as such.
+    spec = eng(extra_mounts=[Mount("/w/repos/anna", "/work/canonical2", True)])
+    assert all(m.read_only for m in spec.mounts if m.source == "/w/repos/anna")
+
+def test_writable_remount_of_the_challenger_bundle_is_rejected():
+    with pytest.raises(ValueError, match="read-only"):
+        challenger_spec(runtime_image_id=IMAGE, run_dir="/w/runs/R1",
+                        bundle_path="/w/runs/R1/verdict", host_hermes_home="/tmp/h2",
+                        arm="A", env_passthrough=[])
+
+# The spec's own paths are a documented precondition, and the error must name
+# it rather than blaming the caller's extra_mounts for the factory's own mounts.
+def test_hermes_home_nested_under_the_run_dir_names_the_precondition():
+    with pytest.raises(ValueError, match="own paths must be disjoint"):
+        engineer_spec(runtime_image_id=IMAGE, run_dir="/w/runs/R1",
+                      canonical_repo="/w/repos/anna",
+                      host_hermes_home="/w/runs/R1/hermes", env_passthrough=NAMES)
+
+def test_run_dir_containing_the_canonical_repo_names_the_precondition():
+    with pytest.raises(ValueError, match="own paths must be disjoint"):
+        engineer_spec(runtime_image_id=IMAGE, run_dir="/w",
+                      canonical_repo="/w/repos/anna", host_hermes_home="/tmp/h1",
+                      env_passthrough=NAMES)
 
 def test_hardening_flags_present():
     argv = eng().to_argv()
