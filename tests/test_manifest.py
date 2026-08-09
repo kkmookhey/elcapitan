@@ -1,4 +1,6 @@
+import pytest
 from elcapitan.manifest import build_manifest, bundle_hash
+from elcapitan.paths import PathEscape
 
 BASE = dict(repository_commit="c"*40, runtime_image_id="sha256:"+"d"*64,
             runtime_lock_sha256="e"*64, profile_config_sha256="f"*64,
@@ -48,3 +50,13 @@ def test_prompt_is_a_first_class_input(tmp_path):
     write(tmp_path, "prompt.md", b"do the thing")
     m = build_manifest(tmp_path, files=["prompt.md"], **BASE)
     assert m["files"][0]["path"] == "prompt.md"
+
+def test_rejects_traversal_path(tmp_path):
+    write(tmp_path, "inputs/f", b"x")
+    with pytest.raises(PathEscape):
+        build_manifest(tmp_path, files=["../outside"], **BASE)
+
+def test_rejects_absolute_path(tmp_path):
+    write(tmp_path, "inputs/f", b"x")
+    with pytest.raises(PathEscape):
+        build_manifest(tmp_path, files=["/absolute/path"], **BASE)

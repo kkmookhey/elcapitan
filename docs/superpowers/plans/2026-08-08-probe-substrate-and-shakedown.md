@@ -1181,18 +1181,24 @@ and environment adapter all change the experiment.
 from pathlib import Path
 
 from .hashing import sha256_file, sha256_record
+from .paths import safe_resolve
 
 def build_manifest(run_dir, *, files: list[str], repository_commit: str,
                    runtime_image_id: str, runtime_lock_sha256: str,
                    profile_config_sha256: str,
                    environment_adapter_sha256: str) -> dict:
     run_dir = Path(run_dir)
-    entries = [
-        {"path": rel,
-         "size": (run_dir / rel).stat().st_size,
-         "sha256": sha256_file(run_dir / rel)}
-        for rel in sorted(files)
-    ]
+    entries = []
+    for rel in sorted(files):
+        # Containment lives here, not in the caller. Today's harness passes
+        # literals, but the Global Constraint ("resolve, prove
+        # is_relative_to(run_dir), reject symlinks") is an invariant of the
+        # manifest, and a future caller must not be able to hash a file from
+        # outside the run directory into a bundle that never carries it.
+        path = safe_resolve(run_dir, rel)
+        entries.append({"path": rel,
+                        "size": path.stat().st_size,
+                        "sha256": sha256_file(path)})
     return {
         "files": entries,
         "repository_commit": repository_commit,
