@@ -58,6 +58,11 @@ def build_run(tmp_path, repo, *, overrides=None, finding_overrides=None,
     finding.update(finding_overrides or {})
     (run / "inputs" / "finding.json").write_text(json.dumps(finding))
 
+    # The harness's actual shape (docs/superpowers/plans/...md, Task 12):
+    # prompt.md is written at the run dir root, alongside inputs/finding.json,
+    # and both are declared in the manifest's files=[...].
+    (run / "prompt.md").write_text("do the thing\n")
+
     stdout_ref = write_evidence(run, "EVD-002", "command_stdout",
                                 b"Refreshing state...\n", COLLECTOR,
                                 command_id="CMD-001", now=NOW)
@@ -73,7 +78,7 @@ def build_run(tmp_path, repo, *, overrides=None, finding_overrides=None,
 
     before = capture_repo_state(repo)
 
-    manifest = build_manifest(run, files=["inputs/finding.json"],
+    manifest = build_manifest(run, files=["inputs/finding.json", "prompt.md"],
                               repository_commit=before.commit,
                               runtime_image_id="sha256:" + "d" * 64,
                               runtime_lock_sha256="e" * 64,
@@ -488,3 +493,23 @@ def test_manifest_that_substitutes_a_decoy_for_the_real_input_does_not_pass(tmp_
     assert not r.passed
     assert any(
         "does not declare a required input: inputs/finding.json" in f for f in r.failures)
+
+
+def test_prompt_substituted_and_dropped_from_the_manifest_does_not_pass(tmp_path, repo):
+    # Probe P7b: finding 6/B's exact attack shape, with prompt.md as the
+    # victim instead of finding.json. The prompt is the agent's own
+    # instruction set — a coherent substitution here changes the experiment
+    # exactly as a substituted finding.json would, and the manifest is the
+    # only thing that pins it, so it must be in the required set too.
+    run, before = build_run(tmp_path, repo)  # fixture writes+declares prompt.md
+    (run / "prompt.md").write_text("SUBSTITUTED prompt")
+    manifest = json.loads((run / "inputs" / "input-manifest.json").read_text())
+    manifest["files"] = [f for f in manifest["files"] if f["path"] != "prompt.md"]
+    (run / "inputs" / "input-manifest.json").write_text(json.dumps(manifest))
+    proposal = json.loads((run / "proposal.json").read_text())
+    proposal["input_bundle_hash"] = bundle_hash(manifest)
+    (run / "proposal.json").write_text(json.dumps(proposal))
+
+    r = validate_run(run, canonical_repo=repo, repo_state_before=before)
+    assert not r.passed
+    assert any("does not declare a required input: prompt.md" in f for f in r.failures)

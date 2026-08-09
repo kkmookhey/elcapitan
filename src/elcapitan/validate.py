@@ -30,6 +30,16 @@ MUTATION_PATTERNS = (
 )
 GROUND_TRUTH_MARKERS = ("ground-truth", "ground_truth", "groundtruth")
 
+# Every pre-trial input the harness (Task 12) hands the agent and must
+# therefore pin in input-manifest.json. This is the same list the harness
+# passes to build_manifest(files=[...]) — keeping it a single shared
+# constant means a *rename* on either side fails loudly (the two copies
+# diverge), where two independently-typed literals would let a silent
+# *addition* on the harness side go unrequired here, which is exactly how
+# the prompt.md gap first arose. Read sites in this module (e.g.
+# inputs/finding.json below) use this constant rather than a literal path.
+REQUIRED_MANIFEST_PATHS = ("inputs/finding.json", "prompt.md")
+
 
 @dataclass(frozen=True)
 class ValidationResult:
@@ -176,7 +186,7 @@ def validate_run(run_dir, *, canonical_repo, repo_state_before: RepoState) -> Va
             failures.append(f"ground truth present inside run dir: {path.name}")
 
     proposal = _read_json(run_dir / "proposal.json", failures, expect=dict)
-    finding = _read_json(run_dir / "inputs" / "finding.json", failures, expect=dict)
+    finding = _read_json(run_dir / REQUIRED_MANIFEST_PATHS[0], failures, expect=dict)
     index_doc = _read_json(run_dir / "evidence-index.json", failures, expect=list)
     manifest = _read_json(run_dir / "inputs" / "input-manifest.json", failures, expect=dict)
 
@@ -215,18 +225,22 @@ def validate_run(run_dir, *, canonical_repo, repo_state_before: RepoState) -> Va
         failures += _verify_manifest_files(run_dir, manifest)
 
         # _verify_manifest_files only re-checks what the manifest chose to
-        # declare — an empty or decoy-only files list re-hashes nothing and
-        # still recomputes a self-consistent bundle_hash. Require the one
-        # input this validator already has independent, direct knowledge
-        # of: it reads inputs/finding.json itself, above. (Evidence-index
-        # artifacts are deliberately NOT required here: most of them, e.g.
-        # command stdout/stderr, are produced *during* the trial and do not
-        # exist yet when the manifest is built, so requiring them would
-        # reject every legitimately-produced run; their integrity is
-        # already independently covered by verify_evidence() per entry.)
-        required_paths = {"inputs/finding.json"}
+        # declare — an empty, decoy-only, or partial files list re-hashes
+        # nothing about what it omits, and still recomputes a
+        # self-consistent bundle_hash. Require every pre-trial input the
+        # harness is known to hand the agent (REQUIRED_MANIFEST_PATHS).
+        # Evidence-index artifacts are deliberately NOT in that set: most
+        # of them, e.g. command stdout/stderr, are produced *during* the
+        # trial and do not exist yet when the manifest is built, so
+        # requiring them would reject every legitimately-produced run.
+        # verify_evidence() still checks each evidence entry against the
+        # sha256 the agent itself wrote into evidence-index.json — that
+        # catches tamper-after-index-write, not a coherent forgery where
+        # the index and the artifact are rewritten together; it is not an
+        # independent anchor the way re-deriving from a required manifest
+        # path is.
         declared_paths = _manifest_declared_paths(manifest)
-        for path in sorted(required_paths - declared_paths):
+        for path in sorted(set(REQUIRED_MANIFEST_PATHS) - declared_paths):
             failures.append(f"input-manifest.json does not declare a required input: {path}")
 
         if isinstance(proposal, dict):
