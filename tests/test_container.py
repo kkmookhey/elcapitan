@@ -9,10 +9,44 @@ def eng(tmp="/tmp/h1", **kw):
                          canonical_repo="/w/repos/anna", host_hermes_home=tmp,
                          env_passthrough=NAMES, **kw)
 
+def ch(arm="A"):
+    return challenger_spec(runtime_image_id=IMAGE, run_dir="/w/runs/R1",
+                           bundle_path="/w/runs/R1/bundle-a",
+                           host_hermes_home="/tmp/h2", arm=arm,
+                           env_passthrough=["ANTHROPIC_API_KEY"])
+
+def ch_with(env_passthrough, arm="A"):
+    return challenger_spec(runtime_image_id=IMAGE, run_dir="/w/runs/R1",
+                           bundle_path="/w/runs/R1/bundle-a",
+                           host_hermes_home="/tmp/h2", arm=arm,
+                           env_passthrough=env_passthrough)
+
+# --- secrets never enter argv (finding 2: strengthened) ---
+
 def test_secret_values_never_appear_in_argv():
     argv = " ".join(eng().to_argv())
     assert "AWS_SECRET_ACCESS_KEY" in argv          # the name is fine
     assert "=" not in argv.split("AWS_SECRET_ACCESS_KEY")[1][:1]  # no '=value'
+
+def test_no_secret_value_or_extra_token_ever_follows_an_env_name(monkeypatch):
+    # A structural check, not a string search: whatever actually sits in the
+    # environment must never leak into argv, AND nothing may ever appear
+    # between an --env NAME pair and the next --env/--mount/image token. This
+    # is what catches a mutation like `argv += ["--env", name, some_value]` —
+    # a value-search alone can miss it if the leaked string doesn't match
+    # whatever sentinel the test happens to look for.
+    secret = "s3kr1t-should-never-appear-in-argv-9f3a"
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", secret)
+    spec = eng()
+    argv = spec.to_argv()
+    assert secret not in " ".join(argv)
+    for i, tok in enumerate(argv):
+        if tok == "--env":
+            name = argv[i + 1]
+            assert name in NAMES
+            trailing = argv[i + 2] if i + 2 < len(argv) else None
+            assert (trailing is None or trailing == "--env"
+                    or trailing.startswith("--mount") or trailing == spec.image)
 
 def test_env_flags_are_name_only():
     argv = eng().to_argv()
@@ -30,8 +64,28 @@ def test_host_hermes_home_is_distinct_per_container():
 def test_container_mountpoint_for_hermes_home_is_always_opt_data():
     assert any(m.target == "/opt/data" for m in eng().mounts)
 
+# finding 4: assert the mount SOURCE, not just that some /opt/data target exists
+def test_hermes_home_mount_source_matches_host_hermes_home():
+    spec = eng()
+    mount = next(m for m in spec.mounts if m.target == "/opt/data")
+    assert mount.source == spec.host_hermes_home
+
+def test_challenger_hermes_home_mount_source_matches_host_hermes_home():
+    spec = ch()
+    mount = next(m for m in spec.mounts if m.target == "/opt/data")
+    assert mount.source == spec.host_hermes_home
+
 def test_image_referenced_by_built_image_id():
     assert eng().to_argv()[-1] == IMAGE or IMAGE in eng().to_argv()
+
+# finding 6: position, not just membership — exercised with a non-empty command
+def test_image_position_precedes_command_and_follows_all_flags():
+    spec = eng(command=["python3", "run.py"])
+    argv = spec.to_argv()
+    img_idx = argv.index(spec.image)
+    assert argv[img_idx:] == [spec.image, "python3", "run.py"]
+    assert all(not tok.startswith("--") for tok in argv[img_idx:])
+    assert any(tok.startswith("--") for tok in argv[:img_idx])
 
 def test_no_user_flag_is_passed():
     # s6-overlay is PID 1 and drops to the hermes user itself; forcing --user
@@ -50,9 +104,19 @@ def test_container_is_removed_on_exit():
 def test_no_docker_socket_mounted():
     assert all("docker.sock" not in m.source for m in eng().mounts)
 
+# finding 8: active rejection, not just "the default construction happens not to have one"
+def test_docker_socket_extra_mount_is_rejected():
+    with pytest.raises(ValueError, match="docker socket"):
+        eng(extra_mounts=[Mount("/var/run/docker.sock", "/var/run/docker.sock", False)])
+
 def test_ground_truth_mount_is_rejected():
     with pytest.raises(ValueError, match="ground truth"):
         eng(extra_mounts=[Mount("/w/ground-truth", "/gt", True)])
+
+# finding 9: substring matching alone can't catch a parent-directory mount
+def test_ancestor_of_run_dir_mount_is_rejected():
+    with pytest.raises(ValueError, match="ancestor"):
+        eng(extra_mounts=[Mount("/w", "/work/all", False)])
 
 def test_hardening_flags_present():
     argv = eng().to_argv()
@@ -60,27 +124,82 @@ def test_hardening_flags_present():
                  "--pids-limit", "--memory", "--cpus"):
         assert any(a.startswith(flag) for a in argv), f"missing {flag}"
 
-# --- challenger ---
+# finding 7: Mount must not accept characters that let a path inject mount options
+def test_mount_rejects_comma_in_source_or_target():
+    with pytest.raises(ValueError):
+        Mount("/data,readonly=false", "/work/x", False)
+    with pytest.raises(ValueError):
+        Mount("/data", "/work/run,readonly", False)
 
-def ch(arm="A"):
-    return challenger_spec(runtime_image_id=IMAGE, run_dir="/w/runs/R1",
-                           bundle_path="/w/runs/R1/bundle-a",
-                           host_hermes_home="/tmp/h2", arm=arm,
-                           env_passthrough=["ANTHROPIC_API_KEY"])
+def test_mount_rejects_equals_in_source_or_target():
+    with pytest.raises(ValueError):
+        Mount("/data=x", "/work/x", False)
+    with pytest.raises(ValueError):
+        Mount("/data", "/work/x=y", False)
+
+def test_readonly_mount_flag_ends_with_readonly_suffix():
+    assert Mount("/a", "/b", True).to_flag().endswith(",readonly")
+
+def test_writable_mount_flag_has_no_readonly_suffix():
+    assert not Mount("/a", "/b", False).to_flag().endswith(",readonly")
+
+# finding 10: frozen dataclass with list fields is not really immutable
+def test_mounts_and_env_passthrough_are_immutable_tuples():
+    spec = eng()
+    assert isinstance(spec.mounts, tuple)
+    assert isinstance(spec.env_passthrough, tuple)
+    with pytest.raises(AttributeError):
+        spec.mounts.append(Mount("/var/run/docker.sock", "/x", False))
+    with pytest.raises(AttributeError):
+        spec.env_passthrough.append("AWS_SECRET_ACCESS_KEY")
+
+# --- challenger ---
 
 def test_challenger_holds_no_cloud_credentials():
     assert all(not n.startswith("AWS_") and not n.startswith("AZURE_")
                for n in ch().env_passthrough)
 
+# finding 1: the credential guard must actually be exercised, not just
+# asserted over the test's own unmodified input
+def test_challenger_rejects_aws_credential_names():
+    with pytest.raises(ValueError, match="cloud credentials"):
+        ch_with(["AWS_ACCESS_KEY_ID"])
+
+def test_challenger_rejects_azure_credential_names():
+    with pytest.raises(ValueError, match="cloud credentials"):
+        ch_with(["AZURE_CLIENT_SECRET"])
+
+def test_challenger_rejects_arm_credential_names():
+    with pytest.raises(ValueError, match="cloud credentials"):
+        ch_with(["ARM_CLIENT_SECRET"])
+
 def test_challenger_network_is_disabled():
     assert ch().network == "none"
+
+# finding 3: docker reads argv, not the dataclass field
+def test_challenger_network_none_is_in_argv():
+    assert "--network=none" in ch().to_argv()
 
 def test_challenger_bundle_is_read_only():
     assert next(m for m in ch().mounts if m.target.endswith("/bundle")).read_only
 
+# finding 5: check source too, and pin down the exact mount set
 def test_challenger_cannot_see_the_canonical_repo():
-    assert all("canonical" not in m.target for m in ch().mounts)
+    spec = ch()
+    assert all("canonical" not in m.target and "canonical" not in m.source
+               for m in spec.mounts)
+    assert {m.target for m in spec.mounts} == {"/work/bundle", "/work/out", "/opt/data"}
 
 def test_unknown_arm_rejected():
     with pytest.raises(ValueError, match="arm"):
         ch(arm="C")
+
+# finding 11: arm must be recorded, not validated and discarded
+def test_challenger_spec_records_its_arm():
+    assert ch("A").arm == "A"
+    assert ch("B").arm == "B"
+
+def test_engineer_spec_has_no_arm():
+    # By design the engineer container is identical across both arms — the
+    # arm difference lives entirely in which bundle the challenger receives.
+    assert eng().arm is None
