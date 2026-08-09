@@ -15,7 +15,12 @@ from documentation.
 base_image_ref     nousresearch/hermes-agent
 base_image_digest  sha256:16788311e2fa3035456bdc1bafb8ec2b1777db64ebf020af9bb7eb73c3712c9e
 tag                v2026.8.3
-size               957 MB
+size               3.98 GB on disk  (`docker images`)
+                   957 MB reported by `docker image inspect .Size` — NOT the
+                   unpacked size. Under the containerd image store the two
+                   disagree by ~4x; use `docker images`. An earlier revision of
+                   this document quoted the 957 MB figure as the image size,
+                   which understated it fourfold.
 entrypoint         /opt/hermes/docker/entrypoint-dispatch.sh
 config user        root  (drops to `hermes`, uid 10000, via s6-setuidgid)
 ```
