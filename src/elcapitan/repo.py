@@ -5,13 +5,21 @@ repository after the container exits and compares it with state captured
 before — never with a value supplied by the caller.
 """
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
+
+# git's wording for "HEAD exists but points nowhere yet"
+_UNBORN_MARKERS = ("unknown revision", "ambiguous argument 'HEAD'",
+                   "does not have any commits")
 
 @dataclass(frozen=True)
 class RepoState:
     commit: str
-    dirty_files: list[str] = field(default_factory=list)
+    # A tuple, not a list: frozen=True blocks attribute reassignment but not
+    # in-place mutation, and this baseline is what tamper detection diffs
+    # against. A mutated baseline yields false negatives — real tampering that
+    # goes unreported. Records are immutable.
+    dirty_files: tuple[str, ...] = ()
 
 def _git(path, *args) -> str:
     result = subprocess.run(["git", "-C", str(path), *args],
@@ -25,10 +33,17 @@ def capture_repo_state(path) -> RepoState:
     try:
         commit = _git(path, "rev-parse", "HEAD").strip()
     except ValueError as exc:
-        raise ValueError(f"repository has no commits (unborn branch): {path}") from exc
+        # Only claim "unborn branch" when git actually said so. A missing path
+        # or a directory that is not a repository at all must not be reported
+        # as "no commits" — asserting a specific wrong cause is worse than a
+        # generic one, because it sends the reader somewhere else entirely.
+        detail = str(exc)
+        if any(marker in detail for marker in _UNBORN_MARKERS):
+            raise ValueError(f"repository has no commits (unborn branch): {path}") from exc
+        raise ValueError(f"not a usable git repository: {path} — {detail}") from exc
     porcelain = _git(path, "status", "--porcelain", "--untracked-files=all")
     return RepoState(commit=commit,
-                     dirty_files=sorted(porcelain.splitlines()))
+                     dirty_files=tuple(sorted(porcelain.splitlines())))
 
 def assert_unchanged(path, before: RepoState) -> list[str]:
     """Return failures. Empty list means the repository is untouched."""

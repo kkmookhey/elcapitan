@@ -51,3 +51,18 @@ def test_unborn_branch_raises_a_clear_error(tmp_path):
     r = tmp_path / "empty"; r.mkdir(); git(r, "init", "-q")
     with pytest.raises(ValueError, match="no commits"):
         capture_repo_state(r)
+
+def test_non_git_directory_does_not_claim_unborn_branch(tmp_path):
+    r = tmp_path / "notgit"; r.mkdir()
+    with pytest.raises(ValueError, match="not a usable git repository"):
+        capture_repo_state(r)
+
+def test_nonexistent_path_does_not_claim_unborn_branch(tmp_path):
+    r = tmp_path / "does" / "not" / "exist"
+    with pytest.raises(ValueError, match="not a usable git repository"):
+        capture_repo_state(r)
+
+def test_dirty_files_is_immutable(repo):
+    before = capture_repo_state(repo)
+    with pytest.raises(AttributeError):
+        before.dirty_files.append("x")
