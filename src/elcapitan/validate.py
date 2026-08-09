@@ -134,16 +134,37 @@ def _verify_manifest_files(run_dir: Path, manifest: dict) -> list[str]:
             failures.append(f"input-manifest.json references a missing file: {rel!r}")
             continue
 
-        if sha256_file(resolved) != entry.get("sha256"):
+        try:
+            actual_sha256 = sha256_file(resolved)
+            actual_size = resolved.stat().st_size
+        except OSError as exc:
+            # is_file() above proves existence, not readability, and it is
+            # also a TOCTOU window — the file can vanish or become
+            # unreadable between that check and this one. Mirror
+            # evidence.verify_evidence's guard: mark this entry invalid
+            # rather than let the whole batch crash.
+            failures.append(
+                f"input-manifest.json file entry could not be read for verification: "
+                f"{rel!r} ({exc})")
+            continue
+
+        if actual_sha256 != entry.get("sha256"):
             failures.append(
                 f"input-manifest.json sha256 for {rel!r} does not match the file on disk "
                 f"— manifest may have been forged")
-        actual_size = resolved.stat().st_size
         if actual_size != entry.get("size"):
             failures.append(
                 f"input-manifest.json size for {rel!r} does not match the file on disk "
                 f"({entry.get('size')!r} vs {actual_size})")
     return failures
+
+
+def _manifest_declared_paths(manifest: dict) -> set[str]:
+    files = manifest.get("files")
+    if not isinstance(files, list):
+        return set()
+    return {entry.get("path") for entry in files
+            if isinstance(entry, dict) and isinstance(entry.get("path"), str)}
 
 
 def validate_run(run_dir, *, canonical_repo, repo_state_before: RepoState) -> ValidationResult:
@@ -192,6 +213,22 @@ def validate_run(run_dir, *, canonical_repo, repo_state_before: RepoState) -> Va
         failures.append("input-manifest.json is empty")
     else:
         failures += _verify_manifest_files(run_dir, manifest)
+
+        # _verify_manifest_files only re-checks what the manifest chose to
+        # declare — an empty or decoy-only files list re-hashes nothing and
+        # still recomputes a self-consistent bundle_hash. Require the one
+        # input this validator already has independent, direct knowledge
+        # of: it reads inputs/finding.json itself, above. (Evidence-index
+        # artifacts are deliberately NOT required here: most of them, e.g.
+        # command stdout/stderr, are produced *during* the trial and do not
+        # exist yet when the manifest is built, so requiring them would
+        # reject every legitimately-produced run; their integrity is
+        # already independently covered by verify_evidence() per entry.)
+        required_paths = {"inputs/finding.json"}
+        declared_paths = _manifest_declared_paths(manifest)
+        for path in sorted(required_paths - declared_paths):
+            failures.append(f"input-manifest.json does not declare a required input: {path}")
+
         if isinstance(proposal, dict):
             expected = bundle_hash(manifest)
             if proposal.get("input_bundle_hash") != expected:

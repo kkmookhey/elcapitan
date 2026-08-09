@@ -7,6 +7,7 @@ git repository, then each test perturbs exactly one thing and checks that
 validate_run reports a structured failure rather than raising.
 """
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -14,6 +15,7 @@ import pytest
 
 from elcapitan.evidence import Collector, write_evidence
 from elcapitan.finding import normalise_ocsf
+from elcapitan.hashing import sha256_file
 from elcapitan.manifest import build_manifest, bundle_hash
 from elcapitan.repo import capture_repo_state
 from elcapitan.validate import validate_run
@@ -420,3 +422,69 @@ def test_false_positive_with_a_patch_file_is_a_structural_contradiction(tmp_path
     r = validate_run(run, canonical_repo=repo, repo_state_before=before)
     assert not r.passed
     assert any("false_positive" in f and "patch_file" in f for f in r.failures)
+
+
+# --- Third review pass: two gaps in _verify_manifest_files itself.
+#
+# The reviewer confirmed all 11 prior findings addressed, then found the new
+# manifest-verification code (added to fix finding 6) has its own crash path
+# and its own silent-pass path.
+
+def test_manifest_file_that_cannot_be_read_is_a_structured_failure_not_an_exception(
+        tmp_path, repo):
+    # is_file() at the top of the loop does not guarantee readable: a file
+    # can exist and still raise PermissionError (or vanish between the check
+    # and the read — the same TOCTOU class evidence.verify_evidence already
+    # guards against). sha256_file()/stat() must not be allowed to propagate.
+    run, before = build_run(tmp_path, repo)
+    target = run / "inputs" / "finding.json"
+    os.chmod(target, 0o000)
+    try:
+        r = validate_run(run, canonical_repo=repo, repo_state_before=before)
+    finally:
+        os.chmod(target, 0o644)  # restore so pytest's own cleanup can remove tmp_path
+    assert not r.passed
+    assert any("could not be read for verification" in f for f in r.failures)
+
+
+def test_manifest_with_no_declared_files_does_not_pass(tmp_path, repo):
+    # _verify_manifest_files only ever iterates manifest["files"] — the
+    # manifest gets to choose what it is audited against. An empty list
+    # re-hashes nothing and, with bundle_hash recomputed to match, produced
+    # passed=True before this fix. Probe shape 1 of 2: omit everything.
+    run, before = build_run(tmp_path, repo)
+    manifest = json.loads((run / "inputs" / "input-manifest.json").read_text())
+    manifest["files"] = []
+    (run / "inputs" / "input-manifest.json").write_text(json.dumps(manifest))
+    proposal = json.loads((run / "proposal.json").read_text())
+    proposal["input_bundle_hash"] = bundle_hash(manifest)
+    (run / "proposal.json").write_text(json.dumps(proposal))
+
+    r = validate_run(run, canonical_repo=repo, repo_state_before=before)
+    assert not r.passed
+    assert any(
+        "does not declare a required input: inputs/finding.json" in f for f in r.failures)
+
+
+def test_manifest_that_substitutes_a_decoy_for_the_real_input_does_not_pass(tmp_path, repo):
+    # Probe shape 2 of 2: don't omit everything, just don't name the real
+    # input. A decoy file, truthfully hashed, with bundle_hash recomputed to
+    # match, produced passed=True before this fix — the manifest's per-file
+    # re-hash (finding 6's fix) has nothing to say about a file it was never
+    # told to check.
+    run, before = build_run(tmp_path, repo)
+    decoy_path = run / "inputs" / "decoy.json"
+    decoy_path.write_text('{"decoy": true}')
+    manifest = json.loads((run / "inputs" / "input-manifest.json").read_text())
+    manifest["files"] = [{"path": "inputs/decoy.json",
+                          "size": decoy_path.stat().st_size,
+                          "sha256": sha256_file(decoy_path)}]
+    (run / "inputs" / "input-manifest.json").write_text(json.dumps(manifest))
+    proposal = json.loads((run / "proposal.json").read_text())
+    proposal["input_bundle_hash"] = bundle_hash(manifest)
+    (run / "proposal.json").write_text(json.dumps(proposal))
+
+    r = validate_run(run, canonical_repo=repo, repo_state_before=before)
+    assert not r.passed
+    assert any(
+        "does not declare a required input: inputs/finding.json" in f for f in r.failures)
