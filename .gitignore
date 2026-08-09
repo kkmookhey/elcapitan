@@ -1,3 +1,7 @@
 .DS_Store
 .env
 /workspace/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.venv/
