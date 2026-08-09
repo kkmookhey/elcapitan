@@ -22,8 +22,15 @@ class RepoState:
     dirty_files: tuple[str, ...] = ()
 
 def _git(path, *args) -> str:
-    result = subprocess.run(["git", "-C", str(path), *args],
-                            capture_output=True, text=True)
+    try:
+        result = subprocess.run(["git", "-C", str(path), *args],
+                                capture_output=True, text=True)
+    except OSError as exc:
+        # subprocess.run raises FileNotFoundError (an OSError) when `git` is
+        # not on PATH — an exception type callers do not expect from this
+        # module, and one that escaped the validator's `except ValueError`
+        # entirely. Everything that can go wrong here leaves as ValueError.
+        raise ValueError(f"git could not be executed (is it on PATH?): {exc}") from exc
     if result.returncode != 0:
         raise ValueError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
     return result.stdout

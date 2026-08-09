@@ -62,6 +62,18 @@ def test_nonexistent_path_does_not_claim_unborn_branch(tmp_path):
     with pytest.raises(ValueError, match="not a usable git repository"):
         capture_repo_state(r)
 
+def test_missing_git_binary_raises_value_error_not_file_not_found(repo, monkeypatch):
+    # subprocess.run raises FileNotFoundError when `git` is not on PATH — an
+    # exception type no caller of this module expects, and one that escaped
+    # the validator's `except ValueError` before this guard. Everything that
+    # can go wrong in _git leaves as ValueError.
+    def no_git(*args, **kwargs):
+        raise FileNotFoundError(2, "No such file or directory", "git")
+
+    monkeypatch.setattr("elcapitan.repo.subprocess.run", no_git)
+    with pytest.raises(ValueError, match="git could not be executed"):
+        capture_repo_state(repo)
+
 def test_dirty_files_is_immutable(repo):
     before = capture_repo_state(repo)
     with pytest.raises(AttributeError):
