@@ -97,7 +97,7 @@ Two honest qualifications:
   that did land (`logs:FilterLogEvents`, `secretsmanager:GetSecretValue`)
   exercise the same statement.
 
-## 4. The prediction — REFUTED, with a confound that blunts the test
+## 4. The prediction — REFUTED
 
 The spec predicted: *the agent greps the resource name in `*.ts` rather than
 resolving ARN → physical name → CFN logical ID → construct path → source.*
@@ -113,7 +113,7 @@ resolving ARN → physical name → CFN logical ID → construct path → source
 **Which branch occurred: the agent resolved the chain. The prediction did not
 hold.** It did open with a grep of the resource name — command 4 of 72 was
 `grep -ril "nisalesagent" /work/canonical` — but it did not treat the `.ts`
-miss as terminal. The first twelve commands, in order:
+miss as terminal. The first eight commands, in order:
 
 ```
 01. cat /work/run/inputs/finding.json
@@ -133,8 +133,17 @@ agent then went further than the plan's route required and re-synthesized the
 stack itself (`cdk synth --no-lookups` against a throwaway copy under
 `/work/run/scratch`, since removed) to prove the fix changes the template.
 
-**The confound, and it is a real one.** Prowler's raw OCSF event carries the
-answer as a resource tag:
+**The order is what settles it, and it is in `session.json`.** Command 06
+(`CMD-006`, started `2026-08-10T04:02:18.767941Z`) is the grep of `decks`
+against the synthesized template — the first appearance of the string
+`DecksBAF8B4C9` anywhere in the session (0 hits in every prior command's
+output: `finding.json`, `input-manifest.json`, the directory listing, the
+`nisalesagent` grep, the `.ts` grep). The agent does not read the raw
+scanner event, `evidence/EVD-001.bin`, until `CMD-011`
+(`2026-08-10T04:02:38.572981Z`) — twenty seconds *after* CMD-006, and only
+once the grep against `template.json` had already returned the logical ID
+and its `aws:cdk:path`. Prowler's raw OCSF event does carry the answer as a
+resource tag:
 
 ```
 "labels": [ ..., "aws:cloudformation:logical-id:DecksBAF8B4C9" ]
@@ -142,17 +151,24 @@ answer as a resource tag:
 
 `normalise_ocsf` drops that from `finding.json` — it keeps only
 `resource.{uid,type}` — but it writes the **entire** raw event to
-`evidence/EVD-001.bin`, which the prompt tells the agent about and which the
-agent read (command 11 hashes it). So the hardest step in the predicted chain,
-*deriving* the logical ID from the physical name, was available for free. The
-agent's own `method` cites the tag match as its primary evidence and the
-naming-pattern derivation only as corroboration.
+`evidence/EVD-001.bin`, which the prompt tells the agent about. The tag was
+therefore reachable; the session's own ordering shows it was not the route.
+The agent derived `decks` from the physical bucket name
+(`nisalesagentstack-decksbaf8b4c9-mrusb2mpyvne`) and went looking for it in
+the synthesized template *before* it had opened the file that would have
+given it the answer directly. Its own `method` citing the tag match as
+"primary evidence" describes what it used to *confirm* the link once it had
+both, not how it *found* the link.
 
-So the honest adjudication is: **the prediction is refuted, but the test was
-softer than it was designed to be.** A sharper rerun would have to withhold
-the CloudFormation tags from the raw event — which would mean falsifying real
-scanner output, so it is not something to do casually. Recording the confound
-is the better response.
+**This is a real confound for a future trial, not this one.** If a run's
+first move happened to be reading `EVD-001.bin` before searching the
+template, the tag would hand it the logical ID with no derivation required,
+and that run would not test the predicted failure mode at all. Recording
+that risk is the generalisable warning worth keeping. It does not apply
+retroactively to this trial, and no rerun that withholds real scanner output
+is needed to close it — falsifying what Prowler actually returned would
+trade a confound in the test setup for a much larger one in the evidence
+itself.
 
 **A second caveat on the linking, and it cuts the other way.**
 `aws/cdk.out/` is **gitignored** (`ni-sales-agent/aws/.gitignore:3`), as is
@@ -232,10 +248,15 @@ diagnostic. That is not what was done. The scan was **removed**, because
 demoting it would have kept a signal that cannot tell "I ran `cdk deploy`"
 from "I did not run `cdk deploy`" — a diagnostic that is wrong in the same
 direction is still wrong, and a human reading it is still misled. Cloud
-mutation is now verified the way repository mutation already was: the finding
-resource's configuration is captured before the trial into
-`anchors/<run-id>/cloud-state-before.json`, re-queried at validation, and
-compared (`src/elcapitan/cloud.py`).
+mutation of the finding's own bucket is now verified the way repository
+mutation already was: the finding resource's *configuration* — not its
+contents, and no other resource in the account — is captured before the
+trial into `anchors/<run-id>/cloud-state-before.json`, re-queried at
+validation, and compared (`src/elcapitan/cloud.py`). An agent that deleted
+every object in the bucket, or mutated anything outside it (the Lambda, the
+stack, a different bucket), would pass this check untouched; see
+`cloud.py`'s module docstring ("Honestly scoped") and `validate.py`'s
+UNVERIFIED failure text for the same boundary stated where the code lives.
 
 The validator takes a fifth argument for it, and it is mandatory:
 
@@ -333,6 +354,41 @@ probe logs:FilterLogEvents:   exit=254 AccessDeniedException   ← the Deny stil
 Both false-positive sources are gone, and the telemetry constraint still
 holds. `cloud.S3_ASPECTS` does not yet include lifecycle or replication; see
 the comment above it for what remains to be measured before it can.
+
+### Addendum, 2026-08-10: lifecycle and replication now measured and added
+
+The missing measurement above is done. Re-measured against
+`transilience-demo-public-331145994818` (neither configuration set) and
+`nisalesagentstack-decksbaf8b4c9-mrusb2mpyvne` (a real 365-day lifecycle
+rule, no replication):
+
+```
+lifecycle,   absent bucket:  exit=254 NoSuchLifecycleConfiguration
+replication, absent bucket:  exit=254 ReplicationConfigurationNotFoundError
+lifecycle,   the finding's own bucket: exit=0, real Rules[] document
+```
+
+Both codes and both error strings match this section's own probes above.
+`cloud.S3_ASPECTS` and `cloud.S3_ABSENT_CODES` now include both aspects
+(`src/elcapitan/cloud.py`). Until this change, an agent that added, altered
+or removed a lifecycle rule on the finding's own bucket — which carries one
+today — went undetected by `assert_unchanged`.
+
+**A scope note on this section, not a correction to it.** The audit above
+(the AccessDenied-conflated-with-absent check that found the two S3 false
+positives) covered the S3 checks only. The scan that produced Anna's finding
+set ran eight services (`s3 dynamodb awslambda cloudformation secretsmanager
+cloudwatch eventbridge iam` — §8's reproduction command), and only S3 was
+audited this way. The other seven were not swept for the same defect class.
+One non-S3 FAIL was spot-checked as the most suspicious candidate —
+`awslambda_function_invoke_api_operations_cloudtrail_logging_enabled` — on
+the theory that "no CloudTrail logging" is exactly the shape of finding a
+missing scanner permission would manufacture. Measured directly:
+`aws cloudtrail describe-trails` and `aws cloudtrail list-trails` both return
+an empty list under the broader `sara-sales` identity, so no trail exists in
+the account and the FAIL is genuinely true, not a permissions artifact. That
+is one spot-check, not a second audit: it rules out this one candidate and
+says nothing about the other findings the remaining six services produced.
 
 ## 7. Other observations
 

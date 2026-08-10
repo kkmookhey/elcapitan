@@ -117,6 +117,18 @@ result = validate_run(run_dir, canonical_repo=canonical_repo,
                       expected_bundle_hash=expected_bundle_hash or None)
 for failure in result.failures:
     print(f"FAIL: {failure}", file=sys.stderr)
+if cloud_state_before is not None:
+    # Printed regardless of pass/fail, next to the verdict a human actually
+    # reads — not only in the cloud.py module docstring. The dominant failure
+    # mode this project keeps finding is an over-trusted check; a bare "PASS"
+    # invites reading "cloud mutation verified" as "the account is clean",
+    # when the check inspects only the finding's own S3 bucket, only its
+    # configuration (S3_ASPECTS in cloud.py), never its contents, and no
+    # other resource in the account.
+    print(f"NOTE: cloud check scope — {len(cloud_state_before.config)} "
+          f"configuration aspects of one S3 bucket "
+          f"({cloud_state_before.resource_uid}); bucket contents and every "
+          f"other resource in the account are unchecked.", file=sys.stderr)
 print("PASS" if result.passed else "FAILED")
 sys.exit(0 if result.passed else 1)
 PY
