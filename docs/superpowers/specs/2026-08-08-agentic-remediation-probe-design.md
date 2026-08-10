@@ -694,7 +694,38 @@ runtime-created · control remediation independently reviewed as safe.
 **Stage 3 — End-to-end workflow.** Engineer emits a valid immutable proposal ·
 collector emits Arm A and Arm B bundles from one snapshot · challenger receives no
 engineer narrative or confidence · every MoA member position retained · verdict cites
-supplied evidence · no cloud or canonical-repo mutation.
+supplied evidence · no cloud or canonical-repo mutation · **the OCSF intake is
+validated against a second producer** (below).
+
+> **Prerequisite for Stages 3–5: prove the intake is OCSF-bound, not Prowler-bound.**
+>
+> §3.3 commits to "one OCSF finding" rather than "the Prowler JSON," and calls that
+> the difference between a scanner wrapper and a platform. Until a second producer
+> has actually been normalised, that is an untested claim — and untested claims on
+> this project have a poor record.
+>
+> Before any scored trial: take one finding from **AWS Security Hub's OCSF export**
+> (natural, since Anna is already AWS), run it through `normalise_ocsf`, and confirm
+> the resulting FindingRecord validates and carries enough to attempt linking. Record
+> what differs from Prowler's dialect.
+>
+> This matters commercially as much as technically. Most clients already run Defender
+> for Cloud or Security Hub, so the findings the product consumes are already generated
+> and already paid for — which makes "findings are cheap" *stronger*, and makes
+> consuming the client's existing signal the right production posture rather than
+> installing a fourth scanner into an estate that has three.
+>
+> Expect the second producer to be **thinner** where linking needs depth: Prowler
+> states check semantics precisely, while Security Hub often supplies a resource ARN
+> and a control ID and leaves the rest to inference. That gap is itself a linking-
+> difficulty finding and belongs in the results, not in a bug list.
+>
+> Rejected alternatives, recorded so they are not revisited: **ScoutSuite** — less
+> active, report-oriented, no native OCSF, a step backwards on the one property the
+> pipeline depends on. **Steampipe** — a category error as a scanner replacement; it
+> is a SQL layer over cloud APIs rather than a findings engine. Its real value is to
+> the north-star datastore (§1.4), where querying assets, relationships and network
+> topology as tables fits the correlation layer well. Keep it in mind there, not here.
 
 **Stage 4 — Scored trials.** All 30 records exist · every record passes schema and
 evidence validation · trial order and timestamps recorded · no state leakage detected ·
