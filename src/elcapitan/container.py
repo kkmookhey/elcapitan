@@ -21,7 +21,22 @@ VALID_ARMS = ("A", "B")
 # full control of the host daemon, which is a complete escape from the
 # isolation boundary this module exists to draw.
 DOCKER_SOCKETS = ("/var/run/docker.sock", "/run/docker.sock")
-HARDENING = ("--cap-drop=ALL", "--security-opt=no-new-privileges",
+# --cap-drop=ALL alone breaks the image outright: Hermes runs s6-overlay as
+# PID 1 and drops root -> the hermes user (uid 10000) via s6-applyuidgid,
+# which needs CAP_SETUID/CAP_SETGID to do that. Verified directly against
+# nousresearch/hermes-agent:v2026.8.3 (Task 11's real-run check) —
+# `--cap-drop=ALL` alone: every cont-init step that calls s6-applyuidgid
+# fails ("unable to set supplementary group list: Operation not permitted",
+# exit 111) and the container never reaches a working shell. Adding back
+# exactly those two capabilities on top of the drop-all baseline (not
+# omitting --cap-drop=ALL, which would leave every other capability in
+# place) was independently confirmed to run a real `chat -q` session to
+# completion. See docs/spike-findings.md, which never exercised this
+# hardening set — the spike's own docker run commands (bin/spike-image.sh)
+# carry none of these flags, so this gap was invisible until Task 11 first
+# drove a real container through engineer_spec's actual argv.
+HARDENING = ("--cap-drop=ALL", "--cap-add=SETUID", "--cap-add=SETGID",
+             "--security-opt=no-new-privileges",
              "--pids-limit=512", "--memory=4g", "--cpus=2")
 # Both characters are docker `--mount` option separators. Letting either
 # through a path would let a mount source/target inject extra mount options
