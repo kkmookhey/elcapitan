@@ -64,6 +64,50 @@ def _write_real_state_db(path: Path) -> None:
     con.close()
 
 
+def _write_wal_state_db(path: Path) -> sqlite3.Connection:
+    """Same session shape as _write_real_state_db, but in WAL mode with the
+    writer connection deliberately kept open and returned (not closed) by
+    this helper — reproducing the actual disk shape of a real Hermes
+    state.db (re-review Finding 1): WAL mode, never checkpointed.
+
+    Closing this test's own connection here would silently undo the exact
+    shape this fixture exists to reproduce — SQLite auto-checkpoints and
+    folds the WAL back into the main file when the last connection to a
+    WAL-mode database closes cleanly (confirmed directly: with a plain
+    `sqlite3.connect(...).close()`, the main file ends up 8192 bytes and
+    fully readable on its own, and the bug this fixture is supposed to
+    catch cannot reproduce at all — every earlier state.db fixture in this
+    suite, including `_write_real_state_db` above, used a connection that
+    gets closed, which is exactly why the original F1 bug shipped past the
+    first review pass: a rollback-journal-shaped fixture cannot fail on a
+    WAL-mode bug).
+
+    Caller must close the returned connection when done with it.
+    """
+    con = sqlite3.connect(path)
+    con.execute("PRAGMA journal_mode=WAL")
+    con.execute("CREATE TABLE sessions (id TEXT, started_at REAL)")
+    con.execute("CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, "
+                "role TEXT, content TEXT, tool_call_id TEXT, tool_calls TEXT, "
+                "tool_name TEXT, timestamp REAL, finish_reason TEXT)")
+    con.execute("CREATE TABLE session_model_usage (session_id TEXT, model TEXT, "
+                "input_tokens INTEGER)")
+    con.execute("INSERT INTO sessions VALUES ('S1', 1.0)")
+    tool_calls = json.dumps([{"id": "c1", "function": {
+        "name": "terminal", "arguments": json.dumps({"command": "echo hi"})}}])
+    con.execute("INSERT INTO messages VALUES "
+               "(1, 'S1', 'assistant', '', NULL, ?, NULL, 1.0, 'tool_calls')",
+               (tool_calls,))
+    con.execute("INSERT INTO messages VALUES "
+               "(2, 'S1', 'tool', ?, 'c1', NULL, 'terminal', 2.0, NULL)",
+               (json.dumps({"output": "hi", "exit_code": 0, "error": None}),))
+    con.execute("INSERT INTO messages VALUES "
+               "(3, 'S1', 'assistant', 'done', NULL, NULL, NULL, 3.0, 'stop')")
+    con.execute("INSERT INTO session_model_usage VALUES ('S1', 'claude-sonnet-5', 42)")
+    con.commit()
+    return con
+
+
 # --- resolve_secret_env: name translation, never the double-prefix bug ---
 
 def test_scanner_prefix_is_translated_to_the_aws_name():
@@ -267,6 +311,49 @@ def test_state_db_copied_into_run_dir(tmp_path):
     assert row == ("S1",)
 
 
+def test_state_db_capture_reads_wal_data_not_a_checkpoint_husk(tmp_path):
+    """Re-review Finding 1: a byte-level copy of just the main .db file
+    (the original implementation, `shutil.copy2`) silently archives a
+    near-empty husk when the source is WAL-mode and un-checkpointed — which
+    real Hermes state.db files are. Confirmed directly against a real run
+    in review: main file 4096 bytes / zero tables, while `session.json`
+    right next to it correctly said `succeeded: true`. This test uses a
+    genuinely WAL-mode fixture with an un-checkpointed, still-open writer
+    connection — the shape `_write_real_state_db` (plain sqlite3.connect,
+    closed, rollback-journal mode) cannot produce, which is exactly why
+    that fixture could not catch this bug the first time.
+    """
+    s = spec(tmp_path)
+    home = Path(s.host_hermes_home)
+    writer = _write_wal_state_db(home / "state.db")
+    try:
+        # Sanity-check the fixture itself: if the WAL sidecar isn't
+        # non-trivially sized at this point, this test can't possibly
+        # exercise the bug, and would be worse than no test at all.
+        wal_path = home / "state.db-wal"
+        assert wal_path.is_file() and wal_path.stat().st_size > 0, (
+            "fixture is not actually WAL-mode-with-unmerged-data; this "
+            "test cannot catch the F1 regression it exists to catch")
+
+        p = tmp_path / "p.md"
+        p.write_text("x")
+        result = run_agent(s, p, secret_env={}, model=MODEL,
+                           stub=lambda a, t, e: (0, "ok"))
+        assert result.succeeded is True  # read_session reads the WAL correctly
+
+        run_dir = Path(next(m.source for m in s.mounts if m.target == "/work/run"))
+        captured = run_dir / "state.db"
+        assert captured.is_file()
+        con = sqlite3.connect(f"file:{captured}?mode=ro", uri=True)
+        try:
+            assert con.execute("SELECT id FROM sessions").fetchone() == ("S1",)
+            assert con.execute("SELECT count(*) FROM messages").fetchone()[0] == 3
+        finally:
+            con.close()
+    finally:
+        writer.close()
+
+
 def test_missing_state_db_does_not_raise_on_capture(tmp_path):
     """A stub run (or a real run that never got far enough to write
     anything) has no state.db to copy — that must degrade silently, the
@@ -309,6 +396,44 @@ def test_session_json_carries_commands_and_usage(tmp_path):
     assert len(result.commands) == 1
     assert result.commands[0].tool == "terminal"
     assert result.usage["model"] == "claude-sonnet-5"
+
+
+def test_session_json_survives_a_blob_in_the_usage_row(tmp_path):
+    """session_model_usage is `SELECT *` on Hermes's own schema (session.py's
+    _read), not ours — the same reasoning that justified
+    _MALFORMED_DB_ERRORS there. A BLOB-typed column comes back from sqlite3
+    as `bytes`, which json.dumps rejects by default. Reproduced: without
+    default=str, this raises TypeError *after* the container has already
+    run, discarding the whole AgentResult and leaving session.json
+    unwritten — a crash on a schema this project doesn't control, exactly
+    what the never-raise posture elsewhere in this module exists to avoid.
+    """
+    s = spec(tmp_path)
+    home = Path(s.host_hermes_home)
+    db_path = home / "state.db"
+    con = sqlite3.connect(db_path)
+    con.execute("CREATE TABLE sessions (id TEXT, started_at REAL)")
+    con.execute("CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, "
+                "role TEXT, content TEXT, tool_call_id TEXT, tool_calls TEXT, "
+                "tool_name TEXT, timestamp REAL, finish_reason TEXT)")
+    con.execute("CREATE TABLE session_model_usage (session_id TEXT, model TEXT, "
+                "raw_response BLOB)")
+    con.execute("INSERT INTO sessions VALUES ('S1', 1.0)")
+    con.execute("INSERT INTO messages VALUES "
+               "(1, 'S1', 'assistant', 'done', NULL, NULL, NULL, 1.0, 'stop')")
+    con.execute("INSERT INTO session_model_usage VALUES ('S1', 'claude-sonnet-5', ?)",
+               (b"\x00\x01\xff binary",))
+    con.commit()
+    con.close()
+
+    p = tmp_path / "p.md"
+    p.write_text("x")
+    result = run_agent(s, p, secret_env={}, model=MODEL, stub=lambda a, t, e: (0, "ok"))
+    assert isinstance(result.usage["raw_response"], bytes)  # unchanged in-process
+
+    run_dir = Path(next(m.source for m in s.mounts if m.target == "/work/run"))
+    payload = json.loads((run_dir / "session.json").read_text())  # must not have raised
+    assert payload["usage"]["raw_response"] == str(b"\x00\x01\xff binary")
 
 
 def test_state_db_survives_host_hermes_home_deletion(tmp_path):

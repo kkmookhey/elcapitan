@@ -24,7 +24,7 @@ Two measured facts from the spike shape `AgentResult` (§3, §6):
 """
 import json
 import os
-import shutil
+import sqlite3
 import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -94,6 +94,20 @@ def _capture_state_db(host_hermes_home: Path, run_dir: Path) -> None:
     agent-run.sh, and fixes it before the caller's own cleanup can ever run
     (run_agent returns before bin/agent-run.sh's `trap cleanup EXIT` fires).
 
+    Uses sqlite3's backup API, NOT a byte-level file copy. Hermes's
+    state.db runs in WAL mode and is never checkpointed by anything this
+    shim controls, so the main .db file on its own can be a near-empty
+    husk (observed: 4096 bytes, zero tables) with every actual row sitting
+    in the uncopied state.db-wal sidecar — a plain `shutil.copy2` of just
+    the main file was tried first and confirmed, against a real run, to
+    silently archive an empty database while `session.json` right next to
+    it correctly reported `succeeded: true`. `Connection.backup()` reads
+    through the source connection (WAL included — a read-only connection
+    still consults the WAL when present) and writes a single, complete,
+    already-checkpointed copy in one call; there is no intermediate state
+    where a second file (a `-wal` sidecar of the destination) would need
+    to be copied alongside it, so the result can't be torn.
+
     A source that doesn't exist (a stub test, or a real run that never got
     far enough to write anything) is not an error — read_session already
     degrades to EMPTY_SESSION for that case, and this degrades the same way:
@@ -101,8 +115,21 @@ def _capture_state_db(host_hermes_home: Path, run_dir: Path) -> None:
     going to exist.
     """
     source = host_hermes_home / "state.db"
-    if source.is_file():
-        shutil.copy2(source, run_dir / "state.db")
+    if not source.is_file():
+        return
+    dest = run_dir / "state.db"
+    # Read-only source, same guarantee session.py's own reader already
+    # established: the host must never write to an artifact the agent
+    # produced.
+    source_con = sqlite3.connect(f"file:{source}?mode=ro", uri=True)
+    try:
+        dest_con = sqlite3.connect(dest)
+        try:
+            source_con.backup(dest_con)
+        finally:
+            dest_con.close()
+    finally:
+        source_con.close()
 
 
 def _write_session_json(run_dir: Path, session) -> None:
@@ -117,6 +144,18 @@ def _write_session_json(run_dir: Path, session) -> None:
     `messages.tool_calls`/tool-response `content` JSON columns directly,
     and `usage` is the `session_model_usage` row verbatim — neither passes
     through any string formatting an agent's own output could imitate.
+
+    `default=str` on the dump: `usage` is `SELECT *` on
+    `session_model_usage` (session.py's `_read`) — Hermes's schema, not
+    ours, the same reasoning that justified `_MALFORMED_DB_ERRORS` in
+    session.py. A BLOB-typed column there comes back as `bytes`, which
+    `json.dumps` rejects by default (`TypeError: Object of type bytes is
+    not JSON serializable`) — and since this call happens after the
+    container has already run, an uncaught TypeError here would discard
+    the whole `AgentResult` and leave session.json unwritten, exactly the
+    crash-on-a-schema-we-don't-control failure mode this module exists to
+    avoid elsewhere. `default=str` coerces any such non-JSON-native scalar
+    to its string form instead of raising.
     """
     payload = {
         "session_id": session.session_id,
@@ -125,7 +164,7 @@ def _write_session_json(run_dir: Path, session) -> None:
         "usage": session.usage,
         "commands": [asdict(c) for c in session.commands],
     }
-    (run_dir / "session.json").write_text(json.dumps(payload, indent=2))
+    (run_dir / "session.json").write_text(json.dumps(payload, indent=2, default=str))
 
 
 def run_agent(spec: ContainerSpec, prompt_path, *, secret_env: dict, model: str,
