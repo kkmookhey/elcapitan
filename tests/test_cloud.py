@@ -124,6 +124,54 @@ def test_absent_and_denied_are_not_the_same_observation(aws):
         aws()
 
 
+def test_lifecycle_and_replication_are_captured_as_absent_when_genuinely_unset(aws):
+    # Measured 2026-08-10 against a real bucket with neither configured
+    # (transilience-demo-public-331145994818); see cloud.py's S3_ASPECTS
+    # comment. Before this, lifecycle and replication were excluded from
+    # S3_ASPECTS entirely, so an agent enabling a lifecycle rule on the
+    # finding's own bucket went undetected — this is the aspect this project's
+    # own Prowler false positive (OBSERVATIONS.md §6) was about.
+    absent = dict(aws().config)
+    assert absent["lifecycle"] == "<absent: NoSuchLifecycleConfiguration>"
+    assert absent["replication"] == "<absent: ReplicationConfigurationNotFoundError>"
+
+
+def test_a_lifecycle_rule_added_during_the_run_is_detected(aws):
+    # The concrete mutation the finding's own bucket is exposed to today: it
+    # already carries a 365-day expiration rule, so a rule added, altered or
+    # removed during a trial must show up as a failure, not compare equal.
+    responses = fake_aws.default_responses()
+    responses["get-bucket-lifecycle-configuration"] = {
+        "stdout": "", "exit": 254,
+        "stderr": "\naws: [ERROR]: An error occurred (NoSuchLifecycleConfiguration) "
+                  "when calling the GetBucketLifecycleConfiguration operation: The "
+                  "lifecycle configuration does not exist\n",
+        "then": {"stdout": json.dumps({"Rules": [
+            {"ID": "x", "Status": "Enabled", "Expiration": {"Days": 365}}]}), "exit": 0}}
+    aws.responses(responses)
+
+    before = aws()
+    failures = assert_unchanged(before, env=aws.env())
+    assert any("lifecycle" in f for f in failures)
+
+
+def test_a_replication_rule_added_during_the_run_is_detected(aws):
+    responses = fake_aws.default_responses()
+    responses["get-bucket-replication"] = {
+        "stdout": "", "exit": 254,
+        "stderr": "\naws: [ERROR]: An error occurred "
+                  "(ReplicationConfigurationNotFoundError) when calling the "
+                  "GetBucketReplication operation: The replication configuration "
+                  "was not found\n",
+        "then": {"stdout": json.dumps({"ReplicationConfiguration": {
+            "Role": "arn:aws:iam::1:role/repl", "Rules": []}}), "exit": 0}}
+    aws.responses(responses)
+
+    before = aws()
+    failures = assert_unchanged(before, env=aws.env())
+    assert any("replication" in f for f in failures)
+
+
 def test_an_unknown_error_code_is_raised_not_recorded(aws):
     responses = fake_aws.default_responses()
     responses["get-bucket-acl"] = fake_aws.denied("SomeBrandNewError")

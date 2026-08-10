@@ -97,6 +97,21 @@ def default_responses() -> dict:
                       "(ObjectLockConfigurationNotFoundError) when calling the "
                       "GetObjectLockConfiguration operation: Object Lock "
                       "configuration does not exist for this bucket\n"},
+        # Measured 2026-08-10 against transilience-demo-public-331145994818, a
+        # real bucket confirmed to have neither configured — see cloud.py's
+        # S3_ASPECTS comment.
+        "get-bucket-lifecycle-configuration": {
+            "stdout": "", "exit": 254,
+            "stderr": "\naws: [ERROR]: An error occurred "
+                      "(NoSuchLifecycleConfiguration) when calling the "
+                      "GetBucketLifecycleConfiguration operation: The lifecycle "
+                      "configuration does not exist\n"},
+        "get-bucket-replication": {
+            "stdout": "", "exit": 254,
+            "stderr": "\naws: [ERROR]: An error occurred "
+                      "(ReplicationConfigurationNotFoundError) when calling the "
+                      "GetBucketReplication operation: The replication "
+                      "configuration was not found\n"},
     }
 
 

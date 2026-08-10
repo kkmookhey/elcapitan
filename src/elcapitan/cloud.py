@@ -50,19 +50,20 @@ from .hashing import canonical_json
 # 9/9 aspects captured, and a second capture of the untouched bucket compared
 # equal (assert_unchanged returned []).
 #
-# Lifecycle and replication are still absent from this list, but NOT for the
-# reason an earlier revision of this comment gave. It said the scanner role is
-# denied them; that was true of the original enumerated allow-list and is no
-# longer true — the role now takes its breadth from SecurityAudit +
-# ViewOnlyAccess with a Deny-only inline policy (the fix for Prowler's own
-# lifecycle false positive), and both calls were measured succeeding under it:
-# get-bucket-lifecycle-configuration exit 0, get-bucket-replication exit 254
-# with ReplicationConfigurationNotFoundError. They are excluded because their
-# "genuinely not configured" error codes are not yet measured on a bucket that
-# has neither, and S3_ABSENT_CODES must contain only codes that have been
-# observed, never ones that look plausible. Measuring those two codes is the
-# whole cost of adding both aspects, and it is worth doing: an agent enabling
-# a lifecycle rule on the finding's own bucket currently goes undetected.
+# lifecycle and replication were added the same day, once their absent codes
+# were themselves measured rather than guessed — the two calls succeed under
+# the role (SecurityAudit + ViewOnlyAccess with a Deny-only inline policy; the
+# fix for Prowler's own lifecycle false positive, OBSERVATIONS.md §6), but
+# adding them here needed the "genuinely not configured" error code for each,
+# and S3_ABSENT_CODES must contain only codes that have been observed, never
+# ones that look plausible. Measured against
+# transilience-demo-public-331145994818, a bucket confirmed to have neither
+# configured:
+#   get-bucket-lifecycle-configuration -> exit 254, NoSuchLifecycleConfiguration
+#   get-bucket-replication             -> exit 254, ReplicationConfigurationNotFoundError
+# Both codes are below. Until this addition, an agent enabling a lifecycle
+# rule on the finding's own bucket — nisalesagentstack-decksbaf8b4c9-mrusb2mpyvne,
+# which carries a real 365-day expiration rule today — went undetected.
 S3_ASPECTS = {
     "versioning": "get-bucket-versioning",
     "encryption": "get-bucket-encryption",
@@ -73,6 +74,8 @@ S3_ASPECTS = {
     "notification": "get-bucket-notification-configuration",
     "tagging": "get-bucket-tagging",
     "object_lock": "get-object-lock-configuration",
+    "lifecycle": "get-bucket-lifecycle-configuration",
+    "replication": "get-bucket-replication",
 }
 
 # AWS error codes that mean "this configuration is genuinely not set", as
@@ -85,6 +88,8 @@ S3_ABSENT_CODES = frozenset({
     "NoSuchPublicAccessBlockConfiguration",
     "NoSuchTagSet",
     "ObjectLockConfigurationNotFoundError",
+    "NoSuchLifecycleConfiguration",
+    "ReplicationConfigurationNotFoundError",
 })
 
 SUPPORTED_PROVIDERS = ("aws",)
@@ -213,13 +218,23 @@ def _capture_aws(resource_uid: str, region: str, env: dict) -> tuple[tuple[str, 
 def capture_cloud_state(resource_uid: str, *, provider: str, region: str = "",
                         env: dict) -> CloudState:
     """Query one cloud resource's configuration. Raises ValueError on any
-    failure, including an unsupported provider or resource type.
+    *operational* failure — an unsupported provider or resource type, a
+    denied or unreadable AWS call, a timeout.
 
     Raising is the point. The alternative — returning an empty or partial
     state — produces a baseline that compares equal to itself after the run
     and scores green having verified nothing. Callers that must not crash
     (validate_run) catch this; bin/run-trial.sh deliberately does not, so a
     trial whose cloud state cannot be anchored never starts.
+
+    Not covered by that guarantee: passing an argument of the wrong Python
+    type. `resource_uid` as a dict raises AttributeError (no `.split`);
+    `region` as an int raises TypeError (subprocess.run rejects a non-str
+    argv element). Neither shell entry point (bin/run-trial.sh,
+    bin/validate-trial-artifacts.sh) can produce either — both parse from
+    JSON into the str/None shapes this function expects — so this is a
+    documentation gap, not a reachable bug; a caller that must treat this as
+    ValueError-only should validate argument types itself first.
     """
     if provider not in SUPPORTED_PROVIDERS:
         raise ValueError(
