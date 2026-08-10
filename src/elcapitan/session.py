@@ -102,18 +102,35 @@ EMPTY_SESSION = SessionRecord(session_id="", finish_reason="", tool_call_count=0
 # KeyError) for a missing column name — not currently reachable given the
 # explicit column lists in every SELECT below, but a schema this reader
 # doesn't fully control is worth defending defensively, not just for the
-# cases already proven to occur. MultipleSessionsError is handled
+# cases already proven to occur. AttributeError is here as a backstop for
+# `messages.tool_calls` shapes this reader doesn't fully control either —
+# `_parse_call` already guards the shapes found in review
+# ({"function": null}, {"function": "t"}, {"function": [1,2]}), but that
+# column is Hermes's schema, not ours, so a backstop stays even after the
+# known shapes are fixed. OverflowError is the same argument for
+# `_to_rfc3339` on an out-of-range timestamp (also guarded directly there;
+# this is the second line of defense). MultipleSessionsError is handled
 # separately (re-raised, never caught here) because it signals a real
 # precondition violation, not an unusable database.
-_MALFORMED_DB_ERRORS = (sqlite3.Error, OSError, ValueError, TypeError, KeyError, IndexError)
+_MALFORMED_DB_ERRORS = (sqlite3.Error, OSError, ValueError, TypeError, KeyError,
+                        IndexError, AttributeError, OverflowError)
 
 
 def _to_rfc3339(ts) -> str:
     """state.db stores timestamps as float unix seconds; every other record
-    in this project uses RFC3339 strings (see records.py's FormatChecker)."""
+    in this project uses RFC3339 strings (see records.py's FormatChecker).
+
+    Guards OverflowError/OSError/ValueError directly (an out-of-range or
+    otherwise unrepresentable timestamp degrades to "" for just that one
+    field) rather than relying solely on the module-level backstop, which
+    would otherwise discard an entire session over one bad timestamp.
+    """
     if ts is None:
         return ""
-    return datetime.fromtimestamp(float(ts), tz=timezone.utc).isoformat().replace("+00:00", "Z")
+    try:
+        return datetime.fromtimestamp(float(ts), tz=timezone.utc).isoformat().replace("+00:00", "Z")
+    except (OverflowError, OSError, ValueError, TypeError):
+        return ""
 
 
 def _parse_tool_calls(raw: str | None) -> list[dict]:
@@ -137,6 +154,38 @@ def _parse_tool_content(raw: str | None) -> dict:
     return content if isinstance(content, dict) else {}
 
 
+def _parse_call(call) -> tuple[str, str]:
+    """Extract (tool_name, command_text) from one tool_calls[] entry.
+
+    `messages.tool_calls` is Hermes's own schema, not ours, so this must
+    degrade to ("", "") for any shape other than a well-formed function
+    call — not just unparseable JSON (`_parse_tool_calls` already handles
+    that), but a call whose `function` key is present and valid JSON yet
+    is not itself an object: null, a string, a list. `call.get("function",
+    {})` only supplies its default when the KEY is absent — a `{"function":
+    null}` call still hands back None, and `None.get(...)` raises
+    AttributeError. Reproduced directly with {"function": null},
+    {"function": "t"}, and {"function": [1, 2]} in review.
+    """
+    if not isinstance(call, dict):
+        return "", ""
+    fn = call.get("function")
+    if not isinstance(fn, dict):
+        return "", ""
+    name = fn.get("name", "")
+    if not isinstance(name, str):
+        name = ""
+    args_raw = fn.get("arguments", "")
+    try:
+        args = json.loads(args_raw) if isinstance(args_raw, str) else args_raw
+    except (json.JSONDecodeError, TypeError):
+        args = {}
+    command = args.get("command", "") if isinstance(args, dict) else ""
+    if not isinstance(command, str):
+        command = ""
+    return name, command
+
+
 def _build_transcript(rows: list[sqlite3.Row]) -> str:
     lines = []
     for row in rows:
@@ -145,14 +194,7 @@ def _build_transcript(rows: list[sqlite3.Row]) -> str:
         if role == "assistant" and row["tool_calls"]:
             lines.append(f"[{ts}] assistant (finish_reason={row['finish_reason']}):")
             for call in _parse_tool_calls(row["tool_calls"]):
-                fn = call.get("function", {}) if isinstance(call, dict) else {}
-                name = fn.get("name", "")
-                args_raw = fn.get("arguments", "")
-                try:
-                    args = json.loads(args_raw) if isinstance(args_raw, str) else args_raw
-                except (json.JSONDecodeError, TypeError):
-                    args = {}
-                command = args.get("command", "") if isinstance(args, dict) else ""
+                name, command = _parse_call(call)
                 lines.append(f"  tool_call: {name}")
                 lines.append(f"  command: {command}")
         elif role == "tool":
@@ -183,14 +225,7 @@ def _build_commands(rows: list[sqlite3.Row]) -> list[CommandRecord]:
             if not isinstance(call, dict):
                 continue
             call_id = call.get("id") or call.get("call_id")
-            fn = call.get("function", {})
-            name = fn.get("name", "")
-            args_raw = fn.get("arguments", "")
-            try:
-                args = json.loads(args_raw) if isinstance(args_raw, str) else args_raw
-            except (json.JSONDecodeError, TypeError):
-                args = {}
-            command_text = args.get("command", "") if isinstance(args, dict) else ""
+            name, command_text = _parse_call(call)
 
             result_row = tool_results.get(call_id)
             content = _parse_tool_content(result_row["content"]) if result_row else {}
@@ -222,6 +257,45 @@ def _latest_finish_reason(rows: list[sqlite3.Row]) -> str:
         if row["finish_reason"]:
             reason = row["finish_reason"]
     return reason
+
+
+def session_succeeded(record: SessionRecord) -> bool:
+    """The one predicate every caller must use to judge a session — never
+    the process exit code (spike-findings.md §6: a run with no API key and
+    a run whose model 404'd nine times both exit 0).
+
+    Both conjuncts are load-bearing on their own, not redundant restatements
+    of the same fact — the three real fixture sessions can't prove that,
+    since both failures happen to lack both properties together:
+
+    - `finish_reason == "stop"` alone is not enough: a session that made a
+      tool call and then died mid-loop reports `finish_reason ==
+      "tool_calls"` forever, never "stop" — tool_call_count > 0 catches
+      that "stop" alone would miss.
+    - `tool_call_count > 0` alone is not enough: a model that replies "I
+      can't do that" and stops without ever acting reaches a real "stop"
+      with zero tool calls — finish_reason == "stop" catches that
+      tool_call_count alone would miss, and would otherwise score exactly
+      the failed-trial shape this whole task exists to catch as a success.
+
+    `shim.run_agent` derives `AgentResult.succeeded` from this function; it
+    does not restate the predicate. Tests should import this rather than
+    redeclare it locally — a local redeclaration in a test proves the
+    test's own logic, not production's.
+    """
+    return record.finish_reason == "stop" and record.tool_call_count > 0
+
+
+def _connect_readonly(db_path) -> sqlite3.Connection:
+    """The exact read-only connection read_session always uses.
+
+    Exposed as its own function (rather than inlined in read_session) so
+    the read-only guarantee can be tested directly — a hash-before/after
+    comparison on a copy of the database proves this particular read
+    happened not to write anything, not that the connection itself would
+    reject a write. See test_session.py::test_readonly_connection_rejects_writes.
+    """
+    return sqlite3.connect(f"file:{Path(db_path)}?mode=ro", uri=True)
 
 
 def _read(con: sqlite3.Connection, *, allow_multiple: bool) -> SessionRecord:
@@ -279,7 +353,7 @@ def read_session(db_path, *, allow_multiple: bool = False) -> SessionRecord:
     db_path = Path(db_path)
     con = None
     try:
-        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        con = _connect_readonly(db_path)
         return _read(con, allow_multiple=allow_multiple)
     except MultipleSessionsError:
         raise

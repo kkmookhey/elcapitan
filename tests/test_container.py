@@ -175,6 +175,23 @@ def test_hardening_flags_present():
                  "--pids-limit", "--memory", "--cpus"):
         assert any(a.startswith(flag) for a in argv), f"missing {flag}"
 
+def test_hardening_tuple_grants_only_setuid_and_setgid():
+    """Pins the exact HARDENING tuple (review Finding 5). --cap-drop=ALL by
+    itself breaks Hermes's s6-overlay init (see the comment above HARDENING
+    in container.py for the reproduction); SETUID/SETGID is the minimum
+    that was confirmed to fix it on macOS/Docker Desktop, and that minimum
+    must not silently drift wider. Both of these must fail this test:
+    HARDENING = ("--cap-drop=ALL", ...)                                   # cap-adds removed -> s6-applyuidgid fails again
+    HARDENING = ("--cap-drop=ALL", "--cap-add=ALL", "--privileged", ...)  # hardening gutted
+    """
+    from elcapitan.container import HARDENING
+    assert HARDENING == ("--cap-drop=ALL", "--cap-add=SETUID", "--cap-add=SETGID",
+                         "--security-opt=no-new-privileges",
+                         "--pids-limit=512", "--memory=4g", "--cpus=2")
+    argv = eng().to_argv()
+    assert "--privileged" not in argv
+    assert "--cap-add=ALL" not in argv
+
 # finding 7: Mount must not accept characters that let a path inject mount options
 def test_mount_rejects_comma_in_source_or_target():
     with pytest.raises(ValueError):

@@ -21,10 +21,13 @@ from pathlib import Path
 
 import pytest
 
+import elcapitan.session as session_module
 from elcapitan.session import (
     EMPTY_SESSION,
     MultipleSessionsError,
+    SessionRecord,
     read_session,
+    session_succeeded,
 )
 
 FIXTURE = Path(__file__).parent / "fixtures" / "spike-state.db"
@@ -86,17 +89,61 @@ def test_bad_model_session_has_no_finish_reason_and_no_tool_calls(tmp_path):
 
 def test_succeeded_predicate_discriminates_all_three_fixture_sessions(tmp_path):
     """The single most important assertion in this task: a failed trial must
-    never score as a successful one just because the process exited 0."""
-    def succeeded(record):
-        return record.finish_reason == "stop" and record.tool_call_count > 0
+    never score as a successful one just because the process exited 0.
 
+    Uses `session_succeeded` — the production predicate imported from
+    elcapitan.session, the one `shim.run_agent` actually calls — rather than
+    a locally redeclared copy. A local redeclaration here would test this
+    test's own logic, not production's; it would not fail if
+    `session_succeeded` (or shim.py's use of it) regressed.
+    """
     success = read_session(_single_session_db(tmp_path / "s", SUCCESS_ID))
     no_key = read_session(_single_session_db(tmp_path / "k", NO_API_KEY_ID))
     bad_model = read_session(_single_session_db(tmp_path / "m", BAD_MODEL_ID))
 
-    assert succeeded(success) is True
-    assert succeeded(no_key) is False
-    assert succeeded(bad_model) is False
+    assert session_succeeded(success) is True
+    assert session_succeeded(no_key) is False
+    assert session_succeeded(bad_model) is False
+
+
+def test_succeeded_requires_stop_even_with_a_tool_call():
+    """A session that made a tool call and then died mid-loop never reaches
+    "stop" — it reports "tool_calls" forever. The three real fixture
+    sessions can't prove tool_call_count alone is insufficient (both
+    failures have tool_call_count == 0 too), so this is constructed
+    directly."""
+    died_mid_loop = SessionRecord(session_id="x", finish_reason="tool_calls",
+                                  tool_call_count=1, transcript="")
+    assert session_succeeded(died_mid_loop) is False
+
+
+def test_succeeded_requires_a_tool_call_even_with_stop():
+    """A model that replies "I can't do that" and stops without ever acting
+    reaches a real "stop" with zero tool calls — exactly the failed-trial
+    shape this task exists to stop from scoring green. The three real
+    fixture sessions can't prove finish_reason alone is insufficient (both
+    failures also lack "stop"), so this is constructed directly."""
+    refused_without_acting = SessionRecord(session_id="x", finish_reason="stop",
+                                           tool_call_count=0, transcript="")
+    assert session_succeeded(refused_without_acting) is False
+
+
+def test_readonly_connection_rejects_writes(tmp_path):
+    """Proves the mode=ro guarantee directly, through the module's own
+    connection path — not by inference from "the fixture's bytes didn't
+    change" (test_read_only_open_never_writes_to_the_fixture, below),
+    which stays green even if read_session switched to a plain read-write
+    connection that simply never happens to issue a write. Mutating
+    _connect_readonly to `sqlite3.connect(str(db_path))` makes this test
+    fail immediately; the hash-comparison test alone would not catch it.
+    """
+    db = _single_session_db(tmp_path, SUCCESS_ID)
+    con = session_module._connect_readonly(db)
+    try:
+        with pytest.raises(sqlite3.OperationalError):
+            con.execute("UPDATE sessions SET model = 'tampered'")
+    finally:
+        con.close()
 
 
 # --- parsing detail on the real successful session ---
@@ -105,7 +152,11 @@ def test_transcript_contains_the_real_command_and_exit_code(tmp_path):
     db = _single_session_db(tmp_path, SUCCESS_ID)
     record = read_session(db)
     assert "mkdir -p /work/run" in record.transcript
-    assert "exit_code" in record.transcript.lower() or "0" in record.transcript
+    # Not "0" in record.transcript / "exit_code" in record.transcript.lower()
+    # — both are vacuously true (RFC3339 timestamps on every line guarantee
+    # a "0" digit; "exit_code" is the literal label this reader itself
+    # writes regardless of the value). Assert the actual pairing instead.
+    assert "exit_code: 0" in record.transcript
 
 
 def test_commands_parsed_from_tool_calls_json(tmp_path):
@@ -216,6 +267,58 @@ def test_malformed_tool_calls_json_does_not_raise(tmp_path):
     # Must not raise; the malformed call simply doesn't parse into a command.
     assert record.session_id == "S1"
     assert record.commands == []
+
+
+def _db_with_one_assistant_message(tmp_path, *, tool_calls_json=None, timestamp=1.0):
+    """A minimal single-message state.db, for exercising _build_transcript/
+    _build_commands directly through read_session against a specific
+    messages.tool_calls or timestamp shape, without needing the full fixture."""
+    db = tmp_path / "state.db"
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE sessions (id TEXT, started_at REAL, model TEXT)")
+    con.execute("CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, "
+                "role TEXT, content TEXT, tool_call_id TEXT, tool_calls TEXT, "
+                "tool_name TEXT, timestamp REAL, finish_reason TEXT)")
+    con.execute("CREATE TABLE session_model_usage (session_id TEXT)")
+    con.execute("INSERT INTO sessions VALUES ('S1', 1.0, 'x')")
+    con.execute(
+        "INSERT INTO messages VALUES (1, 'S1', 'assistant', '', NULL, ?, NULL, ?, 'tool_calls')",
+        (tool_calls_json, timestamp),
+    )
+    con.commit()
+    con.close()
+    return db
+
+
+# --- messages.tool_calls is Hermes's schema, not ours: valid JSON, odd shapes ---
+
+@pytest.mark.parametrize("bad_function", [None, "a string", [1, 2]])
+def test_tool_call_with_non_dict_function_does_not_raise(tmp_path, bad_function):
+    """Reproduced in review with exactly these three shapes: {"function":
+    null}, {"function": "t"}, {"function": [1, 2]}. All are valid JSON —
+    _parse_tool_calls's json.loads succeeds — but `fn.get(...)` on a
+    non-dict `function` used to raise AttributeError, which escaped
+    read_session entirely (AttributeError was not in _MALFORMED_DB_ERRORS
+    and this shape sails straight past _parse_tool_calls's own JSON-decode
+    guard, since the JSON is well-formed)."""
+    calls = json.dumps([{"id": "c1", "function": bad_function}])
+    db = _db_with_one_assistant_message(tmp_path, tool_calls_json=calls)
+    record = read_session(db)  # must not raise
+    assert record.session_id == "S1"
+    assert record.commands[0].tool == ""
+    assert record.commands[0].argv == [""]
+    assert "tool_call: " in record.transcript  # degraded to an empty name, not crashed
+
+
+def test_out_of_range_timestamp_does_not_raise(tmp_path):
+    """_to_rfc3339 feeds datetime.fromtimestamp, which raises OverflowError
+    (or OSError, platform-dependent) for a value outside the representable
+    range. Guarded directly in _to_rfc3339 (degrades to "" for just that
+    field) with OverflowError also added to _MALFORMED_DB_ERRORS as a
+    backstop."""
+    db = _db_with_one_assistant_message(tmp_path, timestamp=1e20)
+    record = read_session(db)  # must not raise
+    assert record.session_id == "S1"
 
 
 def test_read_only_open_never_writes_to_the_fixture(tmp_path):

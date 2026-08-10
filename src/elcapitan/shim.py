@@ -22,14 +22,16 @@ Two measured facts from the spike shape `AgentResult` (§3, §6):
   from the session record's `finish_reason`/`tool_call_count`, never from
   `exit_code` — which is kept on the result for diagnosis only.
 """
+import json
 import os
+import shutil
 import subprocess
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable
 
 from .container import ContainerSpec
-from .session import read_session
+from .session import CommandRecord, read_session, session_succeeded
 
 StubFn = Callable[[list[str], str, dict], tuple[int, str]]
 
@@ -55,6 +57,7 @@ class AgentResult:
     tool_call_count: int
     transcript: str           # extracted from state.db, NOT scraped from stdout
     usage: dict                # session_model_usage row: tokens, cost, provider
+    commands: list[CommandRecord]  # structured tool calls — see run_agent's persistence note
     stdout: str                 # kept for debugging only; not evidence
 
 
@@ -75,6 +78,54 @@ def resolve_secret_env(host_env: dict, mapping: dict) -> dict:
 
 def _run_dir(spec: ContainerSpec) -> Path:
     return Path(next(m.source for m in spec.mounts if m.target == "/work/run"))
+
+
+def _capture_state_db(host_hermes_home: Path, run_dir: Path) -> None:
+    """Copy state.db into the run directory — the persistent evidence bundle
+    — before anything can delete the ephemeral Hermes home it came from.
+
+    This exists because bin/agent-run.sh deletes any host_hermes_home it
+    seeded itself, on EXIT, on success as much as on failure (nothing else
+    owns that ephemeral directory's lifecycle). Before this function
+    existed, that meant state.db — this module's own docstring calls it
+    "the real record" — was gone the moment a successful run finished: a
+    real, reviewed defect in this task, not a hypothetical one. Capturing
+    it here, inside run_agent itself, fixes it for every caller, not just
+    agent-run.sh, and fixes it before the caller's own cleanup can ever run
+    (run_agent returns before bin/agent-run.sh's `trap cleanup EXIT` fires).
+
+    A source that doesn't exist (a stub test, or a real run that never got
+    far enough to write anything) is not an error — read_session already
+    degrades to EMPTY_SESSION for that case, and this degrades the same way:
+    silently do nothing, rather than raising over a file that was never
+    going to exist.
+    """
+    source = host_hermes_home / "state.db"
+    if source.is_file():
+        shutil.copy2(source, run_dir / "state.db")
+
+
+def _write_session_json(run_dir: Path, session) -> None:
+    """Persist the structured record — usage and CommandRecord-shaped
+    commands — as JSON in the run directory.
+
+    transcript.log (unescaped free text a malicious or merely confused
+    agent's own tool output could forge lines resembling, e.g. a command
+    whose *output* happens to contain the literal line "  exit_code: 0")
+    is kept for human readability, but it is not this run's structured
+    evidence. session.json is: `commands` came from parsing
+    `messages.tool_calls`/tool-response `content` JSON columns directly,
+    and `usage` is the `session_model_usage` row verbatim — neither passes
+    through any string formatting an agent's own output could imitate.
+    """
+    payload = {
+        "session_id": session.session_id,
+        "finish_reason": session.finish_reason,
+        "tool_call_count": session.tool_call_count,
+        "usage": session.usage,
+        "commands": [asdict(c) for c in session.commands],
+    }
+    (run_dir / "session.json").write_text(json.dumps(payload, indent=2))
 
 
 def run_agent(spec: ContainerSpec, prompt_path, *, secret_env: dict, model: str,
@@ -123,18 +174,28 @@ def run_agent(spec: ContainerSpec, prompt_path, *, secret_env: dict, model: str,
     # database (e.g. the stub-only tests here, which never create one); it
     # returns EMPTY_SESSION, so succeeded correctly comes out False rather
     # than the caller crashing on what looks like a completed run.
-    session = read_session(Path(spec.host_hermes_home) / "state.db")
+    host_hermes_home = Path(spec.host_hermes_home)
+    session = read_session(host_hermes_home / "state.db")
     (run_dir / "transcript.log").write_text(session.transcript)
+
+    # Persist the primary evidence into run_dir BEFORE returning: a caller
+    # (bin/agent-run.sh) may delete host_hermes_home the moment this
+    # function returns, on success as much as on failure. See
+    # _capture_state_db's docstring for why this used to be lost entirely.
+    _capture_state_db(host_hermes_home, run_dir)
+    _write_session_json(run_dir, session)
 
     return AgentResult(
         exit_code=exit_code,
         # A run that did nothing still exits 0 (spike-findings.md §6).
-        # Success is a property of the session, not of the process.
-        succeeded=(session.finish_reason == "stop" and session.tool_call_count > 0),
+        # Success is a property of the session, not of the process — see
+        # session_succeeded's docstring for why BOTH conjuncts are required.
+        succeeded=session_succeeded(session),
         session_id=session.session_id,
         finish_reason=session.finish_reason,
         tool_call_count=session.tool_call_count,
         transcript=session.transcript,
         usage=session.usage,
+        commands=session.commands,
         stdout=stdout,
     )

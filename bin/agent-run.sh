@@ -53,7 +53,11 @@ HOST_HERMES_HOME="${5:?missing host hermes home}"
 : "${ELCAP_MODEL_API_KEY:?ELCAP_MODEL_API_KEY must be set (maps to ANTHROPIC_API_KEY)}"
 
 if [ "$STAGE" != "engineer" ]; then
-  echo "agent-run.sh: unsupported stage ${STAGE@Q} (only \"engineer\" is implemented)" >&2
+  # Plain "$STAGE" quoting, not "${STAGE@Q}" — @Q is a bash 4.4+ operator
+  # and stock macOS ships bash 3.2, which dies with "bad substitution" on
+  # this exact line — the error path meant to give a clear message instead
+  # gave a confusing one on the most common dev machine for this project.
+  echo "agent-run.sh: unsupported stage '$STAGE' (only \"engineer\" is implemented)" >&2
   exit 2
 fi
 

@@ -24,17 +24,33 @@ DOCKER_SOCKETS = ("/var/run/docker.sock", "/run/docker.sock")
 # --cap-drop=ALL alone breaks the image outright: Hermes runs s6-overlay as
 # PID 1 and drops root -> the hermes user (uid 10000) via s6-applyuidgid,
 # which needs CAP_SETUID/CAP_SETGID to do that. Verified directly against
-# nousresearch/hermes-agent:v2026.8.3 (Task 11's real-run check) —
+# nousresearch/hermes-agent:v2026.8.3 with plain `docker run --cap-drop=ALL
+# ...` (Task 11's real-run check, independently reproduced in review) —
 # `--cap-drop=ALL` alone: every cont-init step that calls s6-applyuidgid
 # fails ("unable to set supplementary group list: Operation not permitted",
 # exit 111) and the container never reaches a working shell. Adding back
-# exactly those two capabilities on top of the drop-all baseline (not
-# omitting --cap-drop=ALL, which would leave every other capability in
-# place) was independently confirmed to run a real `chat -q` session to
-# completion. See docs/spike-findings.md, which never exercised this
-# hardening set — the spike's own docker run commands (bin/spike-image.sh)
-# carry none of these flags, so this gap was invisible until Task 11 first
-# drove a real container through engineer_spec's actual argv.
+# SETUID/SETGID on top of the drop-all baseline (not omitting --cap-drop=ALL
+# itself, which would leave every other capability in place) was confirmed
+# to run a real `chat -q` session to completion.
+#
+# IMPORTANT — that confirmation was on macOS + Docker Desktop only, and the
+# Linux capability set is UNRESOLVED. Docker Desktop's bind-mount layer
+# masks ownership/chown failures the exact way docs/spike-findings.md §5
+# already warns about — even the passing macOS run's own stdout.log carries
+# `[supervise-perms] could not chown ...` (x4) and a PermissionError from
+# cont-init `02-reconcile-profiles`, harmless there only because `chat -q`
+# never happens to need those specific services. On a real Linux
+# filesystem, --cap-drop=ALL also removes CAP_CHOWN/CAP_FOWNER/
+# CAP_DAC_OVERRIDE, which the same init sequence needs elsewhere: review
+# reproduced `mkdir: cannot create directory '/opt/data': Permission
+# denied` with this exact flag set on Linux, container exits 0 having done
+# nothing — the spike-findings.md §6 false-green shape again, one layer
+# down. Do not treat this HARDENING tuple as settled outside macOS/Docker
+# Desktop. Task 12's test_smoke_container.py — a real container run — is
+# where the Linux case should be resolved; argv-construction unit tests
+# (this module's own test suite, including test_hardening_flags_present and
+# test_hardening_tuple_grants_only_setuid_and_setgid below) structurally
+# cannot prove a real container boots, on any OS.
 HARDENING = ("--cap-drop=ALL", "--cap-add=SETUID", "--cap-add=SETGID",
              "--security-opt=no-new-privileges",
              "--pids-limit=512", "--memory=4g", "--cpus=2")
