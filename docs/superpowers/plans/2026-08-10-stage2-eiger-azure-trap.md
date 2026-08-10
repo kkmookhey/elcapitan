@@ -303,8 +303,11 @@ git commit -m "feat(eiger): terraform skeleton against the empty test subscripti
 - [ ] **Step 2: Build in the cloud, not locally**
 
 ```bash
-az acr build --registry <acr-name> --image eiger:stage2 \
-  --file Dockerfile /Users/kkmookhey/Projects/eiger
+# --file resolves relative to the CURRENT DIRECTORY, not to the source-context
+# argument, so passing an absolute context path with a bare --file fails with
+# "Unable to find 'Dockerfile'". cd into the repo and use "." as the context.
+cd /Users/kkmookhey/Projects/eiger
+az acr build --registry <acr-name> --image eiger:stage2 --file Dockerfile .
 ```
 
 `az acr build` builds server-side, so the multi-hundred-megabyte image never crosses your uplink. Use the branch from Task 1.
