@@ -31,21 +31,15 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable
 
+from .constants import SCANNER_ENV_MAP
 from .container import ContainerSpec
 from .session import CommandRecord, read_session, session_succeeded
 
 StubFn = Callable[[list[str], str, dict], tuple[int, str]]
 
-# Host variable name -> in-container variable name. An explicit map, not a
-# prefix-strip, so ELCAP_SCANNER_AWS_ACCESS_KEY_ID on the host becomes
-# AWS_ACCESS_KEY_ID inside the container — the name AWS tooling actually
-# looks for — and the ELCAP_ prefix is never applied twice or left on by
-# accident.
-SCANNER_ENV_MAP = {
-    "ELCAP_SCANNER_AWS_ACCESS_KEY_ID": "AWS_ACCESS_KEY_ID",
-    "ELCAP_SCANNER_AWS_SECRET_ACCESS_KEY": "AWS_SECRET_ACCESS_KEY",
-    "ELCAP_SCANNER_AWS_SESSION_TOKEN": "AWS_SESSION_TOKEN",
-}
+# Re-exported, not redefined: elcapitan.cloud uses the same three host
+# variable names on the host side to re-query the finding's resource after the
+# run. One definition in constants.py, two importers — see its comment.
 MODEL_ENV_MAP = {"ELCAP_MODEL_API_KEY": "ANTHROPIC_API_KEY"}
 
 

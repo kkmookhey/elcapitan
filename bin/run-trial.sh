@@ -20,14 +20,22 @@
 #                            input manifest and the -m flag agent-run.sh passes
 #                            can never disagree.
 #   ELCAP_STUB=1             run tests/stub_engineer.py instead of a container
+# Required in every mode, including ELCAP_STUB=1:
+#   ELCAP_SCANNER_AWS_ACCESS_KEY_ID / _SECRET_ACCESS_KEY / _SESSION_TOKEN
+#                            the scoped read-only scanner role. Used HERE to
+#                            capture the finding resource's configuration
+#                            before the agent runs, and again by the validator
+#                            to re-query it afterwards. See "no stub exemption"
+#                            below for why stub mode does not get a pass.
 #
 # ## The out-of-band anchor — the one property this script exists to hold
 #
-# Two reference values are captured BEFORE the trial and kept OUTSIDE the run
+# Three reference values are captured BEFORE the trial and kept OUTSIDE the run
 # directory, in ${ELCAP_WORKSPACE}/anchors/<run-id>/:
 #
 #   repo-state-before.json   the canonical repository's pre-trial state
 #   bundle.sha256            the pre-trial input-bundle hash
+#   cloud-state-before.json  the finding resource's pre-trial configuration
 #
 # Nothing inside run_dir can anchor run_dir. The agent gets /work/run as a
 # writable mount, so it can rewrite inputs/finding.json, that file's entry in
@@ -47,6 +55,29 @@
 # run_dir, but an extra_mounts entry of ${ELCAP_WORKSPACE}/anchors is an
 # ancestor of nothing this spec uses and would be accepted. Nobody passes
 # extra_mounts today; if anyone starts, that is the hole to close.
+#
+# The cloud anchor is the same mechanism aimed at the other thing a trial can
+# damage. Repository mutation is verified by recomputing git state and
+# comparing with what was captured before; cloud mutation is verified the same
+# way, by re-querying the finding's own resource. It replaced a transcript
+# regex scan that read the agent's prose and guessed — and failed an honest
+# Anna run four times for stating plainly that it had NOT deployed, while AWS
+# was independently confirmed untouched. Honesty failed; silence passed.
+#
+# ## No stub exemption for the cloud capture
+#
+# ELCAP_STUB=1 replaces the agent, not the cloud. The capture and the
+# credential requirement apply in stub mode too, for two reasons. First, the
+# validator this script invokes has no stub mode: it re-queries the resource
+# whichever way the agent step ran, so a stub trial that skipped the capture
+# would be scored by a *different* validator call than a real trial gets —
+# which destroys the stub's only purpose, rehearsing the real pipeline before
+# a real trial burns real credentials. Second, resolving the scanner identity
+# is precisely the step that has broken in practice; rehearsing everything
+# except it rehearses the easy part. Tests satisfy the requirement with a real
+# executable named `aws` on PATH (tests/fake_aws.py), so the production code
+# path — argv construction, environment scrubbing, empty-stdout handling — is
+# genuinely exercised there rather than mocked past.
 #
 # inputs/bundle.sha256 is deliberately NOT written. The plan's draft wrote it
 # and had the engineer read it back, which defeats the whole mechanism: the
@@ -156,6 +187,14 @@ fi
 if [ "${ELCAP_STUB:-0}" != "1" ]; then
   : "${ELCAP_MODEL_API_KEY:?ELCAP_MODEL_API_KEY must be set (maps to ANTHROPIC_API_KEY in bin/agent-run.sh)}"
 fi
+# No stub guard here — see this script's header. The names are spelled out
+# rather than derived because shell has no way to read constants.SCANNER_ENV_MAP;
+# cloud.verification_env is still the authority and re-checks all three (it is
+# what the pre-flight capture below runs through), so a rename that missed
+# this list fails loudly at the capture rather than proceeding without one.
+: "${ELCAP_SCANNER_AWS_ACCESS_KEY_ID:?ELCAP_SCANNER_AWS_ACCESS_KEY_ID must be set — the read-only scanner role captures the pre-trial cloud state and re-queries it at validation}"
+: "${ELCAP_SCANNER_AWS_SECRET_ACCESS_KEY:?ELCAP_SCANNER_AWS_SECRET_ACCESS_KEY must be set (all three scanner variables, or none of the run is verifiable)}"
+: "${ELCAP_SCANNER_AWS_SESSION_TOKEN:?ELCAP_SCANNER_AWS_SESSION_TOKEN must be set (all three scanner variables, or none of the run is verifiable)}"
 
 RUN_ID="${ENV_NAME}-${FINDING_ID}-arm${ARM}-n${TRIAL_N}"
 RUN_DIR="${WORKSPACE}/runs/${RUN_ID}"
@@ -170,17 +209,73 @@ if [ -e "$RUN_DIR" ] || [ -e "$ANCHOR_DIR" ]; then
   echo "    ${ANCHOR_DIR}" >&2
   exit 3
 fi
-mkdir -p "$RUN_DIR/inputs" "$RUN_DIR/evidence" "$RUN_DIR/patch" "$RUN_DIR/verdict"
-mkdir -p "$ANCHOR_DIR"
 
 # Set before the trap so `set -u` cannot make the trap itself the failure.
 HOME_PARENT=""
+CLOUD_STATE_TMP=""
 cleanup() {
   if [ -n "$HOME_PARENT" ]; then
     rm -rf "$HOME_PARENT"
   fi
+  if [ -n "$CLOUD_STATE_TMP" ]; then
+    rm -f "$CLOUD_STATE_TMP"
+  fi
 }
 trap cleanup EXIT
+
+# --- the cloud anchor, captured before anything is created ------------------
+#
+# Deliberately ahead of the mkdir. A live cloud query is the most failure-prone
+# step in this script — an expired session token, a revoked permission, a
+# resource type with no implementation — and trials are immutable, so failing
+# after the directories exist would spend the trial id on a configuration
+# error. Same reasoning as the ELCAP_MODEL_API_KEY guard above. finding.py
+# exposes cloud_target for exactly this: the target is read from the raw
+# scanner artifact, before normalise_ocsf has anywhere to write to.
+CLOUD_STATE_TMP="$(mktemp)"
+uv run --project "$REPO_ROOT" python - "$FINDING_SRC" "$CLOUD_STATE_TMP" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+from elcapitan.cloud import capture_cloud_state, to_dict, verification_env
+from elcapitan.finding import cloud_target
+
+finding_src, out_path = sys.argv[1:3]
+try:
+    raw = json.loads(Path(finding_src).read_text())
+except (OSError, ValueError) as exc:
+    print(f"run-trial.sh: cannot read the finding {finding_src}: {exc}", file=sys.stderr)
+    sys.exit(2)
+
+resource_uid = ""
+try:
+    # cloud_target reads a scanner artifact, so it is parsed defensively: a
+    # raw event that is not the shape it claims must produce this script's own
+    # message, not a traceback from three frames down.
+    provider, resource_uid, region = cloud_target(raw)
+    state = capture_cloud_state(resource_uid, provider=provider, region=region,
+                                env=verification_env(os.environ))
+except (ValueError, TypeError, AttributeError, IndexError, KeyError) as exc:
+    # Never degraded to "capture nothing and carry on". A trial whose cloud
+    # state cannot be anchored cannot be judged on whether it mutated the
+    # cloud, and an unjudgeable trial must not start.
+    print(f"run-trial.sh: refusing to start — the pre-trial cloud state of "
+          f"{resource_uid or '<no resource uid in the finding>'} could not be "
+          f"captured: {exc}", file=sys.stderr)
+    sys.exit(2)
+
+Path(out_path).write_text(json.dumps(to_dict(state), indent=2))
+PY
+
+mkdir -p "$RUN_DIR/inputs" "$RUN_DIR/evidence" "$RUN_DIR/patch" "$RUN_DIR/verdict"
+mkdir -p "$ANCHOR_DIR"
+# Into anchors/, never run_dir: the agent has run_dir writable, and a baseline
+# it can rewrite is not a baseline.
+mv "$CLOUD_STATE_TMP" "${ANCHOR_DIR}/cloud-state-before.json"
+CLOUD_STATE_TMP=""
+
 HOME_PARENT="$(mktemp -d)"
 # seed_hermes_home refuses an existing directory, so name a child that does
 # not exist yet rather than handing it the mktemp -d itself.
@@ -266,9 +361,13 @@ else
     "${REPO_ROOT}/bin/agent-run.sh" "$RUN_DIR" "$RUN_DIR/prompt.md" engineer "$ARM" "$HERMES_HOME"
 fi
 
-# Four arguments. Three would make validate_run report the run as unanchored
-# and fail it — deliberately, so a missing anchor is loud.
+# Five arguments, all three anchors from anchors/ and none from run_dir. An
+# empty fourth would make validate_run report the run as unanchored;
+# --no-cloud-state in the fifth would make it report the cloud as UNVERIFIED.
+# Both fail the trial — deliberately, so a missing anchor is loud rather than
+# a check that quietly did not run.
 "${REPO_ROOT}/bin/validate-trial-artifacts.sh" "$RUN_DIR" "$CANONICAL_REPO" \
-  "${ANCHOR_DIR}/repo-state-before.json" "$BUNDLE_SHA256"
+  "${ANCHOR_DIR}/repo-state-before.json" "$BUNDLE_SHA256" \
+  "${ANCHOR_DIR}/cloud-state-before.json"
 
 echo "run ${RUN_ID} complete"

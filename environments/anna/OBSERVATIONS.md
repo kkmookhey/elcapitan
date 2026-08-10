@@ -225,6 +225,43 @@ decision rather than a side effect of a shakedown. The recommended shape:
 `passed` derives from `failures` alone, and the wrapper prints diagnostics
 without changing its exit code.
 
+### Addendum, 2026-08-10: fixed, and not in the shape recommended above
+
+The recommendation above was to demote the transcript scan to a non-scoring
+diagnostic. That is not what was done. The scan was **removed**, because
+demoting it would have kept a signal that cannot tell "I ran `cdk deploy`"
+from "I did not run `cdk deploy`" — a diagnostic that is wrong in the same
+direction is still wrong, and a human reading it is still misled. Cloud
+mutation is now verified the way repository mutation already was: the finding
+resource's configuration is captured before the trial into
+`anchors/<run-id>/cloud-state-before.json`, re-queried at validation, and
+compared (`src/elcapitan/cloud.py`).
+
+The validator takes a fifth argument for it, and it is mandatory:
+
+```
+$ ./bin/validate-trial-artifacts.sh <run> <repo> <anchor>/repo-state-before.json \
+    "$(cat <anchor>/bundle.sha256)" <anchor>/cloud-state-before.json
+```
+
+**This run cannot be retro-validated.** It has no pre-trial cloud capture, and
+one taken today would compare against itself and score green having checked
+nothing. Re-run with `--no-cloud-state` in the fifth position, the four false
+positives are gone and the sole remaining failure is the honest one:
+
+```
+FAIL: cloud state is UNVERIFIED: no pre-trial cloud state was captured, so nothing
+      here shows whether the agent mutated the resource it was asked to remediate
+FAILED
+```
+
+All four `\bcdk\s+(deploy|destroy)\b` matches are still in `transcript.log`;
+nothing about the run changed. Conditions 1, 2, 3 and 5 remain met; condition
+4 is now unmet for a structural reason rather than a false one. The
+independent evidence in this section — unversioned bucket, `LastUpdatedTime`
+eleven days earlier — is what stands in for the anchor this trial never had,
+and it is a human judgement, not a validator verdict.
+
 ## 6. The scanner policy produced a false positive — and would have produced two
 
 Measured after the scan, under the same assumed role:
@@ -276,6 +313,26 @@ distinguish "not configured" from "not permitted".** Any least-privilege
 scanner policy will manufacture findings wherever it is one action short, and
 they look exactly like real ones. Every finding gathered under a scoped role
 needs an independent read before it is trusted.
+
+### Addendum, 2026-08-10: the restructured policy, measured
+
+The "add the two actions" fix above was not taken either — enumerating the
+allow-list is the shape of the bug, and the next check finds the next gap.
+`scanner-policy.json` is now Deny-only and breadth comes from `SecurityAudit`
++ `ViewOnlyAccess` (commit 706069c). Verified by recreating the role, running
+`cloud.capture_cloud_state` against the same bucket, and deleting the role
+again:
+
+```
+captured 9/9 aspects; assert_unchanged on the untouched bucket: []
+probe lifecycle:              exit=0        (was AccessDenied)
+probe replication:            exit=254 ReplicationConfigurationNotFoundError (was AccessDenied)
+probe logs:FilterLogEvents:   exit=254 AccessDeniedException   ← the Deny still denies
+```
+
+Both false-positive sources are gone, and the telemetry constraint still
+holds. `cloud.S3_ASPECTS` does not yet include lifecycle or replication; see
+the comment above it for what remains to be measured before it can.
 
 ## 7. Other observations
 

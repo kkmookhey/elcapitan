@@ -2558,12 +2558,15 @@ jq '{iac_managed:.linking.iac_managed, system:.linking.system_detected,
      method:.linking.method, files:.linking.files,
      resolution:.resolution_type, status:.status}' "$RUN/proposal.json"
 
-# Four arguments. The anchor and repo-state-before both live under anchors/,
-# not in the run directory — sourcing either from run_dir would let a coherent
-# forgery recompute them along with everything else. Task 12 already invoked
-# the validator correctly; this is the manual equivalent for inspection.
+# Five arguments. All three anchors live under anchors/, not in the run
+# directory — sourcing any of them from run_dir would let a coherent forgery
+# recompute them along with everything else. The fifth is mandatory:
+# --no-cloud-state declares on the record that no pre-trial capture exists,
+# and still fails the run. Task 12 already invokes the validator correctly;
+# this is the manual equivalent for inspection.
 ./bin/validate-trial-artifacts.sh "$RUN" "$ELCAP_CANONICAL_REPO" \
-    "$ANCHOR/repo-state-before.json" "$(cat "$ANCHOR/bundle.sha256")"
+    "$ANCHOR/repo-state-before.json" "$(cat "$ANCHOR/bundle.sha256")" \
+    "$ANCHOR/cloud-state-before.json"
 
 git -C "$ELCAP_CANONICAL_REPO" status --porcelain --untracked-files=all | wc -l   # expect 0
 ```
@@ -2594,12 +2597,30 @@ Tasks 3–10 (the deterministic core) are built, reviewed and merged. Tasks 0, 1
 11, 12, 13 remain. Execution changed four things this document still describes the
 old way. **Read this before executing any remaining task.**
 
-1. **`validate_run` has a fourth keyword parameter.** It is now
-   `validate_run(run_dir, *, canonical_repo, repo_state_before, expected_bundle_hash=None)`.
-   The code at Task 9 Step 3 and in Task 12's harness still shows the three-argument
-   form. When `expected_bundle_hash` is `None`, validation **fails** with
-   `"input bundle integrity is unanchored"` — deliberately, so a missing anchor is
-   loud rather than silent.
+1. **`validate_run` has two more keyword parameters.** It is now
+   `validate_run(run_dir, *, canonical_repo, repo_state_before, cloud_state_before,
+   expected_bundle_hash=None, env=None)`. The code at Task 9 Step 3 and in Task 12's
+   harness still shows the three-argument form. When `expected_bundle_hash` is
+   `None`, validation **fails** with `"input bundle integrity is unanchored"` —
+   deliberately, so a missing anchor is loud rather than silent.
+
+   `cloud_state_before` has **no default**, on purpose: it is a keyword you cannot
+   forget but may explicitly set to `None`, which fails with
+   `"cloud state is UNVERIFIED"` rather than skipping the check. The shell wrapper
+   mirrors that — its fifth argument is mandatory and takes either a
+   `cloud-state-before.json` path or the literal `--no-cloud-state`; omitting it is
+   a usage error (exit 2) and prints no verdict at all. An optional argument would
+   have handed back, one layer out, exactly the "a check that can be skipped by
+   saying nothing" property the signature was shaped to remove.
+
+1b. **`bin/run-trial.sh` requires the three `ELCAP_SCANNER_AWS_*` variables in every
+   mode, including `ELCAP_STUB=1`.** It captures the finding resource's
+   configuration before the agent step into `anchors/<run-id>/cloud-state-before.json`
+   and the validator re-queries it after. Stub mode gets no exemption because the
+   validator has none: a stub trial that skipped the capture would be scored by a
+   different validator call than a real trial, which destroys the stub's only
+   purpose. Tests satisfy it with a real executable named `aws` on `PATH`
+   (`tests/fake_aws.py`), so the production code path runs unmocked.
 
 2. **`bin/run-trial.sh` as written always fails.** Task 12's invocation passes the
    wrapper three arguments and therefore hits that failure. It must pass a fourth:

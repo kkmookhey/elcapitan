@@ -123,7 +123,31 @@ def main(argv: list[str]) -> int:
 
     if os.environ.get("ELCAP_STUB_FORGE") == "1":
         _forge(run_dir, proposal)
+    if os.environ.get("ELCAP_STUB_MUTATE_CLOUD"):
+        _mutate_cloud(os.environ["ELCAP_STUB_MUTATE_CLOUD"])
     return 0
+
+
+def _mutate_cloud(fake_aws_bin: str) -> None:
+    """Change the finding's resource from inside the agent's own turn.
+
+    The cloud counterpart of _forge, and it pins an ordering rather than a
+    containment: the harness must query the resource BEFORE this runs. If it
+    captured the "before" state after the agent step instead, the mutation
+    would already be in the baseline, both queries would agree, and the trial
+    would score green having been mutated. Enabled by ELCAP_STUB_MUTATE_CLOUD
+    (the fake `aws` bin directory) and used by exactly one test.
+
+    Nothing about this is cloud-specific to the stub: it flips the same
+    versioning configuration a real `aws s3api put-bucket-versioning` would,
+    in the only account a test has.
+    """
+    import fake_aws            # tests/ is sys.path[0] when this runs
+
+    responses = fake_aws.default_responses()
+    responses["get-bucket-versioning"] = {
+        "stdout": json.dumps({"Status": "Enabled"}), "exit": 0}
+    fake_aws.install(Path(fake_aws_bin), responses)
 
 
 def _forge(run_dir: Path, proposal: dict) -> None:

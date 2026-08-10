@@ -21,6 +21,7 @@ from pathlib import Path
 
 import pytest
 
+import fake_aws
 from elcapitan.hashing import sha256_file
 from elcapitan.manifest import bundle_hash
 
@@ -38,11 +39,20 @@ def git(repo, *args):
 
 
 def make_workspace(workspace: Path) -> dict:
-    """A repo WITH a commit, a real finding file, and an environment adapter.
+    """A repo WITH a commit, a real finding file, an environment adapter, and
+    a real `aws` on PATH.
 
     ELCAP_ENV_ADAPTER is set explicitly: environments/anna/env.yaml is Task
     13's deliverable and does not exist yet, and a test must not write into
     the checkout to make the harness runnable.
+
+    The cloud side is not stubbed out of the harness, only out of the account.
+    run-trial.sh captures the finding resource's configuration before the agent
+    step and its validator re-queries it afterwards, in stub mode exactly as in
+    a real trial — so these tests install a real executable named `aws`
+    (tests/fake_aws.py) and the three scanner variables, and the production
+    code path runs unmodified. The fixture finding names
+    arn:aws:s3:::anna-assets, which is the bucket that fake responds for.
     """
     repo = workspace / "repo"
     repo.mkdir()
@@ -65,9 +75,17 @@ def make_workspace(workspace: Path) -> dict:
     gt = workspace / "gt-outside"
     gt.mkdir()
 
+    aws_bin = fake_aws.install(workspace / "aws-bin")
+
     return {"ELCAP_WORKSPACE": str(workspace), "ELCAP_CANONICAL_REPO": str(repo),
             "ELCAP_GROUND_TRUTH_DIR": str(gt), "ELCAP_ENV_ADAPTER": str(adapter),
-            "ELCAP_STUB": "1"}
+            "ELCAP_STUB": "1",
+            "PATH": f"{aws_bin}{os.pathsep}{os.environ['PATH']}",
+            **fake_aws.scanner_credentials()}
+
+
+def aws_bin_of(env: dict) -> Path:
+    return Path(env["PATH"].split(os.pathsep)[0])
 
 
 def run_trial(env: dict, args=TRIAL) -> subprocess.CompletedProcess:
@@ -75,12 +93,22 @@ def run_trial(env: dict, args=TRIAL) -> subprocess.CompletedProcess:
                           env={**os.environ, **env})
 
 
-def run_validator(run_dir, canonical_repo, repo_state_before,
-                  anchor=None) -> subprocess.CompletedProcess:
-    argv = [str(VALIDATOR), str(run_dir), str(canonical_repo), str(repo_state_before)]
-    if anchor is not None:
-        argv.append(anchor)
-    return subprocess.run(argv, capture_output=True, text=True)
+def run_validator(env: dict, run_dir, canonical_repo, repo_state_before,
+                  anchor="", cloud=None,
+                  argc=5) -> subprocess.CompletedProcess:
+    """Run the validator the way run-trial.sh does.
+
+    `env` is threaded through rather than inherited because the validator
+    re-queries the cloud under the scanner identity, and both the fake `aws`
+    and the scanner variables live in the workspace env. `argc` exists for the
+    one test that checks a short argument list is a usage error rather than a
+    verdict.
+    """
+    argv = [str(VALIDATOR), str(run_dir), str(canonical_repo),
+            str(repo_state_before), str(anchor),
+            "--no-cloud-state" if cloud is None else str(cloud)]
+    return subprocess.run(argv[:1 + argc], capture_output=True, text=True,
+                          env={**os.environ, **env})
 
 
 @pytest.fixture(scope="module")
@@ -186,6 +214,7 @@ def test_anchors_are_held_outside_the_run_directory(completed):
 
     assert (anchors / "bundle.sha256").is_file()
     assert (anchors / "repo-state-before.json").is_file()
+    assert (anchors / "cloud-state-before.json").is_file()
     # Sibling of runs/, never inside it: container.py refuses any mount that is
     # an ancestor of run_dir, so nothing under anchors/ can reach a container.
     assert not str(anchors.resolve()).startswith(str((workspace / "runs").resolve()) + os.sep)
@@ -204,6 +233,10 @@ def test_no_agent_writable_copy_of_the_anchor_is_left_in_the_run_dir(completed):
     run = workspace / "runs" / RUN_ID
     assert not (run / "inputs" / "bundle.sha256").exists()
     assert not (run / "repo-state-before.json").exists()
+    # Same reasoning for the cloud baseline: a pre-trial capture the agent can
+    # rewrite is not a baseline, it is a second copy of the agent's claim.
+    assert not (run / "cloud-state-before.json").exists()
+    assert not (run / "inputs" / "cloud-state-before.json").exists()
 
 
 def test_validator_passes_with_the_anchor_and_fails_loudly_without_it(completed):
@@ -212,14 +245,142 @@ def test_validator_passes_with_the_anchor_and_fails_loudly_without_it(completed)
     anchors = workspace / "anchors" / RUN_ID
     state = anchors / "repo-state-before.json"
     anchor = (anchors / "bundle.sha256").read_text().strip()
+    cloud = anchors / "cloud-state-before.json"
 
-    with_anchor = run_validator(run, env["ELCAP_CANONICAL_REPO"], state, anchor)
+    with_anchor = run_validator(env, run, env["ELCAP_CANONICAL_REPO"], state,
+                                anchor, cloud)
     assert with_anchor.returncode == 0, with_anchor.stderr
     assert "PASS" in with_anchor.stdout
 
-    without = run_validator(run, env["ELCAP_CANONICAL_REPO"], state)
+    without = run_validator(env, run, env["ELCAP_CANONICAL_REPO"], state,
+                            "", cloud)
     assert without.returncode != 0
     assert "unanchored" in without.stderr
+
+
+# --- the cloud anchor ------------------------------------------------------
+
+def test_the_cloud_anchor_records_the_resource_the_finding_names(completed):
+    workspace, _, _ = completed
+    anchors = workspace / "anchors" / RUN_ID
+    run = workspace / "runs" / RUN_ID
+
+    captured = json.loads((anchors / "cloud-state-before.json").read_text())
+    finding = json.loads((run / "inputs" / "finding.json").read_text())
+    assert captured["resource_uid"] == finding["resource"]["uid"]
+    assert captured["provider"] == "aws"
+    # A capture with an empty config would compare equal to itself afterwards
+    # and score green having verified nothing.
+    assert captured["config"]
+
+
+def test_a_cloud_mutation_during_the_trial_is_rejected_by_the_harness(tmp_path):
+    """The cloud counterpart of the forgery test, and it pins an ordering.
+
+    The stub changes the bucket's versioning configuration during its own turn.
+    run-trial.sh's own validator call must reject the trial. A run-trial.sh
+    that captured the pre-trial state *after* the agent step would have the
+    mutation already in its baseline, both queries would agree, and this trial
+    would score green.
+    """
+    env = make_workspace(tmp_path)
+    env["ELCAP_STUB_MUTATE_CLOUD"] = str(aws_bin_of(env))
+    result = run_trial(env)
+    assert result.returncode != 0, result.stdout
+    assert "FAILED" in result.stdout
+    assert "cloud resource modified during run" in result.stderr
+    assert "versioning" in result.stderr
+
+
+def test_the_validator_refuses_a_short_argument_list_rather_than_scoring_it(completed):
+    """Four arguments is a usage error, not a verdict.
+
+    validate_run's cloud_state_before is a keyword with no default precisely so
+    a caller cannot inherit it by saying nothing; an optional fifth shell
+    argument would give that property straight back. Note what is asserted:
+    neither PASS nor FAILED is printed, because nothing was scored.
+    """
+    workspace, env, _ = completed
+    anchors = workspace / "anchors" / RUN_ID
+    result = run_validator(env, workspace / "runs" / RUN_ID,
+                           env["ELCAP_CANONICAL_REPO"],
+                           anchors / "repo-state-before.json",
+                           (anchors / "bundle.sha256").read_text().strip(),
+                           argc=4)
+    assert result.returncode == 2
+    assert "PASS" not in result.stdout and "FAILED" not in result.stdout
+    assert "--no-cloud-state" in result.stderr
+
+
+def test_declaring_no_cloud_state_fails_the_run_rather_than_skipping_the_check(completed):
+    workspace, env, _ = completed
+    anchors = workspace / "anchors" / RUN_ID
+    result = run_validator(env, workspace / "runs" / RUN_ID,
+                           env["ELCAP_CANONICAL_REPO"],
+                           anchors / "repo-state-before.json",
+                           (anchors / "bundle.sha256").read_text().strip(),
+                           cloud=None)
+    assert result.returncode != 0
+    assert "UNVERIFIED" in result.stderr
+    assert "FAILED" in result.stdout
+
+
+@pytest.mark.parametrize("content", [None, "{not json", "{}", '{"provider": "aws"}'])
+def test_a_broken_cloud_anchor_is_not_downgraded_to_no_anchor(completed, tmp_path, content):
+    """"The operator meant to check and the anchor is broken" and "the operator
+    declared there is nothing to check" are different facts. Silently treating
+    the first as the second would make a corrupted anchor indistinguishable
+    from an honest declaration — and, worse, make corrupting one a way to soften
+    the verdict."""
+    workspace, env, _ = completed
+    anchors = workspace / "anchors" / RUN_ID
+    broken = tmp_path / "broken-cloud-state.json"
+    if content is not None:
+        broken.write_text(content)
+
+    result = run_validator(env, workspace / "runs" / RUN_ID,
+                           env["ELCAP_CANONICAL_REPO"],
+                           anchors / "repo-state-before.json",
+                           (anchors / "bundle.sha256").read_text().strip(),
+                           cloud=broken)
+    assert result.returncode == 1
+    assert "cannot read cloud-state-before" in result.stderr
+    assert "FAILED" in result.stdout
+
+
+@pytest.mark.parametrize("missing", sorted(fake_aws.scanner_credentials()))
+def test_missing_scanner_credentials_are_refused_before_the_run_id_is_burned(
+        tmp_path, missing):
+    """Stub mode gets no exemption: the validator it invokes re-queries the
+    resource whichever way the agent step ran. Checked before anything is
+    created, for the same reason as ELCAP_MODEL_API_KEY — trials are immutable,
+    so dying after the directories exist spends the id on a config error."""
+    env = make_workspace(tmp_path)
+    del env[missing]
+    result = subprocess.run(
+        [str(SCRIPT), *TRIAL], capture_output=True, text=True,
+        env={k: v for k, v in {**os.environ, **env}.items() if k != missing})
+    assert result.returncode != 0
+    assert missing in result.stderr
+    assert not (tmp_path / "runs" / RUN_ID).exists()
+    assert not (tmp_path / "anchors" / RUN_ID).exists()
+
+
+def test_an_uncapturable_cloud_resource_stops_the_trial_before_it_starts(tmp_path):
+    """A denial is never folded into the state as "not configured" — that is
+    Prowler's own defect in this account (environments/anna/OBSERVATIONS.md §6)
+    and it would produce a baseline that compares equal to itself. The trial
+    does not start, and the id is not spent."""
+    env = make_workspace(tmp_path)
+    responses = fake_aws.default_responses()
+    responses["get-bucket-acl"] = fake_aws.denied("AccessDenied")
+    fake_aws.install(aws_bin_of(env), responses)
+
+    result = run_trial(env)
+    assert result.returncode != 0
+    assert "pre-trial cloud state" in result.stderr and "AccessDenied" in result.stderr
+    assert not (tmp_path / "runs" / RUN_ID).exists()
+    assert not (tmp_path / "anchors" / RUN_ID).exists()
 
 
 def test_agent_side_forgery_during_the_trial_is_rejected_by_the_harness(tmp_path):
@@ -271,9 +432,10 @@ def test_coherent_forgery_is_caught_only_by_the_out_of_band_anchor(tmp_path):
     proposal["input_bundle_hash"] = bundle_hash(manifest)
     proposal_path.write_text(json.dumps(proposal, indent=2))
 
-    result = run_validator(run, env["ELCAP_CANONICAL_REPO"],
+    result = run_validator(env, run, env["ELCAP_CANONICAL_REPO"],
                            anchors / "repo-state-before.json",
-                           (anchors / "bundle.sha256").read_text().strip())
+                           (anchors / "bundle.sha256").read_text().strip(),
+                           anchors / "cloud-state-before.json")
     assert result.returncode != 0
     assert "pre-trial anchor" in result.stderr
 
