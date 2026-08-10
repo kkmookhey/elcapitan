@@ -2,52 +2,25 @@
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "ConfigReadOnly",
-      "Effect": "Allow",
-      "Resource": "*",
-      "Action": [
-        "s3:GetBucket*",
-        "s3:ListAllMyBuckets",
-        "s3:GetEncryptionConfiguration",
-        "s3:GetAccountPublicAccessBlock",
-        "dynamodb:DescribeTable",
-        "dynamodb:DescribeContinuousBackups",
-        "dynamodb:ListTables",
-        "dynamodb:ListTagsOfResource",
-        "lambda:GetFunction*",
-        "lambda:ListFunctions",
-        "lambda:ListTags",
-        "events:DescribeRule",
-        "events:ListRules",
-        "secretsmanager:DescribeSecret",
-        "secretsmanager:ListSecrets",
-        "iam:Get*",
-        "iam:List*",
-        "iam:GenerateCredentialReport",
-        "iam:GenerateServiceLastAccessedDetails",
-        "cloudwatch:DescribeAlarms",
-        "cloudformation:DescribeStacks",
-        "cloudformation:DescribeStackResources",
-        "cloudformation:ListStacks",
-        "cloudformation:ListStackResources",
-        "cloudformation:GetTemplate",
-        "sts:GetCallerIdentity",
-        "ec2:DescribeRegions"
-      ]
-    },
-    {
-      "Sid": "NoDataPlaneOrLogs",
+      "Sid": "NoDataPlaneOrTelemetry",
       "Effect": "Deny",
       "Resource": "*",
       "Action": [
         "s3:GetObject",
+        "s3:GetObjectVersion",
         "dynamodb:GetItem",
+        "dynamodb:BatchGetItem",
         "dynamodb:Scan",
         "dynamodb:Query",
+        "dynamodb:PartiQLSelect",
         "secretsmanager:GetSecretValue",
         "logs:GetLogEvents",
         "logs:FilterLogEvents",
-        "logs:StartQuery"
+        "logs:StartQuery",
+        "logs:GetQueryResults",
+        "logs:GetLogRecord",
+        "cloudtrail:LookupEvents",
+        "cloudtrail:GetQueryResults"
       ]
     }
   ]

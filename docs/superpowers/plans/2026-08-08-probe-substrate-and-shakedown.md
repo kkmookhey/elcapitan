@@ -2418,10 +2418,53 @@ git commit -m "feat(harness): engineer-stage trial runner with black-box contain
 The explicit `Deny` is what makes "no telemetry" enforced rather than requested — an IAM deny cannot be overridden by any allow.
 
 ```bash
+> **The allow-list must not be enumerated.** The first shakedown proved why. The
+> original policy allowed `s3:GetBucket*`, which does **not** match
+> `s3:GetLifecycleConfiguration` — the IAM action names drop the `Bucket` prefix
+> the API calls carry (`GetBucketLifecycleConfiguration` → `s3:GetLifecycleConfiguration`;
+> likewise replication, acceleration, analytics, inventory, metrics). Prowler
+> received `AccessDenied`, swallowed it, reported the field absent, and emitted a
+> **bogus `s3_bucket_lifecycle_enabled` FAIL**.
+>
+> That is the sharpest finding of the shakedown: **Prowler cannot distinguish "not
+> configured" from "not permitted."** Any gap in an enumerated allow-list therefore
+> *manufactures* findings — and a remediation pipeline downstream would faithfully
+> fix things that were never broken. Adding the two missing actions does not fix
+> the shape; the next check finds the next gap.
+>
+> So: **breadth comes from AWS-managed read-only policies, and the constraint is
+> enforced by an explicit `Deny`.** Deny always beats Allow in IAM, so
+> "no data plane, no telemetry" is enforced rather than merely requested — while
+> coverage stays complete enough that a missing permission never masquerades as a
+> misconfiguration. `environments/anna/scanner-policy.json` is now Deny-only.
+>
+> Note what the Deny deliberately does **not** cover: configuration reads such as
+> `lambda:GetFunctionConfiguration`. Denying those would reintroduce the same
+> false-finding bug from the other direction. The Deny targets object data, table
+> items, secret values, log content and trail events — the PII-bearing surfaces the
+> spec's Appendix B is actually about.
+
+```bash
 aws iam create-role --role-name elcapitan-anna-scanner \
   --assume-role-policy-document file://environments/anna/trust-policy.json
+
+# Breadth from managed read-only policies — complete coverage, so a missing
+# permission can never masquerade as a misconfiguration.
+aws iam attach-role-policy --role-name elcapitan-anna-scanner \
+  --policy-arn arn:aws:iam::aws:policy/SecurityAudit
+aws iam attach-role-policy --role-name elcapitan-anna-scanner \
+  --policy-arn arn:aws:iam::aws:policy/job-function/ViewOnlyAccess
+
+# The constraint, enforced by an explicit Deny that beats every Allow above.
 aws iam put-role-policy --role-name elcapitan-anna-scanner \
-  --policy-name elcapitan-scanner --policy-document file://environments/anna/scanner-policy.json
+  --policy-name elcapitan-no-dataplane --policy-document file://environments/anna/scanner-policy.json
+
+# Prove the Deny actually denies, before trusting it:
+#   aws --profile <assumed> logs filter-log-events --log-group-name <any>   # expect AccessDenied
+#   aws --profile <assumed> s3api get-bucket-lifecycle-configuration \
+#       --bucket <anna-bucket>                                             # expect success or
+#                                                                          # NoSuchLifecycleConfiguration,
+#                                                                          # NOT AccessDenied
 
 # Temporary credentials only — never a long-lived access key.
 eval "$(aws sts assume-role --role-arn arn:aws:iam::<acct>:role/elcapitan-anna-scanner \
