@@ -2507,11 +2507,21 @@ Revised from the previous draft — the fourth condition no longer demands a pat
 5. The canonical repository is provably untouched.
 
 ```bash
-RUN="$ELCAP_WORKSPACE/runs/anna-FIND-001-armA-n1"
+RUN_ID="anna-FIND-001-armA-n1"
+RUN="$ELCAP_WORKSPACE/runs/$RUN_ID"
+ANCHOR="$ELCAP_WORKSPACE/anchors/$RUN_ID"      # OUTSIDE run_dir, never mounted
+
 jq '{iac_managed:.linking.iac_managed, system:.linking.system_detected,
      method:.linking.method, files:.linking.files,
      resolution:.resolution_type, status:.status}' "$RUN/proposal.json"
-./bin/validate-trial-artifacts.sh "$RUN" "$ELCAP_CANONICAL_REPO" "$RUN/repo-state-before.json"
+
+# Four arguments. The anchor and repo-state-before both live under anchors/,
+# not in the run directory — sourcing either from run_dir would let a coherent
+# forgery recompute them along with everything else. Task 12 already invoked
+# the validator correctly; this is the manual equivalent for inspection.
+./bin/validate-trial-artifacts.sh "$RUN" "$ELCAP_CANONICAL_REPO" \
+    "$ANCHOR/repo-state-before.json" "$(cat "$ANCHOR/bundle.sha256")"
+
 git -C "$ELCAP_CANONICAL_REPO" status --porcelain --untracked-files=all | wc -l   # expect 0
 ```
 
