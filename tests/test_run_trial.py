@@ -129,6 +129,27 @@ def test_rerunning_the_same_trial_id_is_refused(tmp_path):
     again = run_trial(env)
     assert again.returncode != 0
     assert "immutable" in again.stderr
+    # Both leftovers named: an operator retrying a failed trial has to remove
+    # the run directory AND the anchors directory, and "immutable" alone does
+    # not say that.
+    assert str(tmp_path / "runs" / RUN_ID) in again.stderr
+    assert str(tmp_path / "anchors" / RUN_ID) in again.stderr
+
+
+def test_missing_model_api_key_is_refused_before_the_run_id_is_burned(tmp_path):
+    """Non-stub mode needs ELCAP_MODEL_API_KEY. Checked before anything is
+    created: dying inside agent-run.sh instead would leave runs/<id> and
+    anchors/<id> behind, and trials are immutable, so the id would be spent."""
+    env = make_workspace(tmp_path)
+    env.pop("ELCAP_STUB")
+    result = subprocess.run(
+        [str(SCRIPT), *TRIAL], capture_output=True, text=True,
+        env={k: v for k, v in {**os.environ, **env}.items()
+             if k != "ELCAP_MODEL_API_KEY"})
+    assert result.returncode != 0
+    assert "ELCAP_MODEL_API_KEY" in result.stderr
+    assert not (tmp_path / "runs" / RUN_ID).exists()
+    assert not (tmp_path / "anchors" / RUN_ID).exists()
 
 
 # --- ground truth containment ---------------------------------------------

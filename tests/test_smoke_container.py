@@ -14,36 +14,54 @@ actually got populated.
 `--cap-drop=ALL`, verified on macOS + Docker Desktop only — see that tuple's
 own comment. Docker Desktop's bind-mount layer masks the ownership and
 permission failures that `--cap-drop=ALL` causes by also dropping
-CAP_CHOWN/CAP_FOWNER/CAP_DAC_OVERRIDE. `--tmpfs /opt/data` is a real Linux
-filesystem inside the Docker VM with real Linux permission semantics, and it
-is what makes the failure visible from a Mac.
+CAP_CHOWN/CAP_FOWNER/CAP_DAC_OVERRIDE, so on a Mac the runtime looks fine
+while being broken everywhere else.
 
-`test_hardened_container_populates_opt_data_on_a_real_linux_filesystem` is
-the detector, and **it is expected to FAIL** until the capability set is
-resolved. That is deliberate: the alternative is a green suite over a runtime
-that does not work outside one developer's laptop.
-`test_opt_data_initialisation_needs_chown_fowner_and_dac_override` is the
-diagnosis: the identical run with those three capabilities restored succeeds,
-which is what makes "the capability set is wrong" a measurement rather than a
-guess. Resolving it is not this task's job; detecting it is.
+Reproducing that from a Mac needs a real Linux filesystem inside the Docker
+VM. Two are used here, in decreasing order of fidelity to what the harness
+actually does:
 
-Measured on macOS/Docker Desktop (arm64), image elcapitan-lab:0.1.0, four
-mount kinds for /opt/data under the same HARDENING tuple:
+- **A named volume `chown`ed to the host uid/gid and `chmod 700`, with
+  `HERMES_UID`/`HERMES_GID` passed** — this is what `mktemp -d` +
+  `seed_hermes_home` + `bin/agent-run.sh` produce on a Linux host, and it is
+  therefore the *primary* detector. An earlier revision of this file called
+  the remap a possible escape ("HERMES_UID might save it"); measurement closed
+  that question in the other direction — the remap itself needs the dropped
+  capabilities.
+- **`--tmpfs /opt/data`** — cruder (root-owned, and the harness never mounts a
+  tmpfs there), kept as a secondary case because it fails in a *different
+  shape* and a partial fix could satisfy one while leaving the other broken.
 
-| /opt/data is | result |
-|---|---|
-| bind mount (what the harness uses) | populated, 16 entries — Docker Desktop masks it |
-| `--tmpfs` (root-owned, default mode) | **empty**, exit 0, 16 `Permission denied` lines |
-| `--tmpfs ...,mode=0777` | populated — proves the blocker is write access, not the tmpfs |
-| named volume pre-chowned to 10000 | `main-wrapper.sh: cd: can't cd to /opt/data`, exit 2 |
+Measured on macOS/Docker Desktop (arm64), image elcapitan-lab:0.1.0, same
+HARDENING tuple, varying only what `/opt/data` is:
 
-and the last two rows both become clean runs once CHOWN, FOWNER and
-DAC_OVERRIDE are added back.
+| `/opt/data` is | under `HARDENING` | `+ CHOWN,FOWNER,DAC_OVERRIDE` |
+|---|---|---|
+| bind mount (Docker Desktop) | populated, 16 entries — masked | n/a |
+| **named volume, `chown` host uid/gid, `chmod 700`, `HERMES_UID`/`GID` set** | **exit 2**, `PermissionError: '/opt/data/gateway_state.json'`, `main-wrapper.sh: cd: can't cd to /opt/data` | exit 0, `uid=…(hermes)`, 19 entries |
+| `--tmpfs` (root-owned, default mode) | **exit 0**, empty, 16 × `Permission denied` | exit 0, 16 entries, clean |
+| `--tmpfs …,mode=0777` | populated — so the blocker is write access, not the tmpfs | n/a |
+| named volume `chown`ed to 10000, `chmod 755` | `cd: can't cd to /opt/data`, exit 2 | exit 0, `uid=10000(hermes)`, 19 entries |
+
+Note the two failure shapes: the production-faithful case exits **2**, the
+tmpfs case exits **0**. Either alone would be a partial detector.
+
+Both detectors are `xfail(strict=True)`, not hard failures. The smoke suite is
+the operator's go/no-go check before the first scored trial on Linux, and a
+permanently-red suite cannot serve as one: a second, genuine regression would
+be indistinguishable at a glance. Strict xfail keeps the suite green, and
+flips to a **failure** the moment someone fixes the capability set — the
+transition signal a hard failure cannot give. Their companions (the same runs
+with the three capabilities restored) are ordinary passing tests, and that
+pairing is what makes "the capability set is wrong" a measurement rather than
+a guess. Resolving it is not this task's job; detecting it is.
 """
+import contextlib
 import json
 import os
 import re
 import subprocess
+import uuid
 from pathlib import Path
 
 import pytest
@@ -111,47 +129,117 @@ def test_pinned_tools_are_present_at_the_pinned_versions():
 
 # --- the capability set, on a real Linux filesystem ------------------------
 
-def _run_init_with(caps_and_flags, mount_flags):
-    return docker("run", "--rm", "--network=none", *caps_and_flags, *mount_flags,
-                  IMAGE, "sh", "-lc",
-                  'echo "OPT_DATA_ENTRIES=$(ls -A /opt/data 2>/dev/null | wc -l)"')
+# The three the image's s6 init needs and `--cap-drop=ALL` takes away. Not
+# added to container.HARDENING here: CAP_DAC_OVERRIDE bypasses every file
+# permission check, which is a real reduction in the isolation boundary and a
+# decision for a human, not a side effect of a test file.
+RESTORED_CAPS = ("--cap-add=CHOWN", "--cap-add=FOWNER", "--cap-add=DAC_OVERRIDE")
+XFAIL_REASON = ("container.HARDENING drops CHOWN/FOWNER/DAC_OVERRIDE; see "
+                ".superpowers/sdd/2026-08-08-probe-substrate-and-shakedown/"
+                "task-12-report.md §6. If this XPASSes, the capability set was "
+                "fixed — delete the marker.")
+MARKER_COMMAND = 'id; echo "OPT_DATA_ENTRIES=$(ls -A /opt/data 2>/dev/null | wc -l)"'
 
 
-def test_hardened_container_populates_opt_data_on_a_real_linux_filesystem():
-    """The detector. HARDENING is imported, not restated, so this tracks the
-    real flag set rather than a copy of it.
+def _run_init_with(caps_and_flags, mount_flags, env_flags=()):
+    return docker("run", "--rm", "--network=none", *env_flags, *caps_and_flags,
+                  *mount_flags, IMAGE, "sh", "-lc", MARKER_COMMAND)
 
-    Note what is deliberately NOT asserted: the exit status. The measured
-    failure mode is exit 0 with fifteen `mkdir: cannot create directory
-    '/opt/data': Permission denied` lines and an empty /opt/data — asserting
-    on the exit code would score that green.
-    """
-    result = _run_init_with(HARDENING, ("--tmpfs", "/opt/data"))
+
+def assert_the_container_did_the_work(result, *, label):
+    """Never asserts on exit status. The two measured failures are exit 0 with
+    an empty /opt/data (tmpfs) and exit 2 with `cd: can't cd to /opt/data`
+    (volume) — an exit-status assertion scores the first green and blames the
+    second on the wrong thing."""
     output = combined(result)
-
     assert opt_data_entry_count(output) > 0, (
-        "the container started and exited "
-        f"{result.returncode} with /opt/data empty — s6 init never populated the "
-        f"Hermes home, so no agent could run in it:\n{output[-3000:]}")
+        f"{label}: container exited {result.returncode} with /opt/data empty or "
+        f"unreachable — s6 init never populated the Hermes home, so no agent "
+        f"could run in it:\n{output[-3000:]}")
     failures = [line for line in output.splitlines() if PERMISSION_FAILURE.search(line)]
-    assert not failures, (
-        "container init hit permission failures under HARDENING:\n"
-        + "\n".join(failures[:20]))
+    assert not failures, (f"{label}: container init hit permission failures:\n"
+                          + "\n".join(failures[:20]))
 
 
-def test_opt_data_initialisation_needs_chown_fowner_and_dac_override():
-    """The diagnosis for the test above. Identical run, three capabilities
-    restored on top of the same --cap-drop=ALL baseline. It passing while the
-    test above fails is what identifies the cause as the capability set rather
-    than the image, the tmpfs, or the command."""
-    result = _run_init_with(
-        (*HARDENING, "--cap-add=CHOWN", "--cap-add=FOWNER", "--cap-add=DAC_OVERRIDE"),
-        ("--tmpfs", "/opt/data"))
-    output = combined(result)
+@contextlib.contextmanager
+def linux_hermes_home_volume(uid, gid, mode="700"):
+    """A named docker volume owned and permissioned the way `mktemp -d` +
+    `seed_hermes_home` leave a host directory on a Linux box.
 
-    assert opt_data_entry_count(output) > 0, output[-3000:]
-    failures = [line for line in output.splitlines() if PERMISSION_FAILURE.search(line)]
-    assert not failures, "\n".join(failures[:20])
+    A named volume lives on the Docker VM's own Linux filesystem, so it has
+    real Linux ownership semantics — unlike a bind mount from macOS, whose
+    virtiofs layer is exactly what has been masking this failure. The `chown`
+    runs in a container with default capabilities (`--entrypoint sh`, so s6
+    init is bypassed and it costs ~0.3s); the container under test still gets
+    the hardened set.
+    """
+    name = f"elcap-smoke-{uuid.uuid4().hex[:12]}"
+    created = docker("volume", "create", name)
+    assert created.returncode == 0, created.stderr
+    try:
+        prepared = docker("run", "--rm", "--entrypoint", "sh", "-v", f"{name}:/d",
+                          IMAGE, "-c", f"chown {uid}:{gid} /d && chmod {mode} /d")
+        assert prepared.returncode == 0, combined(prepared)
+        yield name
+    finally:
+        docker("volume", "rm", "-f", name)
+
+
+@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
+def test_hardened_container_initialises_a_production_shaped_hermes_home():
+    """**The primary detector**, and the one closest to production: a real
+    Linux filesystem owned by the invoking user at mode 700, with
+    HERMES_UID/HERMES_GID passed exactly as bin/agent-run.sh passes them.
+
+    That remap was the open question in this task's first revision — whether
+    it might let the harness work on Linux despite the capability set.
+    Measured: it does not. The remap itself needs the dropped capabilities,
+    and this configuration fails *harder* than the tmpfs case below (exit 2,
+    `main-wrapper.sh: cd: can't cd to /opt/data`, rather than exit 0 with an
+    empty directory).
+
+    HARDENING is imported, not restated, so this tracks the real flag set.
+    """
+    uid, gid = os.getuid(), os.getgid()
+    with linux_hermes_home_volume(uid, gid) as volume:
+        result = _run_init_with(HARDENING, ("-v", f"{volume}:/opt/data"),
+                                ("-e", f"HERMES_UID={uid}", "-e", f"HERMES_GID={gid}"))
+    assert_the_container_did_the_work(result, label="production-shaped home")
+
+
+def test_production_shaped_home_works_once_chown_fowner_dac_override_return():
+    """The diagnosis for the detector above. Identical run — same volume
+    ownership, same remap, same command — with three capabilities restored on
+    top of the same --cap-drop=ALL baseline. This passing while the detector
+    xfails is what identifies the cause as the capability set rather than the
+    image, the filesystem, the remap, or the command."""
+    uid, gid = os.getuid(), os.getgid()
+    with linux_hermes_home_volume(uid, gid) as volume:
+        result = _run_init_with((*HARDENING, *RESTORED_CAPS),
+                                ("-v", f"{volume}:/opt/data"),
+                                ("-e", f"HERMES_UID={uid}", "-e", f"HERMES_GID={gid}"))
+    assert_the_container_did_the_work(result, label="production-shaped home + caps")
+    assert f"uid={uid}" in combined(result), (
+        "the HERMES_UID remap did not take effect, so this run is not the "
+        "configuration it claims to be")
+
+
+@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
+def test_hardened_container_populates_a_tmpfs_hermes_home():
+    """Secondary detector. Cruder than the one above — the harness never
+    mounts a tmpfs at /opt/data — but kept because it fails in a *different
+    shape*: exit 0 with an empty directory and 16 `mkdir: cannot create
+    directory '/opt/data': Permission denied` lines, where the production
+    case exits 2. A partial fix to the capability set could satisfy one and
+    leave the other broken, so both are checked."""
+    result = _run_init_with(HARDENING, ("--tmpfs", "/opt/data"))
+    assert_the_container_did_the_work(result, label="tmpfs home")
+
+
+def test_tmpfs_home_works_once_chown_fowner_dac_override_return():
+    """The diagnosis for the secondary detector."""
+    result = _run_init_with((*HARDENING, *RESTORED_CAPS), ("--tmpfs", "/opt/data"))
+    assert_the_container_did_the_work(result, label="tmpfs home + caps")
 
 
 # --- the mounts the harness actually generates -----------------------------
@@ -159,7 +247,15 @@ def test_opt_data_initialisation_needs_chown_fowner_and_dac_override():
 def test_engineer_spec_argv_really_launches_and_honours_its_mounts(tmp_path):
     """The harness's own spec, run for real. Three genuinely distinct paths:
     container.py rejects run_dir == canonical_repo == host_hermes_home, and
-    rejects any spec whose own paths nest."""
+    rejects any spec whose own paths nest.
+
+    Scope note for whoever sees this fail on Linux: what it checks is the two
+    /work mounts. The host_hermes_home it passes is an unseeded empty
+    directory and the network is `bridge` (engineer_spec's own settings), so on
+    a Linux host this will *also* break for the capability reason the two
+    detectors above cover — and it will read as a mount defect, which it is
+    not. Fix the capability set first, then re-run this.
+    """
     run_dir, repo, home = tmp_path / "run", tmp_path / "repo", tmp_path / "home"
     for directory in (run_dir, repo, home):
         directory.mkdir()

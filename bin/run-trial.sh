@@ -34,10 +34,19 @@
 # inputs/input-manifest.json, and proposal.json's own input_bundle_hash
 # together — a coherent forgery in which every internal consistency check the
 # validator makes still holds. Only a value captured before the agent ran and
-# stored where the agent cannot reach it detects that. The anchors directory
-# is a SIBLING of runs/, and container.py's _reject_overbroad_mounts already
-# refuses any mount that is an ancestor of run_dir, so no agent container can
-# be given a view of it.
+# stored where the agent cannot reach it detects that.
+#
+# Two things make that placement safe, and one that reads like a third does
+# not. The anchors directory is a SIBLING of runs/, so none of engineer_spec's
+# three mounts (canonical_repo, run_dir, host_hermes_home) covers it; and the
+# value is read into a shell variable BEFORE the agent step, so even a write
+# path into anchors/ would be too late. What does NOT hold — an earlier
+# revision of this comment claimed it did — is that container.py structurally
+# prevents anchors/ from ever being mounted: _reject_overbroad_mounts refuses
+# a mount of ${ELCAP_WORKSPACE} itself, because that is an ancestor of
+# run_dir, but an extra_mounts entry of ${ELCAP_WORKSPACE}/anchors is an
+# ancestor of nothing this spec uses and would be accepted. Nobody passes
+# extra_mounts today; if anyone starts, that is the hole to close.
 #
 # inputs/bundle.sha256 is deliberately NOT written. The plan's draft wrote it
 # and had the engineer read it back, which defeats the whole mechanism: the
@@ -139,11 +148,26 @@ if [ ! -f "$FINDING_SRC" ]; then
   exit 2
 fi
 
+# Checked here, before anything is created. A real trial that got as far as
+# agent-run.sh only to die on a missing API key would leave runs/<id> and
+# anchors/<id> behind and burn the trial id — trials are immutable, so the
+# operator would have to delete both by hand to retry. Guarded on stub mode
+# because the stub never launches a container and needs no credential.
+if [ "${ELCAP_STUB:-0}" != "1" ]; then
+  : "${ELCAP_MODEL_API_KEY:?ELCAP_MODEL_API_KEY must be set (maps to ANTHROPIC_API_KEY in bin/agent-run.sh)}"
+fi
+
 RUN_ID="${ENV_NAME}-${FINDING_ID}-arm${ARM}-n${TRIAL_N}"
 RUN_DIR="${WORKSPACE}/runs/${RUN_ID}"
 ANCHOR_DIR="${WORKSPACE}/anchors/${RUN_ID}"
 if [ -e "$RUN_DIR" ] || [ -e "$ANCHOR_DIR" ]; then
-  echo "run-trial.sh: run ${RUN_ID} exists — trials are immutable" >&2
+  # Name both paths: they are created and checked together, so there is no
+  # half-state to reason about, but an operator retrying after a failed trial
+  # needs to know what to remove — "trials are immutable" alone does not say.
+  echo "run-trial.sh: run ${RUN_ID} already exists — trials are immutable." >&2
+  echo "  to retry this trial id, remove both leftovers first:" >&2
+  echo "    ${RUN_DIR}" >&2
+  echo "    ${ANCHOR_DIR}" >&2
   exit 3
 fi
 mkdir -p "$RUN_DIR/inputs" "$RUN_DIR/evidence" "$RUN_DIR/patch" "$RUN_DIR/verdict"
