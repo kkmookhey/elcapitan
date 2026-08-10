@@ -59,6 +59,10 @@ class AgentResult:
     usage: dict                # session_model_usage row: tokens, cost, provider
     commands: list[CommandRecord]  # structured tool calls — see run_agent's persistence note
     stdout: str                 # kept for debugging only; not evidence
+    state_db_captured: bool = True  # False: no source, or capture itself failed — see
+                                    # _capture_state_db's docstring. A caller that knows
+                                    # the archive is missing is strictly better off than
+                                    # one that has to infer it from run_dir's filesystem.
 
 
 def resolve_secret_env(host_env: dict, mapping: dict) -> dict:
@@ -80,9 +84,14 @@ def _run_dir(spec: ContainerSpec) -> Path:
     return Path(next(m.source for m in spec.mounts if m.target == "/work/run"))
 
 
-def _capture_state_db(host_hermes_home: Path, run_dir: Path) -> None:
+def _capture_state_db(host_hermes_home: Path, run_dir: Path) -> bool:
     """Copy state.db into the run directory — the persistent evidence bundle
     — before anything can delete the ephemeral Hermes home it came from.
+
+    Returns True if state.db was actually captured, False otherwise (no
+    source to capture, or the capture itself failed). Recorded on
+    `AgentResult.state_db_captured` rather than left for a caller to infer
+    by checking run_dir's filesystem directly.
 
     This exists because bin/agent-run.sh deletes any host_hermes_home it
     seeded itself, on EXIT, on success as much as on failure (nothing else
@@ -108,28 +117,65 @@ def _capture_state_db(host_hermes_home: Path, run_dir: Path) -> None:
     where a second file (a `-wal` sidecar of the destination) would need
     to be copied alongside it, so the result can't be torn.
 
+    The read-only URI is built with `Path.as_uri()`, not an f-string. An
+    f-string (`f"file:{source}?mode=ro"`) leaves any `?`/`#` in
+    `host_hermes_home` unescaped — both `run_dir` and `host_hermes_home`
+    are caller-supplied argv in bin/agent-run.sh. Measured against a path
+    containing a literal `?`: the unescaped form connects successfully to
+    the WRONG resource (SQLite reads everything before the first bare `?`
+    as the path and everything after as query parameters), completes with
+    no exception, and writes a 4096-byte destination with an empty
+    `sqlite_master` — a *second*, silent route to the exact F1 symptom.
+    `as_uri()` percent-encodes `?` (confirmed: `Path("/tmp/weird?dir/x").as_uri()`
+    -> `.../weird%3Fdir/x`), so it names the real file regardless of what
+    characters are in the path.
+
     A source that doesn't exist (a stub test, or a real run that never got
     far enough to write anything) is not an error — read_session already
-    degrades to EMPTY_SESSION for that case, and this degrades the same way:
-    silently do nothing, rather than raising over a file that was never
-    going to exist.
+    degrades to EMPTY_SESSION for that case, and this degrades the same way.
+
+    A source that EXISTS but backup() fails — locked, truncated, corrupt,
+    not a SQLite file at all, or run_dir not writable — must ALSO degrade
+    rather than raise. `read_session` succeeding moments earlier in the
+    same `run_agent` call proves nothing about this: `read_session`'s own
+    contract is to catch exactly this exception class and return
+    EMPTY_SESSION, so a successful *return* from it is exactly as
+    consistent with "the database is fine" as with "the database is
+    garbage." Letting the exception escape here instead of degrading would
+    be a regression past the original F1 bug, not a fix past it: F1 lost
+    only the archive; an uncaught exception here crashes `run_agent`,
+    discarding the whole `AgentResult` (so `session.json` never gets
+    written either) — and self-defeatingly, since an exception out of
+    `run_agent` still reaches bin/agent-run.sh's `trap cleanup EXIT`, which
+    deletes `host_hermes_home` regardless of how `run_agent` exited,
+    destroying the very evidence this function exists to preserve. Any
+    partial destination file `sqlite3.connect(dest)` may already have
+    created before the failure is removed — a stale 0-byte `state.db`
+    would be misreadable as "captured successfully but genuinely empty"
+    rather than "capture failed," which `state_db_captured=False` states
+    unambiguously instead.
     """
     source = host_hermes_home / "state.db"
     if not source.is_file():
-        return
+        return False
     dest = run_dir / "state.db"
-    # Read-only source, same guarantee session.py's own reader already
-    # established: the host must never write to an artifact the agent
-    # produced.
-    source_con = sqlite3.connect(f"file:{source}?mode=ro", uri=True)
     try:
-        dest_con = sqlite3.connect(dest)
+        # Read-only source, same guarantee session.py's own reader already
+        # established: the host must never write to an artifact the agent
+        # produced.
+        source_con = sqlite3.connect(f"{source.as_uri()}?mode=ro", uri=True)
         try:
-            source_con.backup(dest_con)
+            dest_con = sqlite3.connect(dest)
+            try:
+                source_con.backup(dest_con)
+            finally:
+                dest_con.close()
         finally:
-            dest_con.close()
-    finally:
-        source_con.close()
+            source_con.close()
+    except (sqlite3.Error, OSError, ValueError):
+        dest.unlink(missing_ok=True)
+        return False
+    return True
 
 
 def _write_session_json(run_dir: Path, session) -> None:
@@ -220,8 +266,9 @@ def run_agent(spec: ContainerSpec, prompt_path, *, secret_env: dict, model: str,
     # Persist the primary evidence into run_dir BEFORE returning: a caller
     # (bin/agent-run.sh) may delete host_hermes_home the moment this
     # function returns, on success as much as on failure. See
-    # _capture_state_db's docstring for why this used to be lost entirely.
-    _capture_state_db(host_hermes_home, run_dir)
+    # _capture_state_db's docstring for why this used to be lost entirely,
+    # and for why it degrades (never raises) rather than crashing run_agent.
+    state_db_captured = _capture_state_db(host_hermes_home, run_dir)
     _write_session_json(run_dir, session)
 
     return AgentResult(
@@ -237,4 +284,5 @@ def run_agent(spec: ContainerSpec, prompt_path, *, secret_env: dict, model: str,
         usage=session.usage,
         commands=session.commands,
         stdout=stdout,
+        state_db_captured=state_db_captured,
     )

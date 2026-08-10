@@ -9,6 +9,7 @@ closed in Task 10's review (`_require_disjoint_spec_paths`). Every spec built
 here uses three distinct subdirectories.
 """
 import json
+import os
 import shutil
 import sqlite3
 from pathlib import Path
@@ -17,7 +18,13 @@ import pytest
 
 from elcapitan.container import engineer_spec
 from elcapitan.session import SessionRecord
-from elcapitan.shim import MODEL_ENV_MAP, SCANNER_ENV_MAP, resolve_secret_env, run_agent
+from elcapitan.shim import (
+    MODEL_ENV_MAP,
+    SCANNER_ENV_MAP,
+    _capture_state_db,
+    resolve_secret_env,
+    run_agent,
+)
 
 IMAGE = "sha256:" + "f" * 64
 MODEL = "anthropic/claude-sonnet-5"
@@ -350,8 +357,135 @@ def test_state_db_capture_reads_wal_data_not_a_checkpoint_husk(tmp_path):
             assert con.execute("SELECT count(*) FROM messages").fetchone()[0] == 3
         finally:
             con.close()
+        assert result.state_db_captured is True
     finally:
         writer.close()
+
+
+# --- second re-review: the guard around backup() itself, and the second
+# unescaped file: URI it introduced on the capture path ---
+
+def test_malformed_source_state_db_does_not_raise(tmp_path):
+    """A state.db that exists but is not a valid SQLite file (truncated,
+    corrupted, or simply garbage) must degrade the same way an absent one
+    does — NOT raise out of run_agent. Reproduced directly against
+    sqlite3.Connection.backup() before writing this test:
+    `sqlite3.DatabaseError: file is not a database`, with a 0-byte
+    destination file already created by `sqlite3.connect(dest)` before the
+    failure. read_session succeeding moments earlier in the same run_agent
+    call proves nothing about this source being readable — read_session's
+    own contract is to swallow exactly this exception class and return
+    EMPTY_SESSION, so its successful return is equally consistent with "the
+    database is fine" and "the database is garbage."
+    """
+    s = spec(tmp_path)
+    home = Path(s.host_hermes_home)
+    (home / "state.db").write_bytes(
+        b"not a sqlite database, just garbage bytes here, long enough to " * 4)
+    p = tmp_path / "p.md"
+    p.write_text("x")
+
+    result = run_agent(s, p, secret_env={}, model=MODEL,
+                       stub=lambda a, t, e: (0, "ok"))  # must not raise
+
+    run_dir = Path(next(m.source for m in s.mounts if m.target == "/work/run"))
+    assert (run_dir / "session.json").is_file()  # not lost along with the archive
+    assert not (run_dir / "state.db").exists()  # no 0-byte husk left behind
+    assert result.state_db_captured is False
+
+
+def test_run_dir_not_writable_state_db_capture_does_not_raise(tmp_path):
+    """Same contract violation as the malformed-source case, different
+    trigger: sqlite3.connect(dest) itself raises OperationalError when
+    run_dir can't be written to. Reproduced directly:
+    `sqlite3.OperationalError: unable to open database file`. Tests
+    _capture_state_db directly rather than through run_agent — run_agent
+    writes stdout.log/transcript.log into run_dir before ever reaching the
+    capture step, so making the whole run_dir read-only would fail earlier
+    and not isolate this guard."""
+    home = tmp_path / "home"
+    home.mkdir()
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    _write_real_state_db(home / "state.db")
+    run_dir.chmod(0o500)
+    try:
+        captured = _capture_state_db(home, run_dir)  # must not raise
+    finally:
+        run_dir.chmod(0o700)  # restore so pytest can clean up tmp_path
+    assert captured is False
+    assert not (run_dir / "state.db").exists()
+
+
+def test_zero_byte_source_state_db_captures_successfully(tmp_path):
+    """A zero-byte state.db is a valid empty SQLite database, not a
+    malformed one — SQLite treats an empty file as an empty database. This
+    must NOT be treated as a capture failure."""
+    home = tmp_path / "home"
+    home.mkdir()
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (home / "state.db").touch()  # zero bytes
+
+    captured = _capture_state_db(home, run_dir)
+
+    assert captured is True
+    assert (run_dir / "state.db").is_file()
+
+
+def test_wal_source_missing_shm_sidecar_still_captures(tmp_path):
+    """The realistic "container was killed" shape: a WAL sidecar with
+    unmerged data, but no live -shm (a hard kill can orphan the WAL file
+    without a shared-memory index next to it). SQLite recreates the shared-
+    memory index as needed when the WAL is present, so this must still
+    capture correctly, not degrade."""
+    s = spec(tmp_path)
+    home = Path(s.host_hermes_home)
+    writer = _write_wal_state_db(home / "state.db")
+    try:
+        shm = home / "state.db-shm"
+        assert shm.is_file()
+        os.remove(shm)  # simulate the process being killed hard
+
+        p = tmp_path / "p.md"
+        p.write_text("x")
+        result = run_agent(s, p, secret_env={}, model=MODEL,
+                           stub=lambda a, t, e: (0, "ok"))
+
+        assert result.state_db_captured is True
+        run_dir = Path(next(m.source for m in s.mounts if m.target == "/work/run"))
+        con = sqlite3.connect(f"file:{run_dir / 'state.db'}?mode=ro", uri=True)
+        try:
+            assert con.execute("SELECT id FROM sessions").fetchone() == ("S1",)
+        finally:
+            con.close()
+    finally:
+        writer.close()
+
+
+def test_capture_escapes_special_characters_in_hermes_home_path(tmp_path):
+    """Both run_dir and host_hermes_home are caller-supplied argv in
+    bin/agent-run.sh. An f-string URI (`f"file:{source}?mode=ro"`) leaves a
+    literal '?' in the path unescaped, which SQLite then parses as the
+    start of URI query parameters rather than as part of the path —
+    confirmed directly to connect successfully to the WRONG resource,
+    completing with no exception and writing a 4096-byte destination whose
+    sqlite_master is empty: a second, silent route to the exact F1 symptom.
+    Path.as_uri() percent-encodes '?', naming the real file regardless."""
+    home = tmp_path / "weird?home"
+    home.mkdir()
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    _write_real_state_db(home / "state.db")
+
+    captured = _capture_state_db(home, run_dir)
+
+    assert captured is True
+    con = sqlite3.connect(f"file:{run_dir / 'state.db'}?mode=ro", uri=True)
+    try:
+        assert con.execute("SELECT id FROM sessions").fetchone() == ("S1",)
+    finally:
+        con.close()
 
 
 def test_missing_state_db_does_not_raise_on_capture(tmp_path):
@@ -361,9 +495,10 @@ def test_missing_state_db_does_not_raise_on_capture(tmp_path):
     s = spec(tmp_path)
     p = tmp_path / "p.md"
     p.write_text("x")
-    run_agent(s, p, secret_env={}, model=MODEL, stub=lambda a, t, e: (0, "ok"))
+    result = run_agent(s, p, secret_env={}, model=MODEL, stub=lambda a, t, e: (0, "ok"))
     run_dir = Path(next(m.source for m in s.mounts if m.target == "/work/run"))
     assert not (run_dir / "state.db").exists()
+    assert result.state_db_captured is False
 
 
 def test_session_json_carries_commands_and_usage(tmp_path):
