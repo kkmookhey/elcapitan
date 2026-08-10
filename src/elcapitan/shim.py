@@ -26,6 +26,7 @@ import json
 import os
 import sqlite3
 import subprocess
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable
@@ -84,96 +85,206 @@ def _run_dir(spec: ContainerSpec) -> Path:
     return Path(next(m.source for m in spec.mounts if m.target == "/work/run"))
 
 
+# Wall-clock ceiling on one Connection.backup() call.
+#
+# This is the ONLY thing that bounds it. `backup()` retries SQLITE_BUSY /
+# SQLITE_LOCKED in a C loop with no iteration limit, and that loop is not
+# interruptible by a Python signal handler — measured directly against a
+# source held under BEGIN EXCLUSIVE: a `signal.alarm(6)` never fired and the
+# call was still running when killed at 20 s. Neither `sleep=` nor the
+# connection's busy timeout bounds the total; both only affect how long each
+# individual retry takes. The progress callback is the one hook that runs
+# Python code on every iteration, so raising from it is the only available
+# abort.
+#
+# 5.0 s, chosen to match the ceiling the reader on the same file already
+# degrades under: `read_session` opens with `sqlite3.connect`'s default
+# `timeout=5.0`, and was measured degrading on a locked database in 5.4 s.
+# Giving the capture the same patience as the read — and no more — keeps one
+# blocked state.db from stalling a trial for longer than the read of it
+# already could. It is four orders of magnitude above what a real capture
+# needs: the real state.db measured 212 KB and a 119 KB database backs up in
+# 0.002 s.
+_BACKUP_BUDGET_SECONDS = 5.0
+
+# Per-retry busy timeout on the source connection. Deliberately far below
+# _BACKUP_BUDGET_SECONDS: sqlite3_backup_step blocks inside C for the whole
+# busy timeout before returning SQLITE_BUSY, and the deadline can only be
+# checked between steps. Measured with the default 5 s timeout, a 2.0 s
+# budget was not honoured until 5.4 s — one step, one callback. At 0.25 s the
+# callback runs about twice a second, so the budget is honoured to within a
+# fraction of a second. This does NOT reduce how long the capture waits
+# overall: the retry loop keeps going until the budget expires either way.
+_BACKUP_BUSY_TIMEOUT_SECONDS = 0.25
+
+# Pages per backup_step. A bounded step count is what makes the progress
+# callback — and therefore the deadline — fire periodically during a long
+# copy, instead of once at the end as the default (-1, "all pages in one
+# step") would.
+_BACKUP_PAGES_PER_STEP = 256
+
+
+class _BackupDeadlineExceeded(Exception):
+    """Raised from backup()'s progress callback to abort its retry loop.
+
+    Private and never allowed to escape `_capture_state_db` — it exists only
+    because raising is the sole way to break out of `backup()`'s otherwise
+    unbounded C-level retry.
+    """
+
+
 def _capture_state_db(host_hermes_home: Path, run_dir: Path) -> bool:
-    """Copy state.db into the run directory — the persistent evidence bundle
-    — before anything can delete the ephemeral Hermes home it came from.
+    """Archive state.db into the run directory — the persistent evidence
+    bundle — before anything can delete the ephemeral Hermes home it came
+    from.
 
     Returns True if state.db was actually captured, False otherwise (no
     source to capture, or the capture itself failed). Recorded on
-    `AgentResult.state_db_captured` rather than left for a caller to infer
-    by checking run_dir's filesystem directly.
+    `AgentResult.state_db_captured` and surfaced in bin/agent-run.sh's
+    summary JSON, rather than left for a caller to infer by checking
+    run_dir's filesystem directly.
 
-    This exists because bin/agent-run.sh deletes any host_hermes_home it
-    seeded itself, on EXIT, on success as much as on failure (nothing else
-    owns that ephemeral directory's lifecycle). Before this function
-    existed, that meant state.db — this module's own docstring calls it
-    "the real record" — was gone the moment a successful run finished: a
-    real, reviewed defect in this task, not a hypothetical one. Capturing
-    it here, inside run_agent itself, fixes it for every caller, not just
-    agent-run.sh, and fixes it before the caller's own cleanup can ever run
-    (run_agent returns before bin/agent-run.sh's `trap cleanup EXIT` fires).
+    **This function must never raise.** bin/agent-run.sh runs
+    `rm -rf "$HOST_HERMES_HOME"` from `trap cleanup EXIT`, which fires
+    however `run_agent` exits — so an exception escaping here does not just
+    lose the archive, it destroys the source too, and takes the whole
+    `AgentResult` (and therefore session.json) with it. A crash here is
+    indistinguishable from a run that never happened. Every failure mode
+    below is therefore a `return False`, never a raise.
 
-    Uses sqlite3's backup API, NOT a byte-level file copy. Hermes's
-    state.db runs in WAL mode and is never checkpointed by anything this
-    shim controls, so the main .db file on its own can be a near-empty
-    husk (observed: 4096 bytes, zero tables) with every actual row sitting
-    in the uncopied state.db-wal sidecar — a plain `shutil.copy2` of just
-    the main file was tried first and confirmed, against a real run, to
-    silently archive an empty database while `session.json` right next to
-    it correctly reported `succeeded: true`. `Connection.backup()` reads
-    through the source connection (WAL included — a read-only connection
-    still consults the WAL when present) and writes a single, complete,
-    already-checkpointed copy in one call; there is no intermediate state
-    where a second file (a `-wal` sidecar of the destination) would need
-    to be copied alongside it, so the result can't be torn.
+    ## Why it exists
 
-    The read-only URI is built with `Path.as_uri()`, not an f-string. An
-    f-string (`f"file:{source}?mode=ro"`) leaves any `?`/`#` in
-    `host_hermes_home` unescaped — both `run_dir` and `host_hermes_home`
+    bin/agent-run.sh deletes any host_hermes_home it seeded itself, on EXIT,
+    on success as much as on failure (nothing else owns that ephemeral
+    directory's lifecycle). Before this function existed, that meant
+    state.db — this module's own docstring calls it "the real record" — was
+    gone the moment a successful run finished. Capturing it here, inside
+    run_agent itself, fixes it for every caller, not just agent-run.sh, and
+    fixes it before the caller's own cleanup can ever run.
+
+    ## Why sqlite3's backup API, not a file copy
+
+    Hermes's state.db runs in WAL mode and is never checkpointed by anything
+    this shim controls, so the main .db file on its own can be a near-empty
+    husk (observed: 4096 bytes, zero tables) with every actual row sitting in
+    the uncopied state.db-wal sidecar. A plain `shutil.copy2` of just the
+    main file was tried first and confirmed, against a real run, to silently
+    archive an empty database while session.json right next to it correctly
+    reported `succeeded: true`. `Connection.backup()` reads through the
+    source connection (WAL included — a read-only connection still consults
+    the WAL when present) and writes a single, complete, already-checkpointed
+    copy; there is no `-wal` sidecar of the *destination* that would need
+    copying alongside it, so the result can't be torn.
+
+    ## Why a private temp name and os.replace, not a direct write to dest
+
+    `run_dir` is `/work/run`: a writable bind mount inside a container the
+    agent drives with `--yolo`. The spike transcript has the agent itself
+    running `mkdir -p /work/run`. So `run_dir/state.db` is an
+    attacker-influenced path, and every earlier version of this function
+    both wrote to it directly and, on failure, ran `unlink` on it. Writing
+    the backup to `.state.db.partial-<pid>` first and then `os.replace`-ing
+    it onto `state.db` means:
+
+    - Cleanup only ever touches a path this function created. An
+      agent-planted directory or junk file at `state.db` can no longer be
+      handed to `unlink` (measured: `Path.unlink` on a directory raises
+      PermissionError on macOS, IsADirectoryError on Linux — that escaped
+      `run_agent` and left session.json unwritten) nor poison
+      `sqlite3.connect(dest)`.
+    - A junk file the agent planted at `state.db` is simply replaced by the
+      real evidence (measured: capture succeeds and the archive reads back
+      correctly), instead of the capture failing on it and the junk being
+      deleted while the real evidence is never archived.
+    - A *failed* capture can no longer destroy a previously good archive:
+      `state.db` is only ever touched by the final atomic rename, which
+      happens only after a complete, successful backup.
+
+    A directory pre-existing at `state.db` still cannot be captured over —
+    `os.replace` onto a directory raises IsADirectoryError — but that now
+    degrades to `False` with the directory left untouched, rather than
+    raising. Deleting it is not this function's business: it is a path the
+    agent controls, and the whole point of the restructure is that this
+    function's recovery path never mutates one.
+
+    ## Why Path.as_uri()
+
+    An f-string (`f"file:{source}?mode=ro"`) leaves any `?`/`#` in
+    `host_hermes_home` unescaped — and both `run_dir` and `host_hermes_home`
     are caller-supplied argv in bin/agent-run.sh. Measured against a path
-    containing a literal `?`: the unescaped form connects successfully to
-    the WRONG resource (SQLite reads everything before the first bare `?`
-    as the path and everything after as query parameters), completes with
-    no exception, and writes a 4096-byte destination with an empty
-    `sqlite_master` — a *second*, silent route to the exact F1 symptom.
-    `as_uri()` percent-encodes `?` (confirmed: `Path("/tmp/weird?dir/x").as_uri()`
-    -> `.../weird%3Fdir/x`), so it names the real file regardless of what
-    characters are in the path.
+    containing a literal `?`: the unescaped form connects successfully to the
+    WRONG resource (SQLite reads everything before the first bare `?` as the
+    path, everything after as query parameters), completes with no exception,
+    and writes a 4096-byte destination with an empty `sqlite_master` — a
+    second, silent route to the husk symptom. `as_uri()` percent-encodes it
+    (`Path("/tmp/weird?dir/x").as_uri()` -> `.../weird%3Fdir/x`).
 
-    A source that doesn't exist (a stub test, or a real run that never got
-    far enough to write anything) is not an error — read_session already
-    degrades to EMPTY_SESSION for that case, and this degrades the same way.
+    ## The degraded cases, all measured
 
-    A source that EXISTS but backup() fails — locked, truncated, corrupt,
-    not a SQLite file at all, or run_dir not writable — must ALSO degrade
-    rather than raise. `read_session` succeeding moments earlier in the
-    same `run_agent` call proves nothing about this: `read_session`'s own
-    contract is to catch exactly this exception class and return
-    EMPTY_SESSION, so a successful *return* from it is exactly as
-    consistent with "the database is fine" as with "the database is
-    garbage." Letting the exception escape here instead of degrading would
-    be a regression past the original F1 bug, not a fix past it: F1 lost
-    only the archive; an uncaught exception here crashes `run_agent`,
-    discarding the whole `AgentResult` (so `session.json` never gets
-    written either) — and self-defeatingly, since an exception out of
-    `run_agent` still reaches bin/agent-run.sh's `trap cleanup EXIT`, which
-    deletes `host_hermes_home` regardless of how `run_agent` exited,
-    destroying the very evidence this function exists to preserve. Any
-    partial destination file `sqlite3.connect(dest)` may already have
-    created before the failure is removed — a stale 0-byte `state.db`
-    would be misreadable as "captured successfully but genuinely empty"
-    rather than "capture failed," which `state_db_captured=False` states
-    unambiguously instead.
+    - **Source absent** (a stub test, or a real run that never got far enough
+      to write anything) — not an error; read_session degrades to
+      EMPTY_SESSION for the same input and this degrades the same way.
+    - **Source is a directory** — same: `is_file()` is False, `return False`.
+    - **Source is not a SQLite file, or is a truncated one** —
+      `sqlite3.DatabaseError: file is not a database`.
+    - **run_dir not writable** — `sqlite3.OperationalError: unable to open
+      database file`, whether or not a `state.db` already exists there. (The
+      pre-existing-destination variant is why the old code's unguarded
+      `dest.unlink()` in the handler raised: with dest absent it was a no-op,
+      which is the only case the old test covered.)
+    - **Source locked** — bounded by `_BACKUP_BUDGET_SECONDS`; see that
+      constant for why nothing else bounds it. Previously this did not fail
+      at all, it hung, which for a harness is strictly worse than crashing.
+
+    `read_session` returning successfully moments earlier in the same
+    `run_agent` call proves none of these are impossible: its contract is to
+    catch exactly this exception class and return EMPTY_SESSION, so a
+    successful *return* from it is exactly as consistent with "the database
+    is fine" as with "the database is garbage."
     """
     source = host_hermes_home / "state.db"
     if not source.is_file():
         return False
+
     dest = run_dir / "state.db"
+    # A name this function owns, so the failure path never touches an
+    # agent-controlled path. See the docstring.
+    partial = run_dir / f".state.db.partial-{os.getpid()}"
     try:
-        # Read-only source, same guarantee session.py's own reader already
+        # Read-only source, the same guarantee session.py's own reader
         # established: the host must never write to an artifact the agent
         # produced.
-        source_con = sqlite3.connect(f"{source.as_uri()}?mode=ro", uri=True)
+        source_con = sqlite3.connect(f"{source.as_uri()}?mode=ro", uri=True,
+                                     timeout=_BACKUP_BUSY_TIMEOUT_SECONDS)
         try:
-            dest_con = sqlite3.connect(dest)
+            dest_con = sqlite3.connect(partial)
             try:
-                source_con.backup(dest_con)
+                deadline = time.monotonic() + _BACKUP_BUDGET_SECONDS
+
+                def _abort_when_out_of_time(status, remaining, pagecount):
+                    if time.monotonic() > deadline:
+                        raise _BackupDeadlineExceeded(
+                            f"state.db backup exceeded {_BACKUP_BUDGET_SECONDS}s")
+
+                source_con.backup(dest_con, pages=_BACKUP_PAGES_PER_STEP,
+                                  progress=_abort_when_out_of_time)
             finally:
                 dest_con.close()
         finally:
             source_con.close()
-    except (sqlite3.Error, OSError, ValueError):
-        dest.unlink(missing_ok=True)
+        os.replace(partial, dest)
+    except (sqlite3.Error, OSError, ValueError, _BackupDeadlineExceeded):
+        # The recovery path of a never-raise function has to be at least as
+        # unfailable as its happy path. `partial` is a path this function
+        # chose, but run_dir is still agent-writable, so unlink can still
+        # fail on it (measured: a directory planted at exactly this name
+        # makes Path.unlink raise PermissionError) — and a failure to clean
+        # up a temp file is never worth converting a degraded capture into a
+        # lost AgentResult.
+        try:
+            partial.unlink(missing_ok=True)
+        except OSError:
+            pass
         return False
     return True
 

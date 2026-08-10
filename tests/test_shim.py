@@ -12,10 +12,12 @@ import json
 import os
 import shutil
 import sqlite3
+import time
 from pathlib import Path
 
 import pytest
 
+import elcapitan.shim as shim
 from elcapitan.container import engineer_spec
 from elcapitan.session import SessionRecord
 from elcapitan.shim import (
@@ -593,6 +595,249 @@ def test_state_db_survives_host_hermes_home_deletion(tmp_path):
     assert (run_dir / "state.db").is_file()
     assert (run_dir / "session.json").is_file()
     assert json.loads((run_dir / "session.json").read_text())["session_id"] == "S1"
+
+
+# --- fourth review: the capture's failure path was itself a mutation of an
+# agent-controlled path. /work/run is a writable bind mount and the agent runs
+# --yolo (the spike transcript has it running `mkdir -p /work/run`), so
+# run_dir/state.db is attacker-influenced. _capture_state_db now backs up to a
+# private `.state.db.partial-<pid>` and os.replace's it onto state.db, so its
+# recovery path only ever touches a path it created itself. ---
+
+def _lock_exclusively(db_path: Path) -> sqlite3.Connection:
+    """Hold a genuine EXCLUSIVE lock on db_path. Caller must roll back/close.
+
+    Measured against this exact shape before it became a test: an unbounded
+    `backup()` was still running when killed at 20 s, and a `signal.alarm(6)`
+    installed around it never fired — backup()'s SQLITE_BUSY retry runs in a C
+    loop no Python signal handler interrupts. A hang is strictly worse than a
+    crash for a harness, which is why the budget exists.
+    """
+    locker = sqlite3.connect(db_path, isolation_level=None)
+    locker.execute("BEGIN EXCLUSIVE")
+    return locker
+
+
+def test_dest_pre_existing_as_a_directory_does_not_raise(tmp_path):
+    """N1, primary trigger. The agent can create anything under /work/run,
+    including a directory named state.db. The source is perfectly valid, so
+    the backup itself succeeds; it is the handler that used to explode:
+    `dest.unlink(missing_ok=True)` on a directory raises PermissionError on
+    macOS (IsADirectoryError on Linux), which escaped run_agent entirely and
+    left session.json unwritten — destroying the evidence this function
+    exists to save, since agent-run.sh's `trap cleanup EXIT` still deletes
+    host_hermes_home on the way out.
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    _write_real_state_db(home / "state.db")
+    (run_dir / "state.db").mkdir()  # agent-planted directory at the archive path
+
+    captured = _capture_state_db(home, run_dir)  # must not raise
+
+    assert captured is False
+    # The agent's directory is left exactly as it was: this function's
+    # recovery path must not mutate a path it did not create.
+    assert (run_dir / "state.db").is_dir()
+    assert not any(p.name.startswith(".state.db.partial") for p in run_dir.iterdir())
+
+
+def test_run_dir_not_writable_with_existing_dest_does_not_raise(tmp_path):
+    """N1, second trigger — the one the shipped test could not reach. The
+    existing not-writable test creates no destination, so the handler's
+    `dest.unlink(missing_ok=True)` was a no-op that could never fail. With a
+    destination actually present in a 0o500 directory, unlink raises
+    PermissionError [Errno 13] (measured directly)."""
+    home = tmp_path / "home"
+    home.mkdir()
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    _write_real_state_db(home / "state.db")
+    _write_real_state_db(run_dir / "state.db")  # a previous, good archive
+    run_dir.chmod(0o500)
+    try:
+        captured = _capture_state_db(home, run_dir)  # must not raise
+    finally:
+        run_dir.chmod(0o700)  # restore so pytest can clean up tmp_path
+
+    assert captured is False
+    # And the previously good archive is still there and still readable — a
+    # failed capture must not destroy a successful earlier one.
+    con = sqlite3.connect(f"file:{run_dir / 'state.db'}?mode=ro", uri=True)
+    try:
+        assert con.execute("SELECT id FROM sessions").fetchone() == ("S1",)
+    finally:
+        con.close()
+
+
+def test_dest_pre_existing_junk_file_is_replaced_by_real_evidence(tmp_path):
+    """N3. The agent plants a junk file at run_dir/state.db. Writing the
+    backup straight into it made `backup()` fail on the *destination*
+    (`sqlite3.DatabaseError: file is not a database`, measured), the junk got
+    deleted, the real evidence was never archived, and nothing recorded why.
+    Backing up to a private temp name and renaming makes the junk irrelevant:
+    it is simply replaced by the real record."""
+    home = tmp_path / "home"
+    home.mkdir()
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    _write_real_state_db(home / "state.db")
+    (run_dir / "state.db").write_bytes(b"junk planted by the agent " * 40)
+
+    captured = _capture_state_db(home, run_dir)
+
+    assert captured is True
+    con = sqlite3.connect(f"file:{run_dir / 'state.db'}?mode=ro", uri=True)
+    try:
+        assert con.execute("SELECT id FROM sessions").fetchone() == ("S1",)
+        assert con.execute("SELECT count(*) FROM messages").fetchone()[0] == 3
+    finally:
+        con.close()
+    assert not any(p.name.startswith(".state.db.partial") for p in run_dir.iterdir())
+
+
+def test_truncated_source_state_db_does_not_raise(tmp_path):
+    """A real SQLite file cut off mid-page — the shape a container killed
+    mid-write leaves behind. Distinct from the all-garbage case: the header
+    is valid, so SQLite gets further before failing."""
+    home = tmp_path / "home"
+    home.mkdir()
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    _write_real_state_db(home / "state.db")
+    full = (home / "state.db").read_bytes()
+    assert full.startswith(b"SQLite format 3\x00")  # a genuinely valid header
+    (home / "state.db").write_bytes(full[: len(full) // 2 + 100])
+
+    captured = _capture_state_db(home, run_dir)  # must not raise
+
+    assert captured is False
+    assert not (run_dir / "state.db").exists()
+    assert not any(p.name.startswith(".state.db.partial") for p in run_dir.iterdir())
+
+
+def test_source_state_db_that_is_a_directory_does_not_raise(tmp_path):
+    """host_hermes_home is caller-supplied argv; a directory at state.db is
+    reachable both by a mis-seeded home and by the agent itself."""
+    home = tmp_path / "home"
+    home.mkdir()
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (home / "state.db").mkdir()
+
+    captured = _capture_state_db(home, run_dir)  # must not raise
+
+    assert captured is False
+    assert list(run_dir.iterdir()) == []
+
+
+def test_locked_source_returns_within_the_budget_rather_than_hanging(tmp_path):
+    """N2. `Connection.backup()` retries SQLITE_BUSY/SQLITE_LOCKED in an
+    unbounded C loop that no Python signal handler can interrupt — measured:
+    still running at 20 s against an EXCLUSIVE-locked source, with a
+    signal.alarm(6) that never fired. read_session degrades on the same input
+    in 5.4 s; the capture hung indefinitely, which for a harness is strictly
+    worse than crashing. Only backup()'s progress callback runs Python code
+    on every retry, so raising from it is the sole available bound.
+
+    The budget is monkeypatched down purely to keep this test fast — the
+    mechanism under test is the deadline, not the specific number, and the
+    shipped number is pinned separately below.
+    """
+    monkey_budget = 0.5
+    home = tmp_path / "home"
+    home.mkdir()
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    _write_real_state_db(home / "state.db")
+    locker = _lock_exclusively(home / "state.db")
+    original = shim._BACKUP_BUDGET_SECONDS
+    shim._BACKUP_BUDGET_SECONDS = monkey_budget
+    try:
+        started = time.monotonic()
+        captured = _capture_state_db(home, run_dir)  # must return, not hang
+        elapsed = time.monotonic() - started
+    finally:
+        shim._BACKUP_BUDGET_SECONDS = original
+        locker.rollback()
+        locker.close()
+
+    assert captured is False
+    # Generous ceiling relative to the 0.5 s budget: the assertion that
+    # matters is "bounded at all", and the unbounded version does not finish.
+    assert elapsed < 5.0, f"capture took {elapsed:.1f}s — the deadline did not bound it"
+    assert not (run_dir / "state.db").exists()
+    assert not any(p.name.startswith(".state.db.partial") for p in run_dir.iterdir())
+
+
+def test_backup_budget_is_finite_and_bounded():
+    """The test above monkeypatches the budget for speed, so pin the shipped
+    value here: a budget that grew without limit would silently restore the
+    hang N2 is about."""
+    assert 0 < shim._BACKUP_BUDGET_SECONDS <= 10.0
+    # The per-retry busy timeout must stay well under the budget, or the
+    # deadline can only be checked once per busy timeout — measured: with the
+    # 5 s default, a 2.0 s budget was not honoured until 5.4 s.
+    assert shim._BACKUP_BUSY_TIMEOUT_SECONDS < shim._BACKUP_BUDGET_SECONDS / 2
+    # A bounded page count is what makes the callback fire during a long copy
+    # at all; the sqlite3 default of -1 copies everything in a single step.
+    assert shim._BACKUP_PAGES_PER_STEP > 0
+
+
+def test_cleanup_of_its_own_temp_file_cannot_raise(tmp_path):
+    """The recovery path of a never-raise function must be at least as
+    unfailable as its happy path — the gap the previous round left open. Even
+    the private temp name lives in an agent-writable directory, so unlink can
+    still fail on it: a directory planted at exactly that path makes
+    sqlite3.connect fail (OperationalError) and then Path.unlink fail
+    (PermissionError, measured). Without the nested guard the second
+    exception escapes run_agent and the AgentResult is lost."""
+    home = tmp_path / "home"
+    home.mkdir()
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    _write_real_state_db(home / "state.db")
+    (run_dir / f".state.db.partial-{os.getpid()}").mkdir()
+
+    captured = _capture_state_db(home, run_dir)  # must not raise
+
+    assert captured is False
+    assert not (run_dir / "state.db").exists()
+
+
+def test_failed_capture_does_not_destroy_a_previous_archive(tmp_path):
+    """Writing straight to run_dir/state.db meant a later failed capture
+    unlinked an earlier good one. With temp-then-rename, state.db is only
+    ever touched by the final atomic rename after a complete backup."""
+    home = tmp_path / "home"
+    home.mkdir()
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    _write_real_state_db(home / "state.db")
+    assert _capture_state_db(home, run_dir) is True  # a good archive exists
+
+    (home / "state.db").write_bytes(b"the next run wrote garbage " * 20)
+    assert _capture_state_db(home, run_dir) is False
+
+    con = sqlite3.connect(f"file:{run_dir / 'state.db'}?mode=ro", uri=True)
+    try:
+        assert con.execute("SELECT id FROM sessions").fetchone() == ("S1",)
+    finally:
+        con.close()
+
+
+def test_agent_run_sh_summary_surfaces_state_db_captured():
+    """N4. AgentResult records state_db_captured, but bin/agent-run.sh's
+    summary JSON emitted only exit_code/succeeded/session_id/finish_reason/
+    tool_call_count/usage/arm — so a silent capture failure was invisible to
+    anyone running the script, which is the only way this is run in
+    production. A text-level pin: the summary is built inside a heredoc that
+    invokes docker, so it cannot be exercised in-process here."""
+    script = (Path(__file__).resolve().parents[1] / "bin" / "agent-run.sh").read_text()
+    summary = script.split("summary = {", 1)[1].split("}", 1)[0]
+    assert '"state_db_captured": result.state_db_captured,' in summary
 
 
 # --- three distinct paths: the trap this task's brief calls out explicitly ---

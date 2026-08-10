@@ -137,6 +137,11 @@ summary = {
     "finish_reason": result.finish_reason,
     "tool_call_count": result.tool_call_count,
     "usage": result.usage,
+    # False means run_dir/state.db — the primary evidence record — is absent
+    # or was not archived. run_agent degrades rather than raising on that
+    # (see _capture_state_db), so without this field a silent capture failure
+    # is invisible to anyone reading this script's output.
+    "state_db_captured": result.state_db_captured,
     "arm": arm,
 }
 print(json.dumps(summary, indent=2))
