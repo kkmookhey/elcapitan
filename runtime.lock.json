@@ -1,0 +1,17 @@
+{
+  "base_image_ref": "nousresearch/hermes-agent",
+  "base_image_digest": "sha256:16788311e2fa3035456bdc1bafb8ec2b1777db64ebf020af9bb7eb73c3712c9e",
+  "base_image_tag": "v2026.8.3",
+  "hermes_version": "0.20.0",
+  "runtime_image_ref": "elcapitan-lab:0.1.0",
+  "runtime_image_id": "sha256:388b0af1fd94581427aa811f6b405e8fd6e855797191dba6724a4fb144a6b1f7",
+  "dockerfile_sha256": "6fce3e090d67e67b3aba3092214db6d606644bfdf713bef8617858331cc6946e",
+  "uv_lock_sha256": "3d057df300faecd211888daba1217ad33a17ad91b77a45e0d899c60e556882c7",
+  "tool_versions": {
+    "terraform": "1.15.8",
+    "trivy": "0.73.0",
+    "prowler": "5.37.1",
+    "awscli": "2.36.19",
+    "azure-cli": "2.89.0"
+  }
+}

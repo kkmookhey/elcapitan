@@ -19,7 +19,7 @@
 - **Secret values never enter an argv, a `ContainerSpec` field that gets serialised, or a test string.** Specs carry variable *names*; values travel only in a narrowly scoped subprocess environment.
 - **The challenger holds no cloud credentials.** It judges a fixed offline bundle with `--network=none`. The *evidence collector* holds the observer credential and builds Arm A/B bundles.
 - **Canonical repository is mounted read-only.** The mount is the enforcement; post-run git checks are independent diagnostics, recomputed from the repository, never compared against a caller-supplied copy of the recorded value.
-- **Transcript mutation-scanning is a diagnostic signal, not a control.** Credential scope and read-only mounts are the controls. Do not describe regexes as enforcement.
+- **Verify mutation by querying state, never by reading the transcript.** Credential scope and read-only mounts are the controls; state comparison is the verification. Transcript regex scanning is **removed** — the Anna shakedown proved it cannot distinguish "I ran `cdk deploy`" from "I did **not** run `cdk deploy`", and it failed an honest run four times for saying plainly what it had not done. Its incentive was inverted: honesty failed, silence passed. It also only ever approximated, more weakly, what `repo.assert_unchanged` already does directly. Repository mutation is verified by recomputing git state before and after; **cloud mutation must be verified the same way** — capture the target resource's configuration before the trial, re-query after, compare.
 - **Exit codes are tool-specific.** `terraform plan -detailed-exitcode` returns `2` for a valid plan *containing changes*. A missing exit code is an error, never a default success.
 - **Evidence paths are contained.** Resolve, prove `is_relative_to(run_dir)`, reject symlinks, create exclusively.
 - **The host-side validator is the final authority**, and it returns structured failures rather than raising on malformed input.
@@ -1935,14 +1935,46 @@ git commit -m "feat(isolation): names-only secrets, hardening flags, credential-
 ### Task 11: Runtime shim using the proven invocation
 
 **Files:**
-- Create: `src/elcapitan/shim.py`, `bin/agent-run.sh`
-- Test: `tests/test_shim.py`
+- Create: `src/elcapitan/session.py`, `src/elcapitan/shim.py`, `bin/agent-run.sh`
+- Test: `tests/test_session.py`, `tests/test_shim.py`
 
 **Interfaces:**
-- Consumes: `docs/spike-findings.md` Q2 and Q3 (Task 0), `container.ContainerSpec`
-- Produces: `AgentResult(exit_code, transcript)`; `run_agent(spec, prompt_path, *, secret_env, stub=None) -> AgentResult`; `SCANNER_ENV_MAP`, `MODEL_ENV_MAP`
+- Consumes: `docs/spike-findings.md` (Task 0), `container.ContainerSpec`
+- Produces: `SessionRecord(session_id, finish_reason, tool_call_count, transcript, usage, commands)`; `read_session(db_path) -> SessionRecord`; `AgentResult` (§ above); `run_agent(spec, prompt_path, *, secret_env, stub=None) -> AgentResult`; `SCANNER_ENV_MAP`, `MODEL_ENV_MAP`
 
 **Fixes from review:** the invocation comes from the spike, not from invention. The prefix bug is gone — an explicit map translates `ELCAP_SCANNER_AWS_ACCESS_KEY_ID` on the host into `AWS_ACCESS_KEY_ID` inside the container, and the observer prefix is never applied twice.
+
+**`session.py` — the transcript reader.** Reads the agent runtime's own SQLite
+store rather than scraping stdout. Schema observed in the spike:
+
+```sql
+-- messages: id, session_id, role, content, tool_call_id, tool_calls, tool_name,
+--           timestamp, token_count, finish_reason, reasoning, …
+-- session_model_usage: session_id, model, billing_provider, api_call_count,
+--           input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+--           reasoning_tokens, estimated_cost_usd, cost_status, cost_source
+-- sessions: id, model, started_at, ended_at, end_reason, message_count,
+--           tool_call_count, …
+```
+
+`read_session` must:
+- take the **latest** session by `started_at` (a fresh `HERMES_HOME` per trial means
+  exactly one, but do not assume it — assert and fail loudly if there is more than one);
+- parse `messages.tool_calls` JSON into `CommandRecord`-shaped entries: the command
+  text lives at `function.arguments.command`, and the matching tool message's
+  `content` is `{"output": …, "exit_code": …, "error": …}`;
+- return `usage` as the `session_model_usage` row, for `TrialResult.trial`;
+- **never raise on a malformed or absent database** — return a `SessionRecord` with
+  `finish_reason=""` and `tool_call_count=0` so the caller reports a structured
+  failure. Same contract as the validator, for the same reason.
+
+Open the database **read-only** (`file:…?mode=ro` URI) — the host must not write to
+an artifact the agent produced.
+
+> **Task 11's test helper must give the shim spec three distinct paths.** The earlier
+> draft used `run_dir=canonical_repo=host_hermes_home=str(tmp_path)`; `container.py`
+> now rejects that, because mounting one host path read-only at `/work/canonical` and
+> writable at `/work/run` was a real defect the final review closed.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2041,8 +2073,18 @@ MODEL_ENV_MAP = {"ELCAP_MODEL_API_KEY": "ANTHROPIC_API_KEY"}
 
 @dataclass(frozen=True)
 class AgentResult:
+    # The spike (docs/spike-findings.md §6) measured this: a run with no API
+    # key, and a run whose model 404'd nine times, BOTH exit 0. Only the
+    # pre-start --user guard exits non-zero. So exit_code is recorded for
+    # diagnosis and is never the verdict.
     exit_code: int
-    transcript: str
+    succeeded: bool          # derived from the session record, not exit_code
+    session_id: str
+    finish_reason: str       # "stop" on a real completion
+    tool_call_count: int
+    transcript: str          # extracted from state.db, NOT scraped from stdout
+    usage: dict              # session_model_usage row: tokens, cost, provider
+    stdout: str              # kept for debugging only; not evidence
 
 def resolve_secret_env(host_env: dict, mapping: dict) -> dict:
     resolved = {}
@@ -2061,18 +2103,39 @@ def run_agent(spec: ContainerSpec, prompt_path, *, secret_env: dict,
     ]
 
     if stub is not None:
-        exit_code, transcript = stub(argv, prompt_text, secret_env)
+        exit_code, stdout = stub(argv, prompt_text, secret_env)
     else:
         # Secret values reach docker only through this environment, never argv.
         completed = subprocess.run(argv, capture_output=True, text=True,
                                    check=False, env={"PATH": "/usr/bin:/bin",
                                                      **secret_env})
         exit_code = completed.returncode
-        transcript = completed.stdout + completed.stderr
+        stdout = completed.stdout + completed.stderr
 
     run_dir = next(Path(m.source) for m in spec.mounts if m.target == "/work/run")
-    (run_dir / "transcript.log").write_text(transcript)
-    return AgentResult(exit_code=exit_code, transcript=transcript)
+    (run_dir / "stdout.log").write_text(stdout)
+
+    # The transcript comes from the session store, not from stdout. The -q
+    # preview truncates ("mkdir -p /work/run + 3 commands") and carries no
+    # command output and no exit codes — see docs/spike-findings.md §3.
+    # state.db gives command text, {output, exit_code, error}, timestamps and
+    # per-session token accounting, which is closer to the CommandRecord
+    # schema than a scraped terminal stream could ever be.
+    session = read_session(Path(spec.host_hermes_home) / "state.db")
+    (run_dir / "transcript.log").write_text(session.transcript)
+
+    return AgentResult(
+        exit_code=exit_code,
+        # A run that did nothing still exits 0. Success is a property of the
+        # session, not of the process.
+        succeeded=(session.finish_reason == "stop" and session.tool_call_count > 0),
+        session_id=session.session_id,
+        finish_reason=session.finish_reason,
+        tool_call_count=session.tool_call_count,
+        transcript=session.transcript,
+        usage=session.usage,
+        stdout=stdout,
+    )
 ```
 
 - [ ] **Step 4: Write `bin/agent-run.sh`** — reads `runtime.lock.json` for `runtime_image_id`, seeds a home via `elcapitan.home.seed_hermes_home`, resolves secrets through the maps above, and calls `run_agent`.
@@ -2355,10 +2418,53 @@ git commit -m "feat(harness): engineer-stage trial runner with black-box contain
 The explicit `Deny` is what makes "no telemetry" enforced rather than requested — an IAM deny cannot be overridden by any allow.
 
 ```bash
+> **The allow-list must not be enumerated.** The first shakedown proved why. The
+> original policy allowed `s3:GetBucket*`, which does **not** match
+> `s3:GetLifecycleConfiguration` — the IAM action names drop the `Bucket` prefix
+> the API calls carry (`GetBucketLifecycleConfiguration` → `s3:GetLifecycleConfiguration`;
+> likewise replication, acceleration, analytics, inventory, metrics). Prowler
+> received `AccessDenied`, swallowed it, reported the field absent, and emitted a
+> **bogus `s3_bucket_lifecycle_enabled` FAIL**.
+>
+> That is the sharpest finding of the shakedown: **Prowler cannot distinguish "not
+> configured" from "not permitted."** Any gap in an enumerated allow-list therefore
+> *manufactures* findings — and a remediation pipeline downstream would faithfully
+> fix things that were never broken. Adding the two missing actions does not fix
+> the shape; the next check finds the next gap.
+>
+> So: **breadth comes from AWS-managed read-only policies, and the constraint is
+> enforced by an explicit `Deny`.** Deny always beats Allow in IAM, so
+> "no data plane, no telemetry" is enforced rather than merely requested — while
+> coverage stays complete enough that a missing permission never masquerades as a
+> misconfiguration. `environments/anna/scanner-policy.json` is now Deny-only.
+>
+> Note what the Deny deliberately does **not** cover: configuration reads such as
+> `lambda:GetFunctionConfiguration`. Denying those would reintroduce the same
+> false-finding bug from the other direction. The Deny targets object data, table
+> items, secret values, log content and trail events — the PII-bearing surfaces the
+> spec's Appendix B is actually about.
+
+```bash
 aws iam create-role --role-name elcapitan-anna-scanner \
   --assume-role-policy-document file://environments/anna/trust-policy.json
+
+# Breadth from managed read-only policies — complete coverage, so a missing
+# permission can never masquerade as a misconfiguration.
+aws iam attach-role-policy --role-name elcapitan-anna-scanner \
+  --policy-arn arn:aws:iam::aws:policy/SecurityAudit
+aws iam attach-role-policy --role-name elcapitan-anna-scanner \
+  --policy-arn arn:aws:iam::aws:policy/job-function/ViewOnlyAccess
+
+# The constraint, enforced by an explicit Deny that beats every Allow above.
 aws iam put-role-policy --role-name elcapitan-anna-scanner \
-  --policy-name elcapitan-scanner --policy-document file://environments/anna/scanner-policy.json
+  --policy-name elcapitan-no-dataplane --policy-document file://environments/anna/scanner-policy.json
+
+# Prove the Deny actually denies, before trusting it:
+#   aws --profile <assumed> logs filter-log-events --log-group-name <any>   # expect AccessDenied
+#   aws --profile <assumed> s3api get-bucket-lifecycle-configuration \
+#       --bucket <anna-bucket>                                             # expect success or
+#                                                                          # NoSuchLifecycleConfiguration,
+#                                                                          # NOT AccessDenied
 
 # Temporary credentials only — never a long-lived access key.
 eval "$(aws sts assume-role --role-arn arn:aws:iam::<acct>:role/elcapitan-anna-scanner \
@@ -2444,11 +2550,24 @@ Revised from the previous draft — the fourth condition no longer demands a pat
 5. The canonical repository is provably untouched.
 
 ```bash
-RUN="$ELCAP_WORKSPACE/runs/anna-FIND-001-armA-n1"
+RUN_ID="anna-FIND-001-armA-n1"
+RUN="$ELCAP_WORKSPACE/runs/$RUN_ID"
+ANCHOR="$ELCAP_WORKSPACE/anchors/$RUN_ID"      # OUTSIDE run_dir, never mounted
+
 jq '{iac_managed:.linking.iac_managed, system:.linking.system_detected,
      method:.linking.method, files:.linking.files,
      resolution:.resolution_type, status:.status}' "$RUN/proposal.json"
-./bin/validate-trial-artifacts.sh "$RUN" "$ELCAP_CANONICAL_REPO" "$RUN/repo-state-before.json"
+
+# Five arguments. All three anchors live under anchors/, not in the run
+# directory — sourcing any of them from run_dir would let a coherent forgery
+# recompute them along with everything else. The fifth is mandatory:
+# --no-cloud-state declares on the record that no pre-trial capture exists,
+# and still fails the run. Task 12 already invokes the validator correctly;
+# this is the manual equivalent for inspection.
+./bin/validate-trial-artifacts.sh "$RUN" "$ELCAP_CANONICAL_REPO" \
+    "$ANCHOR/repo-state-before.json" "$(cat "$ANCHOR/bundle.sha256")" \
+    "$ANCHOR/cloud-state-before.json"
+
 git -C "$ELCAP_CANONICAL_REPO" status --porcelain --untracked-files=all | wc -l   # expect 0
 ```
 
@@ -2478,12 +2597,30 @@ Tasks 3–10 (the deterministic core) are built, reviewed and merged. Tasks 0, 1
 11, 12, 13 remain. Execution changed four things this document still describes the
 old way. **Read this before executing any remaining task.**
 
-1. **`validate_run` has a fourth keyword parameter.** It is now
-   `validate_run(run_dir, *, canonical_repo, repo_state_before, expected_bundle_hash=None)`.
-   The code at Task 9 Step 3 and in Task 12's harness still shows the three-argument
-   form. When `expected_bundle_hash` is `None`, validation **fails** with
-   `"input bundle integrity is unanchored"` — deliberately, so a missing anchor is
-   loud rather than silent.
+1. **`validate_run` has two more keyword parameters.** It is now
+   `validate_run(run_dir, *, canonical_repo, repo_state_before, cloud_state_before,
+   expected_bundle_hash=None, env=None)`. The code at Task 9 Step 3 and in Task 12's
+   harness still shows the three-argument form. When `expected_bundle_hash` is
+   `None`, validation **fails** with `"input bundle integrity is unanchored"` —
+   deliberately, so a missing anchor is loud rather than silent.
+
+   `cloud_state_before` has **no default**, on purpose: it is a keyword you cannot
+   forget but may explicitly set to `None`, which fails with
+   `"cloud state is UNVERIFIED"` rather than skipping the check. The shell wrapper
+   mirrors that — its fifth argument is mandatory and takes either a
+   `cloud-state-before.json` path or the literal `--no-cloud-state`; omitting it is
+   a usage error (exit 2) and prints no verdict at all. An optional argument would
+   have handed back, one layer out, exactly the "a check that can be skipped by
+   saying nothing" property the signature was shaped to remove.
+
+1b. **`bin/run-trial.sh` requires the three `ELCAP_SCANNER_AWS_*` variables in every
+   mode, including `ELCAP_STUB=1`.** It captures the finding resource's
+   configuration before the agent step into `anchors/<run-id>/cloud-state-before.json`
+   and the validator re-queries it after. Stub mode gets no exemption because the
+   validator has none: a stub trial that skipped the capture would be scored by a
+   different validator call than a real trial, which destroys the stub's only
+   purpose. Tests satisfy it with a real executable named `aws` on `PATH`
+   (`tests/fake_aws.py`), so the production code path runs unmocked.
 
 2. **`bin/run-trial.sh` as written always fails.** Task 12's invocation passes the
    wrapper three arguments and therefore hits that failure. It must pass a fourth:
