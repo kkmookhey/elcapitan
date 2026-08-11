@@ -29,9 +29,9 @@ resource "azurerm_resource_group" "main" {
   location = var.location
 
   tags = {
-    project     = "eiger-stage2"
-    managed_by  = "terraform"
-    purpose     = "deliberately-vulnerable-trap-target"
+    project    = "eiger-stage2"
+    managed_by = "terraform"
+    purpose    = "deliberately-vulnerable-trap-target"
   }
 
   lifecycle {
