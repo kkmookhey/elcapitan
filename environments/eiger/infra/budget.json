@@ -1,0 +1,31 @@
+{
+  "properties": {
+    "category": "Cost",
+    "amount": 50,
+    "timeGrain": "Monthly",
+    "timePeriod": {
+      "startDate": "2026-08-01T00:00:00Z",
+      "endDate": "2030-08-01T00:00:00Z"
+    },
+    "notifications": {
+      "Actual_GreaterThan_50_Percent": {
+        "enabled": true,
+        "operator": "GreaterThanOrEqualTo",
+        "threshold": 50,
+        "contactEmails": [
+          "kkmookhey@gmail.com"
+        ],
+        "thresholdType": "Actual"
+      },
+      "Actual_GreaterThan_90_Percent": {
+        "enabled": true,
+        "operator": "GreaterThanOrEqualTo",
+        "threshold": 90,
+        "contactEmails": [
+          "kkmookhey@gmail.com"
+        ],
+        "thresholdType": "Actual"
+      }
+    }
+  }
+}
