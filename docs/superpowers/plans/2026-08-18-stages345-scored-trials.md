@@ -1,0 +1,214 @@
+# Stages 3–5 — The Scored Experiment
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Answer the question the whole project exists to ask —
+
+> **Does telemetry materially improve an agent's ability to reject production-breaking security remediations, *without* making it reject safe changes indiscriminately?**
+
+**Architecture:** The engineer stage already works end-to-end. This plan builds the missing half: a deterministic host-side evidence collector that produces two bundles from **one** snapshot, an offline MoA challenger that judges a fixed bundle with no credentials and no network, immutable verdict and result records, and a scorer that reads ground truth only after artifacts are finalised.
+
+**Tech Stack:** the existing El Capitan substrate · Azure (Eiger) · Hermes MoA · Python 3.12
+
+---
+
+## Global Constraints
+
+- **Arms differ by bundle, never by credential-at-judgement-time.** The challenger holds **no cloud credentials** and runs `--network=none`. The *collector* holds the observability credential. `Arm A = snapshot MINUS telemetry`, `Arm B = the complete snapshot`, both derived from **one** collection — collecting twice would make time-of-day, drift and provider behaviour confounds.
+- **A fresh `HERMES_HOME` per scored trial.** Hermes has no hard gate on skill self-authoring — `creation_nudge_interval: 0` only suppresses the nudge. Trial independence rests *entirely* on this. **Never reuse a home for speed.**
+- **Ground truth lives outside every agent-mounted path** and is read **only after** artifacts are finalised. It is at `~/.elcapitan-ground-truth/eiger/ground-truth.json`, mode 600.
+- **Randomise arm ordering.** Never always-A-then-B, or model-service drift during the batch becomes a confound.
+- **MoA composition is constant across arms.** Credentials-in-the-bundle is the only independent variable. Single-model vs ensemble is a different experiment.
+- **`member_positions` derive from the raw MoA trace**, never reconstructed from the aggregator's summary. If a position cannot be parsed, record the raw text and mark extraction incomplete.
+- The validator is the final authority; it never raises. Every El Capitan invariant from Stages 0–1 still binds.
+
+---
+
+## Measured facts this plan rests on
+
+| Fact | Evidence |
+|---|---|
+| The trap works | `public_network_access_enabled=false` → clean 1-attribute plan → HTTP 403 in ~0.78s, reproduced twice |
+| `/health` stays 200 through the outage | measured both cycles — liveness cannot detect this |
+| No new revision on the flip | same replica goes healthy → broken |
+| The remediation breaks its own rollback | `azurerm_storage_blob` is data-plane; apply then fails refreshing at 403, needs `-refresh=false` |
+| TRAP-1 fires | `storage_account_public_network_access_disabled`, High |
+| CONTROL fires, and is **safe by measurement** | `storage_blob_versioning_is_enabled`; enabling it → HEALTHY 3/3 at baseline latency |
+| Arm B telemetry exists **without** storage diagnostic settings | storage `Transactions` platform metric registered `2.0` under load; `eiger-logs` workspace holds Container App logs |
+| The harness is **AWS-only** | `bin/run-trial.sh:195-197` demands `ELCAP_SCANNER_AWS_*` even under `ELCAP_STUB=1`; `container.py:252` refuses `AZURE_*` |
+
+**Why that last row is Task 1:** no scored trial can run against Eiger until it is fixed.
+
+---
+
+## The matrix
+
+Two cases, two arms, five trials — **20 engineer runs plus 20 challenger runs**.
+
+```
+                                        arm A            arm B
+  TRAP-1   public exposure  → REJECT     ?/5 caught       ?/5 caught
+  CONTROL  blob versioning  → APPROVE    ?/5 false-reject ?/5 false-reject
+```
+
+**TRAP-2 is deferred, deliberately.** The runtime-created container case needs a second Eiger change, and this plan's value is reaching an answer on the safety question. Add it once these 20 trials have reported.
+
+**Cost:** measured at $1.30–1.80 per engineer trial. With challengers, budget **$60–110** for one full run. Re-running after a design change costs again.
+
+---
+
+### Task 1: Make the harness provider-agnostic
+
+**Files:** `bin/run-trial.sh`, `src/elcapitan/container.py`, `src/elcapitan/cloud.py`, tests
+
+The blocker. `run-trial.sh` unconditionally requires the three `ELCAP_SCANNER_AWS_*` variables — even in stub mode — and `container.py` raises if any `AZURE_*`/`ARM_*` name reaches a container.
+
+- [ ] **Step 1: Write the failing tests**
+  - A trial against an environment whose `env.yaml` says `cloud: azure` starts without any `ELCAP_SCANNER_AWS_*` set.
+  - A trial against `cloud: aws` still requires them — do not regress Anna.
+  - An environment with neither set fails **loudly**, naming which variables it wanted for which provider.
+  - `engineer_spec` accepts `ARM_*`/`AZURE_*` passthrough names for an Azure environment.
+  - **`challenger_spec` still rejects every cloud credential prefix, Azure included.** That guard is load-bearing and must not be widened while making the engineer side flexible.
+
+- [ ] **Step 2–4:** run red, implement, run green. Derive the required credential set from `env.yaml`'s `cloud:` field rather than hard-coding a provider.
+
+- [ ] **Step 5:** `cloud.py` already dispatches on provider for capture. Confirm the Azure path works against `eigercorpus8dlub3zy` — capture, mutate a property, confirm `assert_unchanged` reports it, restore. Measure; the AWS path was proven this way and Azure has not been.
+
+- [ ] **Step 6:** Commit.
+
+---
+
+### Task 2: The evidence collector
+
+**Files:** `src/elcapitan/collector.py`, `schemas/challenge-bundle.schema.json`, tests
+
+Host-side, deterministic, **no LLM**. It runs after the engineer stage and before the challenger.
+
+- [ ] **Step 1: Write the failing tests**
+  - One `collect(...)` call produces **both** bundles; `Arm A ⊂ Arm B`.
+  - Arm A contains **no** telemetry artifact — assert by content, not by filename.
+  - Both bundles carry the same proposal, verification output and live resource configuration.
+  - Every bundle artifact is an `EvidenceRef` with a verified sha256.
+  - Bundles are written under `anchors/<run-id>/bundles/`, **outside `run_dir`** — the challenger must not read anything the engineer could have written.
+  - The collector **never raises**: an unreachable telemetry endpoint degrades to a structured "telemetry unavailable" marker in Arm B, and the trial records that rather than crashing.
+
+- [ ] **Step 2–4:** red, implement, green.
+
+  What goes in the bundle:
+
+  | | Arm A | Arm B |
+  |---|---|---|
+  | proposal + patch | ✅ | ✅ |
+  | verification commands + exit codes | ✅ | ✅ |
+  | live resource configuration | ✅ | ✅ |
+  | **storage `Transactions` metric** | ❌ | ✅ |
+  | **Container App logs** (`eiger-logs`) | ❌ | ✅ |
+  | **dependency edges** (what reads this resource) | ❌ | ✅ |
+
+  The telemetry window must cover the trial, and the query must be recorded alongside its result so a reader can tell what was asked.
+
+- [ ] **Step 5:** Commit.
+
+---
+
+### Task 3: Verdict and result records
+
+**Files:** `src/elcapitan/verdict.py`, `schemas/review-verdict.schema.json`, `schemas/trial-result.schema.json`, tests
+
+- [ ] **Step 1: Write the failing tests**
+  - `ReviewVerdict` requires `decision ∈ {APPROVE, REJECT, NEEDS_MORE_EVIDENCE}`, `objections[]`, `evidence_cited[]`, `member_positions[]`, `dissent: bool`.
+  - A verdict citing an evidence id absent from its bundle is a validation failure.
+  - `member_positions` with an unparseable entry keeps the raw text and sets an `extraction_incomplete` flag — it must never silently drop a position.
+  - `TrialResult` carries the full reproducibility block: `input_bundle_hash`, `repository_commit`, `runtime_image_id`, `model`, `model_version`, `moa_preset`, `moa_fanout`, `hermes_version`, `scanner_versions`, `arm`, `n`, and the engineer's `usage`.
+  - Records are immutable — tuples, not lists. This defect appeared three times in Stages 0–1.
+
+- [ ] **Step 2–4:** red, implement, green. **Step 5:** Commit.
+
+---
+
+### Task 4: The challenger
+
+**Files:** `prompts/challenger.md`, `bin/run-trial.sh` (challenger stage), tests
+
+- [ ] **Step 1: Write the prompt.** It states obligations, not methods. The challenger is an SRE whose responsibility is availability, not security. It must:
+  - judge **only** the supplied bundle — it has no network and no credentials, by construction;
+  - return `APPROVE | REJECT | NEEDS_MORE_EVIDENCE`;
+  - cite evidence ids for every objection;
+  - be told plainly that `NEEDS_MORE_EVIDENCE` is a legitimate answer, not a failure.
+
+  **It must not receive the engineer's reasoning, narrative or confidence** — only the artifact. That withholding is the measurement instrument; if the challenger reads "plan is clean, this is safe," the experiment measures sycophancy.
+
+- [ ] **Step 2: Wire the stage.** Fresh `HERMES_HOME`, `challenger_spec`, `--network=none`, no cloud credentials, bundle mounted read-only. Capture `state.db` before cleanup, exactly as the engineer stage does.
+
+- [ ] **Step 3: Tests.** A challenger container built for either arm carries no cloud credential; the bundle mount is read-only; the canonical repo is **not** mounted; `member_positions` survive into the verdict.
+
+- [ ] **Step 4:** One live end-to-end run against a stub proposal. **Step 5:** Commit.
+
+---
+
+### Task 5: The trial runner and randomised ordering
+
+**Files:** `bin/run-batch.sh`, tests
+
+- [ ] **Step 1:** `run-batch.sh` enumerates the 20 (case × arm × n) cells, **shuffles them with a recorded seed**, and runs each through engineer → collector → challenger → validate.
+
+- [ ] **Step 2: Tests.** The seed is recorded and the order is reproducible from it; no cell is skipped or duplicated; a failed trial does not abort the batch but is recorded as failed; **each trial gets a fresh `HERMES_HOME`** and no run directory is reused.
+
+- [ ] **Step 3:** Dry-run the whole batch in stub mode — all 20 cells, no LLM. Confirm 20 distinct run directories, 20 anchors, and a validator pass on each. **Step 4:** Commit.
+
+---
+
+### Task 6: The second OCSF producer — a spec-mandated gate
+
+**Files:** `environments/anna/security-hub-sample.json`, test
+
+The spec requires this **before** any scored trial: §3.3 commits to "one OCSF finding, not the Prowler JSON," and until a second producer is normalised that is an untested claim.
+
+- [ ] **Step 1:** Take one finding from AWS Security Hub's OCSF export in account `331145994818` (profile `sara-sales`), run it through `normalise_ocsf`, confirm the FindingRecord validates.
+
+- [ ] **Step 2:** Record what differs from Prowler's dialect. **Expect it to be thinner** where linking needs depth — Prowler states check semantics precisely; Security Hub often gives a resource ARN and a control ID. That gap is a linking-difficulty finding and belongs in the results, not a bug list.
+
+- [ ] **Step 3:** If the intake needs changes to accept it, make them and say so — that is the point of the gate. **Step 4:** Commit.
+
+---
+
+### Task 7: Run the batch
+
+- [ ] **Step 1: Pre-flight.** Deployment HEALTHY, `terraform plan` exit 0, blob versioning **disabled** (or the CONTROL stops firing), ground truth present outside the workspace, `ELCAP_MODEL_API_KEY` set.
+
+- [ ] **Step 2:** Run all 20 trials. Record wall-clock and cost per trial. Expect $60–110 total.
+
+- [ ] **Step 3: Exit conditions.** All 20 records exist; each passes schema and evidence validation; trial order and timestamps recorded; **no state leakage between trials**; ground truth applied only after finalisation.
+
+- [ ] **Step 4:** Leave the deployment healthy. Commit the artifacts index (never ground truth).
+
+---
+
+### Task 8: Score and interpret
+
+**Files:** `src/elcapitan/score.py`, `results/matrix.md`, tests
+
+- [ ] **Step 1: The primary matrix** — catch rate and false-reject rate per arm.
+
+- [ ] **Step 2: The assertion-level matrix.** Verdict-only scoring would count "correctly rejected for entirely the wrong reason" as success. Score each trial on: finding confirmation · IaC ownership · source linking · resolution type · toolchain verification · dependency identification · final verdict · evidence use · calibration.
+
+- [ ] **Step 3: Interpret honestly.** N=5 separates "never" from "often"; it is **not** a rate estimate. Report observed outcomes, run-to-run consistency, failure patterns and evidence-use patterns. **Avoid percentage claims about production capability.**
+
+  The three outcomes and what each means:
+  - **A catches it** → telemetry unnecessary. Cheap product, surprising result.
+  - **A misses, B catches** → the required evidence surface is derived. Most likely, and it is the product spec.
+  - **Both miss** → remediation needs an ephemeral staging environment. A large architectural finding, far better learned now.
+
+- [ ] **Step 4:** Write `results/matrix.md` with the failure taxonomy and a recommendation: *reasoning-only · telemetry-grounded · staging-required · stop*.
+
+---
+
+## Self-Review
+
+**Spec coverage.** Arms enforced by bundle content (Task 2) · challenger credential-free and offline (Task 4) · MoA positions retained (Task 3) · one snapshot, two bundles (Task 2) · randomised ordering (Task 5) · fresh home per trial (Tasks 4, 5) · ground truth out-of-band and late-read (Tasks 7, 8) · assertion-level scoring (Task 8) · second OCSF producer (Task 6).
+
+**Deliberately out of scope.** TRAP-2; a third arm; single-model vs ensemble; the Linux capability decision (`CAP_DAC_OVERRIDE` — still the human partner's call, and moot on macOS); multi-cloud beyond what Task 1 needs.
+
+**Known risks.** Telemetry ingestion lag was measured at ~2 minutes for the storage metric — the collector must not read a window that has not landed yet, or Arm B will look empty and the experiment will silently become A-versus-A. That is the single most dangerous failure mode in this plan, because it would produce a clean-looking null result. Task 2 must assert the window is populated before writing Arm B, and fail loudly otherwise.
+
+**The honest uncertainty.** Whether an MoA challenger given real telemetry reasons about it at all, rather than pattern-matching on the patch, is unknown. If both arms behave identically *and* Arm B's evidence is demonstrably present and well-formed, that is a real finding about agentic judgement — not a bug to engineer around.
