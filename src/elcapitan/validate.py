@@ -459,9 +459,15 @@ def validate_run(run_dir, *, canonical_repo, repo_state_before: RepoState,
             "to remediate")
     else:
         try:
+            # The provider comes from the ANCHOR, not from the environment or
+            # the finding: the anchor is what this check re-queries, and it was
+            # captured out-of-band before the agent ran. Reading it from
+            # anything the agent can reach would let a run choose which cloud
+            # it is verified against.
             failures += assert_cloud_unchanged(
                 cloud_state_before,
-                env=verification_env(os.environ if env is None else env))
+                env=verification_env(os.environ if env is None else env,
+                                     provider=cloud_state_before.provider))
         except (ValueError, OSError) as exc:
             failures.append(f"cloud resource could not be re-inspected: {exc}")
 

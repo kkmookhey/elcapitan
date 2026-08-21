@@ -31,15 +31,18 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable
 
-from .constants import SCANNER_ENV_MAP
+from .constants import ALL_SCANNER_ENV_NAMES, SCANNER_ENV_MAPS, scanner_env_map
 from .container import ContainerSpec
 from .session import CommandRecord, read_session, session_succeeded
 
 StubFn = Callable[[list[str], str, dict], tuple[int, str]]
 
-# Re-exported, not redefined: elcapitan.cloud uses the same three host
-# variable names on the host side to re-query the finding's resource after the
-# run. One definition in constants.py, two importers — see its comment.
+# Re-exported, not redefined: elcapitan.cloud uses the same host variable
+# names on the host side to re-query the finding's resource after the run. One
+# definition in constants.py, two importers — see its comment. The scanner
+# names are now keyed by provider (Eiger is Azure), so the re-export is the
+# accessor and the whole table, never one provider's map flattened to a
+# default — a default is how every entry point came to demand AWS.
 MODEL_ENV_MAP = {"ELCAP_MODEL_API_KEY": "ANTHROPIC_API_KEY"}
 
 

@@ -20,13 +20,23 @@
 #                            input manifest and the -m flag agent-run.sh passes
 #                            can never disagree.
 #   ELCAP_STUB=1             run tests/stub_engineer.py instead of a container
-# Required in every mode, including ELCAP_STUB=1:
-#   ELCAP_SCANNER_AWS_ACCESS_KEY_ID / _SECRET_ACCESS_KEY / _SESSION_TOKEN
-#                            the scoped read-only scanner role. Used HERE to
-#                            capture the finding resource's configuration
+# Required in every mode, including ELCAP_STUB=1 — WHICH ONES depends on the
+# environment adapter's `cloud:` field, not on what happens to be exported:
+#   cloud: aws    ELCAP_SCANNER_AWS_ACCESS_KEY_ID / _SECRET_ACCESS_KEY
+#                                                 / _SESSION_TOKEN
+#   cloud: azure  ELCAP_SCANNER_AZURE_CLIENT_ID / _CLIENT_SECRET / _TENANT_ID
+#                            the scoped read-only scanner principal. Used HERE
+#                            to capture the finding resource's configuration
 #                            before the agent runs, and again by the validator
 #                            to re-query it afterwards. See "no stub exemption"
-#                            below for why stub mode does not get a pass.
+#                            below for why stub mode does not get a pass. The
+#                            names are derived from constants.SCANNER_ENV_MAPS,
+#                            so adding a provider is one edit, not four.
+# Exported by this script for bin/agent-run.sh:
+#   ELCAP_CLOUD              the provider, read from the adapter. agent-run.sh
+#                            uses it to pass the right cloud's credential into
+#                            the engineer container, and refuses another
+#                            cloud's.
 #
 # ## The out-of-band anchor — the one property this script exists to hold
 #
@@ -187,14 +197,62 @@ fi
 if [ "${ELCAP_STUB:-0}" != "1" ]; then
   : "${ELCAP_MODEL_API_KEY:?ELCAP_MODEL_API_KEY must be set (maps to ANTHROPIC_API_KEY in bin/agent-run.sh)}"
 fi
-# No stub guard here — see this script's header. The names are spelled out
-# rather than derived because shell has no way to read constants.SCANNER_ENV_MAP;
-# cloud.verification_env is still the authority and re-checks all three (it is
-# what the pre-flight capture below runs through), so a rename that missed
-# this list fails loudly at the capture rather than proceeding without one.
-: "${ELCAP_SCANNER_AWS_ACCESS_KEY_ID:?ELCAP_SCANNER_AWS_ACCESS_KEY_ID must be set — the read-only scanner role captures the pre-trial cloud state and re-queries it at validation}"
-: "${ELCAP_SCANNER_AWS_SECRET_ACCESS_KEY:?ELCAP_SCANNER_AWS_SECRET_ACCESS_KEY must be set (all three scanner variables, or none of the run is verifiable)}"
-: "${ELCAP_SCANNER_AWS_SESSION_TOKEN:?ELCAP_SCANNER_AWS_SESSION_TOKEN must be set (all three scanner variables, or none of the run is verifiable)}"
+# No stub guard here — see this script's header. Which credentials a trial
+# needs depends on which cloud it is in, so the names are DERIVED from
+# constants.SCANNER_ENV_MAPS rather than spelled out. The previous version
+# hard-coded the AWS trio and demanded it on every path, stub mode included,
+# which is why no scored trial could run against Eiger at all
+# (environments/eiger/env.yaml, GAP-2).
+#
+# The provider comes from the environment adapter's `cloud:` field. That makes
+# the adapter PARSED, not merely hashed into the manifest — deliberately: the
+# provider must come from a file the operator commits and no ambient export
+# can override, and the capture below cross-checks it against the provider the
+# scanner artifact itself declares, so the two cannot silently disagree.
+ENV_CLOUD="$(uv run --project "$REPO_ROOT" python - "$ENV_ADAPTER" <<'PROVIDER_PY'
+import os
+import sys
+
+import yaml
+
+from elcapitan.constants import SCANNER_ENV_MAPS, scanner_env_map
+
+adapter_path = sys.argv[1]
+try:
+    adapter = yaml.safe_load(open(adapter_path).read())
+except (OSError, yaml.YAMLError) as exc:
+    print(f"run-trial.sh: cannot read the environment adapter {adapter_path}: {exc}",
+          file=sys.stderr)
+    sys.exit(2)
+
+provider = adapter.get("cloud") if isinstance(adapter, dict) else None
+if not isinstance(provider, str) or not provider:
+    print(f"run-trial.sh: {adapter_path} names no `cloud:` provider. Every trial is "
+          f"verified by re-querying its finding's resource, and which credentials "
+          f"that needs depends on the cloud — add `cloud: <name>` (one of "
+          f"{', '.join(sorted(SCANNER_ENV_MAPS))}).", file=sys.stderr)
+    sys.exit(2)
+
+try:
+    mapping = scanner_env_map(provider)
+except ValueError as exc:
+    print(f"run-trial.sh: {adapter_path} names cloud {provider!r}: {exc}",
+          file=sys.stderr)
+    sys.exit(2)
+
+missing = sorted(name for name in mapping if not os.environ.get(name))
+if missing:
+    print(f"run-trial.sh: {', '.join(missing)} must be set — this is a {provider} "
+          f"environment, and the read-only scanner principal captures the pre-trial "
+          f"cloud state and re-queries it at validation. All {len(mapping)} of "
+          f"{', '.join(sorted(mapping))}, or none of the run is verifiable.",
+          file=sys.stderr)
+    sys.exit(2)
+
+print(provider)
+PROVIDER_PY
+)" || exit 2
+export ELCAP_CLOUD="$ENV_CLOUD"
 
 RUN_ID="${ENV_NAME}-${FINDING_ID}-arm${ARM}-n${TRIAL_N}"
 RUN_DIR="${WORKSPACE}/runs/${RUN_ID}"
@@ -255,8 +313,18 @@ try:
     # raw event that is not the shape it claims must produce this script's own
     # message, not a traceback from three frames down.
     provider, resource_uid, region = cloud_target(raw)
+    declared = os.environ["ELCAP_CLOUD"]
+    if provider != declared:
+        # Neither side is trusted over the other; they simply have to agree.
+        # An Azure finding run under Anna's adapter would otherwise pass the
+        # credential guard above (the adapter says aws, the AWS trio is set)
+        # and then try to verify an ARM resource with an S3 query.
+        raise ValueError(
+            f"the environment adapter declares cloud {declared!r} but the finding "
+            f"was produced by a {provider!r} scan — a trial cannot be verified "
+            f"against a cloud it is not in")
     state = capture_cloud_state(resource_uid, provider=provider, region=region,
-                                env=verification_env(os.environ))
+                                env=verification_env(os.environ, provider=provider))
 except (ValueError, TypeError, AttributeError, IndexError, KeyError) as exc:
     # Never degraded to "capture nothing and carry on". A trial whose cloud
     # state cannot be anchored cannot be judged on whether it mutated the

@@ -116,7 +116,7 @@ def build_run(tmp_path, repo, *, overrides=None, finding_overrides=None,
     # resource the finding itself names.
     provider, resource_uid, region = cloud_target(raw)
     cloud_before = capture_cloud_state(resource_uid, provider=provider, region=region,
-                                       env=verification_env(os.environ))
+                                       env=verification_env(os.environ, provider="aws"))
 
     manifest = build_manifest(run, files=["inputs/finding.json", "prompt.md"],
                               repository_commit=before.commit,
