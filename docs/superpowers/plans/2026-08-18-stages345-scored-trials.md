@@ -211,14 +211,41 @@ the real extension directory; credentials stay isolated, extensions stay where t
 
 **Files:** `src/elcapitan/verdict.py`, `schemas/review-verdict.schema.json`, `schemas/trial-result.schema.json`, tests
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
   - `ReviewVerdict` requires `decision ∈ {APPROVE, REJECT, NEEDS_MORE_EVIDENCE}`, `objections[]`, `evidence_cited[]`, `member_positions[]`, `dissent: bool`.
   - A verdict citing an evidence id absent from its bundle is a validation failure.
   - `member_positions` with an unparseable entry keeps the raw text and sets an `extraction_incomplete` flag — it must never silently drop a position.
   - `TrialResult` carries the full reproducibility block: `input_bundle_hash`, `repository_commit`, `runtime_image_id`, `model`, `model_version`, `moa_preset`, `moa_fanout`, `hermes_version`, `scanner_versions`, `arm`, `n`, and the engineer's `usage`.
   - Records are immutable — tuples, not lists. This defect appeared three times in Stages 0–1.
 
-- [ ] **Step 2–4:** red, implement, green. **Step 5:** Commit.
+- [x] **Step 2–4:** red, implement, green. **Step 5:** Commit.
+
+**What Task 3 built** (2026-08-24): `src/elcapitan/verdict.py`,
+`schemas/review-verdict.schema.json`, `schemas/trial-result.schema.json`,
+`tests/test_verdict.py` (42 tests). 402 → 444 passing.
+
+**Three invariants beyond what the plan listed**, each closing a way the matrix could be
+quietly wrong:
+
+- **`extraction_incomplete` + `dissent: false` is a validation failure** when more than one
+  position was taken. `dissent: false` is a positive claim — *they agreed* — and with a
+  position nobody could read, that claim is unknowable. Unknown recorded as agreement is
+  the averaging failure the spec forbids, arriving through the back door.
+- **An empty trace is `extraction_incomplete`, not unanimity.** No positions is not
+  consensus; it is the absence of evidence about consensus.
+- **`run_id` must agree with `arm`, `n` and `finding_id`.** They are two spellings of one
+  fact, and a result filed under the wrong cell contaminates the matrix silently — the
+  matrix being the entire output.
+
+**A position is never coerced.** `"probably reject"` does not become `REJECT`; it is kept
+as raw text with `parsed: false`. Coercing would fabricate a comparable judgement out of
+one that was never made, and half-parsed is worse than unparsed because it *looks*
+comparable.
+
+Ten load-bearing assertions have killed mutants. Two of them only died after the mutation
+run exposed uncovered branches: reference-model citations (which cross arms as easily as
+the aggregator's, and nobody reads them) and a trace entry whose `content` is structured
+rather than text.
 
 ---
 
