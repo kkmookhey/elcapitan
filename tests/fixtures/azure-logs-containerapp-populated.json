@@ -1,0 +1,14 @@
+[
+  {
+    "ContainerAppName_s": "eiger-app",
+    "Log_s": "INFO:     100.100.0.168:54150 - \"GET /health HTTP/1.1\" 200 OK",
+    "TableName": "PrimaryResult",
+    "TimeGenerated": "2026-08-24T21:47:42.5917351Z"
+  },
+  {
+    "ContainerAppName_s": "eiger-app",
+    "Log_s": "INFO:     100.100.0.168:54160 - \"POST /api/kb HTTP/1.1\" 200 OK",
+    "TableName": "PrimaryResult",
+    "TimeGenerated": "2026-08-24T21:47:44.4814303Z"
+  }
+]

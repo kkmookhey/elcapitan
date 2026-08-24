@@ -102,6 +102,30 @@ The blocker. `run-trial.sh` unconditionally requires the three `ELCAP_SCANNER_AW
 
 ### Task 2: The evidence collector
 
+**Measured against the live deployment 2026-08-24, before writing any of it.** These
+change the design, so they are recorded before the steps rather than after:
+
+| Measured | Consequence |
+|---|---|
+| A storage `Transactions` window with no activity returns **60 real data points, every one `total: 0.0`** — not an empty result, and never a point missing `total` | "the window has not ingested yet" and "nothing touched this resource" are **the same shape**. This is the A-versus-A failure the plan warns about, and it cannot be caught by checking that the query succeeded. |
+| Load generated at `21:47:44` landed in the **`21:48` bucket**, first visible at `21:48:47` — ~60s later, and bucketed a minute *after* the operation | A window ending at the trial's end silently drops the trial's own last operations. The window must extend past it. |
+| A Log Analytics query over a quiet window returns `[]` — genuinely zero rows | Logs *are* distinguishable populated-vs-empty by shape. Metrics are not. The two need different populated-checks; one shared "did it work?" check would be wrong for metrics. |
+| `az monitor log-analytics query` requires the **`log-analytics` extension, version `1.0.0b1`, marked preview**, auto-installed on first use | A real dependency, on a preview extension, that `runtime.lock.json` does not yet pin. |
+| `ContainerAppConsoleLogs_CL` is the only table with data; rows carry `TimeGenerated`, `ContainerAppName_s`, `Log_s` | The dependency edge — Eiger reading the corpus blob — is visible as `POST /api/kb 200` next to a non-zero `Transactions` point. |
+
+**So the collector records three distinguishable telemetry states, never two:**
+
+- `populated` — the query ran and the window contains evidence of activity
+- `unpopulated` — the query ran and returned nothing (all-zero metric, or no log rows).
+  **Not shipped as if it were evidence.** This is the state that silently turns the
+  experiment into A-versus-A.
+- `unavailable` — the query could not run at all (no credential, no network, denied)
+
+Arm B carrying an `unpopulated` telemetry artifact is a **scoring-invalid trial**, not a
+null result. The collector still never raises; it records the state and lets the trial
+say so.
+
+
 **Files:** `src/elcapitan/collector.py`, `schemas/challenge-bundle.schema.json`, tests
 
 Host-side, deterministic, **no LLM**. It runs after the engineer stage and before the challenger.
