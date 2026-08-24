@@ -30,8 +30,7 @@ why nearly every decision here is shaped the way it is.
 | **2** Eiger on Azure + the trap | ✅ merged — **the gate passed** |
 | **3–5** the scored experiment | 🔨 **Task 1 done**, Task 2 next |
 
-`feat/stage3-provider-agnostic-harness` (2 commits ahead of `main`), clean tree,
-`372 passed, 11 skipped`.
+`main`, 72 commits, clean tree, `372 passed, 11 skipped`.
 
 ---
 
