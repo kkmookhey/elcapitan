@@ -101,8 +101,37 @@ def blob_document() -> dict:
     return json.loads((FIXTURES / "azure-blob-service-properties.json").read_text())
 
 
+def metrics_populated() -> str:
+    """A REAL Transactions window containing measured activity: 15 one-minute
+    points, one of them 1.0 — the health check's corpus blob read."""
+    return (FIXTURES / "azure-metrics-transactions-populated.json").read_text()
+
+
+def metrics_all_zero() -> str:
+    """A REAL Transactions window over a quiet period. THE DANGEROUS SHAPE:
+    15 points, every one `total: 0.0`, none missing the key. Identical to what
+    a window that has not finished ingesting returns, which is why the
+    collector cannot decide populated-vs-not by asking whether the query
+    worked."""
+    return (FIXTURES / "azure-metrics-transactions-allzero.json").read_text()
+
+
+def logs_populated() -> str:
+    """REAL ContainerAppConsoleLogs_CL rows: the GET /health and POST /api/kb
+    that the corpus read shows up as."""
+    return (FIXTURES / "azure-logs-containerapp-populated.json").read_text()
+
+
+def logs_empty() -> str:
+    """MEASURED: a quiet log window really does return zero rows — unlike
+    metrics, logs ARE distinguishable populated-vs-empty by shape."""
+    return "[]"
+
+
 def default_responses(account: dict | None = None,
-                      blob: dict | None = None) -> dict:
+                      blob: dict | None = None,
+                      metrics: str | None = None,
+                      logs: str | None = None) -> dict:
     return {
         # `az login --service-principal` prints the subscription list on
         # success. The production code ignores stdout here and only checks the
@@ -115,7 +144,21 @@ def default_responses(account: dict | None = None,
         "storage account blob-service-properties show": {
             "stdout": json.dumps(blob_document() if blob is None else blob),
             "exit": 0},
+        "monitor metrics list": {
+            "stdout": metrics_populated() if metrics is None else metrics, "exit": 0},
+        "monitor log-analytics query": {
+            "stdout": logs_populated() if logs is None else logs, "exit": 0},
     }
+
+
+def observer_credentials() -> dict:
+    """The OBSERVABILITY credential, which is a different principal from the
+    scanner: reading metrics needs Monitoring Reader and reading the workspace
+    needs Log Analytics Reader, neither of which the scanner's Reader role
+    grants over log data. Never real — the fake ignores them."""
+    return {"ELCAP_OBSERVER_AZURE_CLIENT_ID": "00000000-0000-0000-0000-0000000obsv",
+            "ELCAP_OBSERVER_AZURE_CLIENT_SECRET": "fake-observer-secret",
+            "ELCAP_OBSERVER_AZURE_TENANT_ID": "017c6f31-f951-4bda-a50a-c168c0e6f815"}
 
 
 def with_account_property(name: str, value) -> dict:
