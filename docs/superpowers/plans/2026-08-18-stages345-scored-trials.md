@@ -63,18 +63,40 @@ Two cases, two arms, five trials — **20 engineer runs plus 20 challenger runs*
 
 The blocker. `run-trial.sh` unconditionally requires the three `ELCAP_SCANNER_AWS_*` variables — even in stub mode — and `container.py` raises if any `AZURE_*`/`ARM_*` name reaches a container.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
   - A trial against an environment whose `env.yaml` says `cloud: azure` starts without any `ELCAP_SCANNER_AWS_*` set.
   - A trial against `cloud: aws` still requires them — do not regress Anna.
   - An environment with neither set fails **loudly**, naming which variables it wanted for which provider.
   - `engineer_spec` accepts `ARM_*`/`AZURE_*` passthrough names for an Azure environment.
   - **`challenger_spec` still rejects every cloud credential prefix, Azure included.** That guard is load-bearing and must not be widened while making the engineer side flexible.
 
-- [ ] **Step 2–4:** run red, implement, run green. Derive the required credential set from `env.yaml`'s `cloud:` field rather than hard-coding a provider.
+- [x] **Step 2–4:** run red, implement, run green. Derive the required credential set from `env.yaml`'s `cloud:` field rather than hard-coding a provider.
 
-- [ ] **Step 5:** `cloud.py` already dispatches on provider for capture. Confirm the Azure path works against `eigercorpus8dlub3zy` — capture, mutate a property, confirm `assert_unchanged` reports it, restore. Measure; the AWS path was proven this way and Azure has not been.
+- [x] **Step 5 — CORRECTED, and now measured.** This step said "`cloud.py` already dispatches on provider for capture. Confirm the Azure path works." **It did not.** `SUPPORTED_PROVIDERS` was `("aws",)` and `capture_cloud_state` called `_capture_aws` unconditionally; `environments/eiger/env.yaml`'s GAP-2 said so too. Implementing the Azure capture was therefore part of Task 1, and is done. What remains is the measurement this step actually asks for:
 
-- [ ] **Step 6:** Commit.
+  **Done 2026-08-24.** A Reader service principal scoped to `eiger-rg` was created, used, and deleted. Capture returned 22 aspects matching direct reads; a tag was merged and `assert_unchanged` reported exactly one failure naming `tags` with both values; the tag was deleted and it returned `[]`. Invariants re-checked after: blob versioning still `false`, `publicNetworkAccess` still `Enabled`, tags byte-identical, `health.sh` HEALTHY. `az login --service-principal` is now measured, including its ~26s role-assignment propagation delay — see `environments/eiger/env.yaml` under `identities:`.
+
+- [x] **Step 6:** Commit.
+
+**What Task 1 actually changed** (2026-08-21):
+
+| Change | Where |
+|---|---|
+| Credential names keyed by provider, with a named error for an unknown one | `constants.SCANNER_ENV_MAPS`, `scanner_env_map()` |
+| `verification_env(env, *, provider)` — no default, by design | `cloud.py` |
+| Azure capture: two ARM documents, aspects selected by key | `cloud._capture_azure` |
+| Required credentials derived from `env.yaml`'s `cloud:` | `bin/run-trial.sh` |
+| Adapter and scanner artifact must agree on the provider | `bin/run-trial.sh` |
+| Engineer gets one cloud's credential, and refuses a second | `bin/agent-run.sh` |
+| Validation re-queries under the provider the **anchor** names | `validate.py` |
+
+**Three facts measured against the live account, each of which would have been guessed wrong:**
+
+1. `az --query <unknown-property>` exits **0 with empty stdout**. A per-aspect `--query` capture would record `""` for a typo and compare equal to itself for the rest of the experiment. Hence: whole documents, aspects selected in Python, missing key raises.
+2. `az storage account blob-service-properties show` **rejects `--ids`** — it needs `-n`/`-g`, so the ARM id must be parsed apart. The CONTROL case (`isVersioningEnabled`) lives only in that document.
+3. `az` reads credentials from `$AZURE_CONFIG_DIR`, defaulting to `$HOME/.azure`. `verification_env` passes `HOME` through, so without an explicit fresh config dir the capture would silently run as **whoever the operator last logged in as** — and would look like it was working.
+
+**A false green this found:** `bin/agent-run.sh` runs only in non-stub mode, so renaming `shim.SCANNER_ENV_MAP` broke it while all 365 tests stayed green — the break would have first appeared in a real, money-spending trial. `tests/test_shim.py` now statically checks that every name it imports exists.
 
 ---
 

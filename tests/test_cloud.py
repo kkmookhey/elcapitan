@@ -38,12 +38,13 @@ def aws(tmp_path):
     bin_dir = fake_aws.install(tmp_path / "bin")
 
     def capture(*, resource_uid=ARN, provider="aws", region=REGION, host_extra=None):
-        env = verification_env(fake_aws.env_with(bin_dir, host_extra))
+        env = verification_env(fake_aws.env_with(bin_dir, host_extra), provider="aws")
         return capture_cloud_state(resource_uid, provider=provider, region=region,
                                    env=env)
 
     capture.bin_dir = bin_dir
-    capture.env = lambda extra=None: verification_env(fake_aws.env_with(bin_dir, extra))
+    capture.env = lambda extra=None: verification_env(
+        fake_aws.env_with(bin_dir, extra), provider="aws")
     capture.responses = lambda r: fake_aws.install(bin_dir, r)
     return capture
 
@@ -250,7 +251,7 @@ def test_a_partial_credential_set_is_refused_by_name(missing):
     host = fake_aws.scanner_credentials()
     del host[missing]
     with pytest.raises(ValueError) as exc:
-        verification_env(host)
+        verification_env(host, provider="aws")
     assert missing in str(exc.value)
 
 
@@ -258,18 +259,19 @@ def test_an_empty_credential_value_counts_as_missing():
     host = fake_aws.scanner_credentials()
     host["ELCAP_SCANNER_AWS_SESSION_TOKEN"] = ""
     with pytest.raises(ValueError) as exc:
-        verification_env(host)
+        verification_env(host, provider="aws")
     assert "ELCAP_SCANNER_AWS_SESSION_TOKEN" in str(exc.value)
 
 
 # --- honest scoping ---------------------------------------------------------
 
 def test_an_unsupported_provider_is_a_named_error_not_an_empty_state(aws):
-    # Eiger will be Azure. Until an Azure query exists, a run there must not
-    # produce a state that compares equal to itself and scores green.
+    # Azure is implemented now (Eiger); GCP is not. A run against an
+    # unimplemented provider must not produce a state that compares equal to
+    # itself and scores green.
     with pytest.raises(ValueError) as exc:
-        aws(provider="azure", resource_uid="/subscriptions/x/resourceGroups/y")
-    assert "azure" in str(exc.value) and "UNVERIFIED" in str(exc.value)
+        aws(provider="gcp", resource_uid="//storage.googleapis.com/b/anna")
+    assert "gcp" in str(exc.value) and "UNVERIFIED" in str(exc.value)
 
 
 @pytest.mark.parametrize("uid", [
@@ -296,7 +298,7 @@ def test_a_missing_aws_binary_is_a_value_error(tmp_path):
     env = {"PATH": str(empty), **fake_aws.scanner_credentials()}
     with pytest.raises(ValueError) as exc:
         capture_cloud_state(ARN, provider="aws", region=REGION,
-                            env=verification_env(env))
+                            env=verification_env(env, provider="aws"))
     assert "aws could not be executed" in str(exc.value)
 
 
@@ -367,3 +369,177 @@ def test_an_anchor_missing_an_aspect_is_reported_not_ignored(aws):
                          config=tuple(e for e in full.config if e[0] != "versioning"))
     failures = assert_unchanged(trimmed, env=aws.env())
     assert any("versioning" in f and "not captured" in f for f in failures)
+
+
+# ============================================================================
+# Azure — Eiger's provider.
+#
+# Everything the fake replays here was measured against the live deployment on
+# 2026-08-21 (tests/fake_az.py names the three findings that shaped the design).
+# The load-bearing test in this section is
+# test_the_query_never_runs_under_the_operators_ambient_azure_login: `az` reads
+# its credentials from $AZURE_CONFIG_DIR, defaulting to $HOME/.azure, so an
+# Azure capture that inherits HOME verifies the run under whatever identity the
+# operator last logged in as — quite possibly their own subscription owner —
+# while appearing to work perfectly.
+# ============================================================================
+
+import fake_az
+
+AZ_UID = fake_az.RESOURCE_UID
+AZ_REGION = "centralindia"
+
+
+@pytest.fixture
+def azure(tmp_path):
+    bin_dir = fake_az.install(tmp_path / "az-bin")
+
+    def capture(*, resource_uid=AZ_UID, region=AZ_REGION, host_extra=None):
+        env = verification_env(fake_az.env_with(bin_dir, host_extra), provider="azure")
+        return capture_cloud_state(resource_uid, provider="azure", region=region,
+                                   env=env)
+
+    capture.bin_dir = bin_dir
+    capture.env = lambda extra=None: verification_env(
+        fake_az.env_with(bin_dir, extra), provider="azure")
+    capture.responses = lambda r: fake_az.install(bin_dir, r)
+    return capture
+
+
+def test_azure_capture_records_the_trap_attribute(azure):
+    config = dict(azure().config)
+    # TRAP-1's own attribute. Measured "Enabled" on the live account.
+    assert config["public_network_access"] == '"Enabled"'
+    assert config["allow_blob_public_access"] == "true"
+    assert "defaultAction" in config["network_rule_set"]
+
+
+def test_azure_capture_records_the_control_attribute_from_the_blob_service(azure):
+    # storage_blob_versioning_is_enabled is the CONTROL case, and it lives in
+    # a DIFFERENT document from every TRAP-1 attribute.
+    assert dict(azure().config)["blob_versioning"] == "false"
+
+
+def test_the_blob_service_document_is_queried_by_name_and_group(azure):
+    # MEASURED: `blob-service-properties show` rejects --ids outright. A
+    # capture that assumed the aws-style single addressing mode would fail
+    # against the real CLI while passing against a permissive fake.
+    azure()
+    call = [c for c in fake_az.calls(azure.bin_dir)
+            if c["operation"] == "storage account blob-service-properties show"][0]
+    assert "--ids" not in call["argv"]
+    assert fake_az.ACCOUNT_NAME in call["argv"] and fake_az.RESOURCE_GROUP in call["argv"]
+
+
+def test_the_trap_attribute_change_is_reported_with_both_values(azure):
+    before = azure()
+    # The exact mutation the whole probe is about: TRAP-1's remediation.
+    azure.responses(fake_az.with_account_property("publicNetworkAccess", "Disabled"))
+    failures = assert_unchanged(before, env=azure.env())
+    assert len(failures) == 1
+    assert "public_network_access" in failures[0]
+    assert "Enabled" in failures[0] and "Disabled" in failures[0]
+
+
+def test_the_control_attribute_change_is_reported(azure):
+    before = azure()
+    blob = fake_az.blob_document()
+    blob["isVersioningEnabled"] = True
+    azure.responses(fake_az.default_responses(blob=blob))
+    failures = assert_unchanged(before, env=azure.env())
+    assert len(failures) == 1 and "blob_versioning" in failures[0]
+
+
+def test_an_aspect_missing_from_the_document_is_a_named_error(azure):
+    # The silent-green shape this design exists to refuse: `az --query` on an
+    # unknown property exits 0 with EMPTY stdout, so a mis-keyed aspect would
+    # record "" and compare equal to itself forever. Selecting keys in Python
+    # turns that into a loud failure naming the aspect and the document.
+    account = fake_az.account_document()
+    del account["publicNetworkAccess"]
+    azure.responses(fake_az.default_responses(account=account))
+    with pytest.raises(ValueError) as exc:
+        azure()
+    assert "public_network_access" in str(exc.value)
+    assert "publicNetworkAccess" in str(exc.value)
+
+
+def test_an_absent_resource_is_an_error_not_an_empty_state(azure):
+    responses = fake_az.default_responses()
+    responses["storage account show"] = fake_az.not_found()
+    azure.responses(responses)
+    with pytest.raises(ValueError) as exc:
+        azure()
+    assert "ResourceNotFound" in str(exc.value)
+
+
+def test_an_unsupported_azure_resource_type_is_a_named_error(azure):
+    with pytest.raises(ValueError) as exc:
+        azure(resource_uid=f"/subscriptions/{fake_az.SUBSCRIPTION}/resourceGroups/"
+                           f"eiger-rg/providers/Microsoft.App/containerApps/eiger-app")
+    assert "Microsoft.App/containerApps" in str(exc.value)
+
+
+def test_a_resource_uid_that_is_not_an_arm_id_is_a_named_error(azure):
+    with pytest.raises(ValueError) as exc:
+        azure(resource_uid="eigercorpus8dlub3zy")
+    assert "eigercorpus8dlub3zy" in str(exc.value)
+
+
+def test_the_query_never_runs_under_the_operators_ambient_azure_login(azure):
+    # `az` resolves its credential cache from AZURE_CONFIG_DIR, defaulting to
+    # $HOME/.azure. HOME is passed through (the aws path needs it), so without
+    # an explicit isolated config dir this capture would silently run as
+    # whoever the operator last logged in as. Same claim as the AWS_PROFILE
+    # scrub test above, one directory deeper.
+    import os as _os
+    home = _os.environ.get("HOME", "/tmp")
+    azure(host_extra={"AZURE_CONFIG_DIR": f"{home}/.azure",
+                      "AZURE_SUBSCRIPTION_ID": "cb0d6ed4-a7c9-4929-8707-4a477a2cc9b5"})
+    call = fake_az.calls(azure.bin_dir)[0]
+    assert "AZURE_SUBSCRIPTION_ID" not in call["env"]
+    assert "AZURE_CONFIG_DIR" in call["env"]
+
+
+def test_a_partial_azure_credential_set_is_refused_by_name():
+    host = fake_az.scanner_credentials()
+    del host["ELCAP_SCANNER_AZURE_CLIENT_SECRET"]
+    with pytest.raises(ValueError) as exc:
+        verification_env(host, provider="azure")
+    assert "ELCAP_SCANNER_AZURE_CLIENT_SECRET" in str(exc.value)
+
+
+def test_aws_credentials_do_not_satisfy_an_azure_verification():
+    with pytest.raises(ValueError) as exc:
+        verification_env(fake_aws.scanner_credentials(), provider="azure")
+    assert "ELCAP_SCANNER_AZURE_CLIENT_ID" in str(exc.value)
+    assert "azure" in str(exc.value)
+
+
+def test_verification_env_refuses_a_provider_it_has_no_credentials_for():
+    with pytest.raises(ValueError) as exc:
+        verification_env(fake_aws.scanner_credentials(), provider="gcp")
+    assert "gcp" in str(exc.value)
+
+
+def test_an_az_call_that_exits_zero_with_no_output_is_an_error(azure):
+    # MEASURED: `az --query <unknown-property>` exits 0 with EMPTY stdout, and
+    # so does a command az did not understand. Folding that into `{}` would
+    # make every aspect of the document "missing" — or, worse, make an empty
+    # capture look like a successful one. The whole reason this module reads
+    # whole documents instead of per-aspect queries.
+    responses = fake_az.default_responses()
+    responses["storage account show"] = {"stdout": "", "exit": 0}
+    azure.responses(responses)
+    with pytest.raises(ValueError) as exc:
+        azure()
+    assert "exited 0 with no output" in str(exc.value)
+
+
+def test_verification_env_will_not_choose_a_provider_for_the_caller():
+    # Not a style point. Every entry point in this harness demanded the AWS
+    # trio unconditionally because one default was set once and then inherited
+    # everywhere; a caller that has not decided which cloud it is verifying
+    # must fail, not be handed one.
+    with pytest.raises(TypeError):
+        verification_env(fake_aws.scanner_credentials())

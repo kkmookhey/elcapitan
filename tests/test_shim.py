@@ -22,7 +22,7 @@ from elcapitan.container import engineer_spec
 from elcapitan.session import SessionRecord
 from elcapitan.shim import (
     MODEL_ENV_MAP,
-    SCANNER_ENV_MAP,
+    scanner_env_map,
     _capture_state_db,
     resolve_secret_env,
     run_agent,
@@ -41,7 +41,7 @@ def spec(tmp_path, **kw):
     return engineer_spec(runtime_image_id=IMAGE, run_dir=str(run_dir),
                          canonical_repo=str(canonical_repo),
                          host_hermes_home=str(hermes_home),
-                         env_passthrough=list(SCANNER_ENV_MAP.values()) +
+                         env_passthrough=list(scanner_env_map("aws").values()) +
                                         list(MODEL_ENV_MAP.values()), **kw)
 
 
@@ -123,7 +123,7 @@ def test_scanner_prefix_is_translated_to_the_aws_name():
     host = {"ELCAP_SCANNER_AWS_ACCESS_KEY_ID": "AKIA_X",
             "ELCAP_SCANNER_AWS_SECRET_ACCESS_KEY": "s",
             "ELCAP_SCANNER_AWS_SESSION_TOKEN": "t"}
-    resolved = resolve_secret_env(host, SCANNER_ENV_MAP)
+    resolved = resolve_secret_env(host, scanner_env_map("aws"))
     assert resolved["AWS_ACCESS_KEY_ID"] == "AKIA_X"
     assert resolved["AWS_SECRET_ACCESS_KEY"] == "s"
     assert resolved["AWS_SESSION_TOKEN"] == "t"
@@ -137,7 +137,7 @@ def test_model_prefix_is_translated_to_the_anthropic_name():
 
 def test_missing_required_secret_raises_by_name():
     with pytest.raises(KeyError, match="ELCAP_SCANNER_AWS_ACCESS_KEY_ID"):
-        resolve_secret_env({}, SCANNER_ENV_MAP)
+        resolve_secret_env({}, scanner_env_map("aws"))
 
 
 # --- run_agent with a stub: argv, prompt, secrets, artifacts ---
@@ -847,3 +847,35 @@ def test_spec_requires_three_distinct_paths(tmp_path):
         engineer_spec(runtime_image_id=IMAGE, run_dir=str(tmp_path),
                       canonical_repo=str(tmp_path), host_hermes_home=str(tmp_path),
                       env_passthrough=[])
+
+
+# --- bin/agent-run.sh's imports must actually resolve ------------------------
+#
+# Found the hard way while making the harness provider-agnostic: agent-run.sh
+# is invoked ONLY in non-stub mode, so renaming shim.SCANNER_ENV_MAP broke it
+# while all 365 tests stayed green. The break would first appear in a real
+# trial — one that spends money and burns an immutable trial id. A static check
+# of the names it imports is cheap and kills exactly that mutant.
+
+def _agent_run_python_block() -> str:
+    script = (Path(__file__).resolve().parents[1] / "bin" / "agent-run.sh").read_text()
+    start = script.index("<<'PY'") + len("<<'PY'")
+    return script[start:script.index("\nPY\n", start)]
+
+
+@pytest.mark.parametrize("module_name", ["elcapitan.shim", "elcapitan.container",
+                                         "elcapitan.home", "elcapitan.constants"])
+def test_every_name_agent_run_imports_from_elcapitan_exists(module_name):
+    import ast
+    import importlib
+
+    tree = ast.parse(_agent_run_python_block())
+    wanted = [alias.name for node in ast.walk(tree)
+              if isinstance(node, ast.ImportFrom) and node.module == module_name
+              for alias in node.names]
+    if not wanted:
+        pytest.skip(f"agent-run.sh imports nothing from {module_name}")
+    module = importlib.import_module(module_name)
+    missing = [name for name in wanted if not hasattr(module, name)]
+    assert not missing, f"bin/agent-run.sh imports {missing} from {module_name}, " \
+                        f"which does not define them"

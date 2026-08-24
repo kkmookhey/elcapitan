@@ -1,0 +1,36 @@
+{
+  "automaticSnapshotPolicyEnabled": null,
+  "changeFeed": {
+    "enabled": false,
+    "retentionInDays": null
+  },
+  "containerDeleteRetentionPolicy": {
+    "allowPermanentDelete": null,
+    "days": null,
+    "enabled": false
+  },
+  "cors": {
+    "corsRules": []
+  },
+  "defaultServiceVersion": null,
+  "deleteRetentionPolicy": {
+    "allowPermanentDelete": false,
+    "days": null,
+    "enabled": false
+  },
+  "id": "/subscriptions/8cd2b4cc-c789-466d-a8f7-8f51fb20985d/resourceGroups/eiger-rg/providers/Microsoft.Storage/storageAccounts/eigercorpus8dlub3zy/blobServices/default",
+  "isVersioningEnabled": false,
+  "lastAccessTimeTrackingPolicy": null,
+  "name": "default",
+  "resourceGroup": "eiger-rg",
+  "restorePolicy": {
+    "days": null,
+    "enabled": false,
+    "minRestoreTime": null
+  },
+  "sku": {
+    "name": "Standard_LRS",
+    "tier": "Standard"
+  },
+  "type": "Microsoft.Storage/storageAccounts/blobServices"
+}

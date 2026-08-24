@@ -87,7 +87,8 @@ import sys
 
 from elcapitan.container import engineer_spec
 from elcapitan.home import seed_hermes_home
-from elcapitan.shim import MODEL_ENV_MAP, SCANNER_ENV_MAP, resolve_secret_env, run_agent
+from elcapitan.shim import (ALL_SCANNER_ENV_NAMES, MODEL_ENV_MAP,
+                            resolve_secret_env, run_agent, scanner_env_map)
 
 (run_dir, prompt_path, canonical_repo, host_hermes_home,
  lock_path, seeded_home, arm) = sys.argv[1:8]
@@ -113,15 +114,40 @@ secret_env["HERMES_UID"] = str(os.getuid())
 secret_env["HERMES_GID"] = str(os.getgid())
 env_passthrough += ["HERMES_UID", "HERMES_GID"]
 
-scanner_present = [k for k in SCANNER_ENV_MAP if k in os.environ]
+# Which scanner credential the engineer gets depends on which cloud the
+# environment is in. ELCAP_CLOUD is set by bin/run-trial.sh from the
+# environment adapter's `cloud:` field; it is not defaulted here, because a
+# default is how every entry point in this harness came to demand AWS.
+scanner_present = sorted(ALL_SCANNER_ENV_NAMES & set(os.environ))
 if scanner_present:
-    if len(scanner_present) != len(SCANNER_ENV_MAP):
-        missing = sorted(set(SCANNER_ENV_MAP) - set(scanner_present))
-        print(f"agent-run.sh: partial scanner credentials set; missing {missing}",
-              file=sys.stderr)
+    cloud = os.environ.get("ELCAP_CLOUD", "")
+    if not cloud:
+        print(f"agent-run.sh: scanner credentials are set ({scanner_present}) but "
+              f"ELCAP_CLOUD names no provider, so there is no way to tell which of "
+              f"them this environment needs", file=sys.stderr)
         sys.exit(2)
-    secret_env.update(resolve_secret_env(os.environ, SCANNER_ENV_MAP))
-    env_passthrough += list(SCANNER_ENV_MAP.values())
+    try:
+        scanner_map = scanner_env_map(cloud)
+    except ValueError as exc:
+        print(f"agent-run.sh: {exc}", file=sys.stderr)
+        sys.exit(2)
+
+    missing = sorted(set(scanner_map) - set(scanner_present))
+    if missing:
+        print(f"agent-run.sh: partial {cloud} scanner credentials set; "
+              f"missing {missing}", file=sys.stderr)
+        sys.exit(2)
+    # A second cloud's credentials in the same environment would be handed to
+    # the agent alongside the first. The engineer holds exactly one cloud's
+    # read-only scanner credential — the one its environment is in.
+    foreign = sorted(set(scanner_present) - set(scanner_map))
+    if foreign:
+        print(f"agent-run.sh: this is a {cloud} environment but credentials for "
+              f"another cloud are also set: {foreign}", file=sys.stderr)
+        sys.exit(2)
+
+    secret_env.update(resolve_secret_env(os.environ, scanner_map))
+    env_passthrough += list(scanner_map.values())
 
 spec = engineer_spec(runtime_image_id=lock["runtime_image_id"], run_dir=run_dir,
                      canonical_repo=canonical_repo, host_hermes_home=host_hermes_home,

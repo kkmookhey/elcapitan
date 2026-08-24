@@ -1,6 +1,6 @@
 # El Capitan — Session Handoff
 
-**As of 2026-08-20.** Read this before touching anything.
+**As of 2026-08-24.** Read this before touching anything.
 
 ---
 
@@ -28,9 +28,10 @@ why nearly every decision here is shaped the way it is.
 |---|---|
 | **0–1** substrate, harness, validator | ✅ merged — 345 tests, 13 tasks, all reviewed |
 | **2** Eiger on Azure + the trap | ✅ merged — **the gate passed** |
-| **3–5** the scored experiment | 📋 planned, **not started** |
+| **3–5** the scored experiment | 🔨 **Task 1 done**, Task 2 next |
 
-`main`, 66 commits, clean tree, `345 passed, 10 skipped`.
+`feat/stage3-provider-agnostic-harness` (2 commits ahead of `main`), clean tree,
+`372 passed, 11 skipped`.
 
 ---
 
@@ -52,13 +53,21 @@ rebuild the image from `main` or you will silently lose the trap's whole premise
 branch is unmerged on purpose — it is a PR against a Black Hat teaching repo and is the
 human partner's call to land.
 
-**2. `bin/run-trial.sh` is AWS-only — this blocks Stage 3.**
+**2. ~~`bin/run-trial.sh` is AWS-only~~ — FIXED 2026-08-24, Task 1.**
 
-Lines 195–197 unconditionally require `ELCAP_SCANNER_AWS_*` even under `ELCAP_STUB=1`,
-and `container.py:252` refuses to pass `AZURE_*` through. **No scored trial can run
-against Eiger yet.** It is Task 1 of the Stages 3–5 plan for exactly this reason.
+The harness is provider-agnostic now. Which scanner credentials a trial needs is
+derived from the environment adapter's `cloud:` field via
+`constants.SCANNER_ENV_MAPS`, and `elcapitan.cloud` implements the Azure capture.
+Two things follow that a new session should know:
 
----
+- **`env.yaml` is now PARSED, not just hashed.** Its `cloud:` field decides the
+  provider, and `run-trial.sh` refuses to start if it disagrees with the provider
+  the scanner artifact declares. Adding an environment means declaring its cloud.
+- **Azure credentials are `ELCAP_SCANNER_AZURE_CLIENT_ID` / `_CLIENT_SECRET` /
+  `_TENANT_ID`** — the three `--sp-env-auth` names the scan already used. There is
+  still no standing scanner principal in the tenant: Step 5 created one, measured
+  with it, and deleted it. **A fresh principal cannot sign in for ~26 seconds**
+  while the role assignment propagates, and nothing retries that on purpose.
 
 ## Live infrastructure — real money, real exposure
 
@@ -150,8 +159,9 @@ recovery map if context is lost.
 
 ## Next steps
 
-**Task 1 of `docs/superpowers/plans/2026-08-18-stages345-scored-trials.md`** — make the
-harness provider-agnostic. Everything else is blocked on it.
+**Task 2 of `docs/superpowers/plans/2026-08-18-stages345-scored-trials.md`** — the
+host-side evidence collector. Task 1 (provider-agnostic harness + the Azure capture)
+is done and measured against the live account; nothing is blocked on it any more.
 
 **Two decisions belong to the human partner:**
 
@@ -161,6 +171,13 @@ harness provider-agnostic. Everything else is blocked on it.
   project keeps finding.
 - **Budget.** ~$60–110 per full 20-trial run, and re-running after a design change costs
   again. Not a one-off.
+
+**One thing Task 1 established about how this code fails:** `bin/agent-run.sh` runs
+only in non-stub mode, so renaming a constant broke it while all 365 tests stayed
+green — the break would first have appeared in a real, money-spending trial. Any
+shell script the stub path does not execute is untested by default. `test_shim.py`
+now statically checks the names `agent-run.sh` imports; the same hole may exist
+elsewhere in `bin/`.
 
 **The most dangerous failure mode in the next plan:** telemetry ingestion lag is ~2
 minutes. A collector reading a window that has not landed makes Arm B look empty,

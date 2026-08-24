@@ -37,10 +37,11 @@ Three properties are deliberate:
 import json
 import re
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from .constants import SCANNER_ENV_MAP
+from .constants import scanner_env_map
 from .hashing import canonical_json
 
 # Read-only S3 operations, each one measured against the real
@@ -92,7 +93,7 @@ S3_ABSENT_CODES = frozenset({
     "ReplicationConfigurationNotFoundError",
 })
 
-SUPPORTED_PROVIDERS = ("aws",)
+SUPPORTED_PROVIDERS = ("aws", "azure")
 
 # `aws` prints "An error occurred (Code) when calling the ..." on stderr.
 _ERROR_CODE = re.compile(r"An error occurred \(([A-Za-z0-9]+)\)")
@@ -119,27 +120,34 @@ class CloudState:
     config: tuple[tuple[str, str], ...] = ()
 
 
-def verification_env(env: dict) -> dict:
-    """The environment the read-only query runs under.
+def verification_env(env: dict, *, provider: str) -> dict:
+    """The environment the read-only query runs under, for one provider.
 
     Built explicitly rather than inherited. An inherited environment would let
     an ambient AWS_PROFILE, AWS_ROLE_ARN or a stale AWS_ACCESS_KEY_ID decide
     which identity verifies the run — quite possibly the operator's own admin
     credentials. The verification identity must be the scoped read-only
-    scanner role and nothing else, so only the mapped credentials plus PATH
-    and HOME are passed through.
+    scanner principal and nothing else, so only the mapped credentials plus
+    PATH and HOME are passed through.
+
+    `provider` is required, not defaulted. Defaulting it to "aws" would make
+    an Azure trial fail with "AWS credentials are not set", pointing the
+    operator at the wrong three variables — and, worse, a future provider
+    added without a map would silently inherit AWS's.
 
     Raises ValueError (not KeyError) naming every missing variable: a
-    partially-resolved AWS credential trio is a configuration error, not
-    something to query with.
+    partially-resolved credential set is a configuration error, not something
+    to query with.
     """
-    missing = sorted(name for name in SCANNER_ENV_MAP if not env.get(name))
+    mapping = scanner_env_map(provider)
+    missing = sorted(name for name in mapping if not env.get(name))
     if missing:
         raise ValueError(
-            "cloud verification credentials are not set: " + ", ".join(missing)
-            + " — the read-only scanner role must be assumed before a trial "
+            f"cloud verification credentials for provider {provider!r} are not set: "
+            + ", ".join(missing)
+            + " — the read-only scanner principal must be assumed before a trial "
               "is validated")
-    resolved = {container: env[host] for host, container in SCANNER_ENV_MAP.items()}
+    resolved = {container: env[host] for host, container in mapping.items()}
     for name in ("PATH", "HOME"):
         if name in env:
             resolved[name] = env[name]
@@ -215,6 +223,197 @@ def _capture_aws(resource_uid: str, region: str, env: dict) -> tuple[tuple[str, 
     return tuple(config)
 
 
+
+# --- Azure -----------------------------------------------------------------
+#
+# Eiger's provider. Three facts were MEASURED against the live deployment on
+# 2026-08-21 (subscription 8cd2b4cc-..., eigercorpus8dlub3zy) and each one
+# shaped the code below; none would have survived being guessed.
+#
+# 1. `--query` on a property that does not exist exits 0 with EMPTY stdout.
+#    A per-aspect `--query` capture would therefore record "" for a misspelled
+#    property and compare equal to itself for the rest of the experiment —
+#    the exact silent-green shape this module exists to refuse. So the whole
+#    document is fetched in ONE call and aspects are selected by key in
+#    Python, where a missing key raises with the aspect and key both named.
+#
+# 2. `az storage account blob-service-properties show` does NOT accept
+#    `--ids`. It requires -n/--account-name and -g/--resource-group, so the
+#    ARM resource id has to be taken apart. This is why _arm_parts exists.
+#
+# 3. An absent resource exits 3 with `Code: ResourceNotFound` on stderr — not
+#    the 254 the `aws` CLI uses. Nothing here folds a non-zero exit into a
+#    recorded value: unlike S3, where an unset bucket policy is genuinely a
+#    254, every aspect captured below is a control-plane property that is
+#    always present on a storage account and null-valued when unset. There is
+#    therefore no absent-vs-denied allow-list for Azure, and no place for a
+#    plausible-looking error code that was never observed.
+
+# Selected explicitly, never "the whole document". `az storage account show`
+# also returns provisioningState, statusOfPrimary, failoverInProgress,
+# accountMigrationInProgress, blobRestoreStatus and geoReplicationStats, all
+# of which can change without anyone touching the resource — capturing them
+# would report drift as tampering and fail honest runs.
+AZURE_STORAGE_ACCOUNT_ASPECTS = {
+    # TRAP-1's own attribute and its three sibling exposure routes first;
+    # these are what a trial's remediation actually moves.
+    "public_network_access": "publicNetworkAccess",
+    "allow_blob_public_access": "allowBlobPublicAccess",
+    "network_rule_set": "networkRuleSet",
+    "private_endpoint_connections": "privateEndpointConnections",
+    # The rest of the security surface of the account.
+    "allow_shared_key_access": "allowSharedKeyAccess",
+    "default_to_oauth_authentication": "defaultToOAuthAuthentication",
+    "enable_https_traffic_only": "enableHttpsTrafficOnly",
+    "minimum_tls_version": "minimumTlsVersion",
+    "allow_cross_tenant_replication": "allowCrossTenantReplication",
+    "encryption": "encryption",
+    "sas_policy": "sasPolicy",
+    "is_hns_enabled": "isHnsEnabled",
+    "access_tier": "accessTier",
+    "sku": "sku",
+    "tags": "tags",
+}
+
+# A SEPARATE ARM document, and the CONTROL case lives in it:
+# storage_blob_versioning_is_enabled keys on isVersioningEnabled, which does
+# not appear anywhere in `az storage account show`. A capture that read only
+# the account document would score every control trial green having never
+# looked at the property the trial was about.
+AZURE_BLOB_SERVICE_ASPECTS = {
+    "blob_versioning": "isVersioningEnabled",
+    "blob_change_feed": "changeFeed",
+    "blob_container_delete_retention_policy": "containerDeleteRetentionPolicy",
+    "blob_cors": "cors",
+    "blob_delete_retention_policy": "deleteRetentionPolicy",
+    "blob_last_access_time_tracking": "lastAccessTimeTrackingPolicy",
+    "blob_restore_policy": "restorePolicy",
+}
+
+# Only what has been measured end to end. Every other ARM type raises rather
+# than returning a state that compares equal to itself — same rule as the
+# provider gate, one level down. Compared case-insensitively because Prowler
+# emits `microsoft.storage/storageaccounts` while ARM ids carry
+# `Microsoft.Storage/storageAccounts`.
+AZURE_SUPPORTED_TYPES = ("microsoft.storage/storageaccounts",)
+
+
+def _arm_parts(resource_uid: str) -> tuple[str, str, str, str]:
+    """(subscription, resource_group, type, name) for an ARM resource id.
+
+    /subscriptions/<sub>/resourceGroups/<rg>/providers/<ns>/<type>/<name>
+    """
+    parts = resource_uid.split("/")
+    if (len(parts) != 9 or parts[0] != "" or parts[1].lower() != "subscriptions"
+            or parts[3].lower() != "resourcegroups" or parts[5].lower() != "providers"
+            or not all(parts[2:])):
+        raise ValueError(
+            f"not an ARM resource id of the form /subscriptions/<id>/resourceGroups/"
+            f"<rg>/providers/<namespace>/<type>/<name>: {resource_uid!r}")
+    return parts[2], parts[4], f"{parts[6]}/{parts[7]}", parts[8]
+
+
+def _az(env: dict, *args: str) -> tuple[int, str, str]:
+    try:
+        result = subprocess.run(["az", *args], capture_output=True, text=True,
+                                env=env, timeout=_TIMEOUT_SECONDS)
+    except OSError as exc:
+        raise ValueError(f"az could not be executed (is it on PATH?): {exc}") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise ValueError(f"az {' '.join(args)} timed out after "
+                         f"{_TIMEOUT_SECONDS}s: {exc}") from exc
+    return result.returncode, result.stdout, result.stderr
+
+
+def _az_json(env: dict, *args: str, what: str) -> dict:
+    code, stdout, stderr = _az(env, *args)
+    if code != 0:
+        raise ValueError(f"could not read {what}: az {' '.join(args)} exited {code}: "
+                         f"{stderr.strip() or stdout.strip()}")
+    text = stdout.strip()
+    if not text:
+        # See fact (1): empty stdout is how `az` reports a query it did not
+        # understand. Never a valid document here — every command below asks
+        # for a whole resource, which either exists or exits non-zero.
+        raise ValueError(f"could not read {what}: az {' '.join(args)} exited 0 with "
+                         f"no output, which is how az reports a request it did not "
+                         f"understand — it is never a valid empty document")
+    try:
+        document = json.loads(text)
+    except (json.JSONDecodeError, RecursionError) as exc:
+        raise ValueError(f"could not read {what}: az {' '.join(args)} returned "
+                         f"unparseable output: {exc}") from exc
+    if not isinstance(document, dict):
+        raise ValueError(f"could not read {what}: az {' '.join(args)} returned "
+                         f"{type(document).__name__}, not an object")
+    return document
+
+
+def _select(document: dict, aspects: dict, *, source: str,
+            resource_uid: str) -> list[tuple[str, str]]:
+    """Named aspects out of one ARM document. A key that is not there is an
+    error, never an omission — an aspect silently dropped from the baseline is
+    an aspect the agent can change unobserved."""
+    selected = []
+    for aspect, key in sorted(aspects.items()):
+        if key not in document:
+            raise ValueError(
+                f"could not read {aspect} of {resource_uid}: the {source} document "
+                f"has no {key!r} key (it has: {', '.join(sorted(document))})")
+        selected.append((aspect, canonical_json(document[key]).decode("utf-8")))
+    return selected
+
+
+def _capture_azure(resource_uid: str, region: str, env: dict) -> tuple[tuple[str, str], ...]:
+    # `region` is accepted for signature symmetry with _capture_aws and
+    # deliberately unused: an ARM resource id already names the subscription
+    # and resource group, so there is nothing for a region to disambiguate.
+    subscription, resource_group, arm_type, name = _arm_parts(resource_uid)
+    if arm_type.lower() not in AZURE_SUPPORTED_TYPES:
+        raise ValueError(
+            f"cloud-state verification is not implemented for Azure resource type "
+            f"{arm_type} (supported: {', '.join(AZURE_SUPPORTED_TYPES)}) — this run's "
+            f"cloud state would be UNVERIFIED. Implement the type rather than "
+            f"skipping it.")
+
+    # MEASURED: `az` does not read AZURE_CLIENT_ID/SECRET/TENANT_ID the way
+    # Prowler's --sp-env-auth does; it resolves credentials from its own
+    # config directory, which defaults to $HOME/.azure. HOME is passed through
+    # by verification_env (the aws path needs it), so without an explicit,
+    # empty AZURE_CONFIG_DIR this capture would run as whichever identity the
+    # operator last logged in as — very plausibly a subscription owner — and
+    # would look like it was working. The directory is fresh per capture and
+    # removed with it, so no login state outlives the query.
+    with tempfile.TemporaryDirectory(prefix="elcap-az-") as config_dir:
+        az_env = {**env, "AZURE_CONFIG_DIR": config_dir}
+        code, _, stderr = _az(
+            az_env, "login", "--service-principal",
+            "--username", env["AZURE_CLIENT_ID"],
+            "--password", env["AZURE_CLIENT_SECRET"],
+            "--tenant", env["AZURE_TENANT_ID"],
+            "--output", "json", "--only-show-errors")
+        if code != 0:
+            raise ValueError(
+                f"the read-only scanner principal could not sign in to Azure: "
+                f"az login exited {code}: {stderr.strip()}")
+
+        account = _az_json(az_env, "storage", "account", "show", "--ids", resource_uid,
+                           "--output", "json", "--only-show-errors",
+                           what=f"the storage account {resource_uid}")
+        blob = _az_json(az_env, "storage", "account", "blob-service-properties",
+                        "show", "--account-name", name,
+                        "--resource-group", resource_group,
+                        "--subscription", subscription,
+                        "--output", "json", "--only-show-errors",
+                        what=f"the blob service properties of {resource_uid}")
+
+    config = _select(account, AZURE_STORAGE_ACCOUNT_ASPECTS,
+                     source="storage account", resource_uid=resource_uid)
+    config += _select(blob, AZURE_BLOB_SERVICE_ASPECTS,
+                      source="blob service properties", resource_uid=resource_uid)
+    return tuple(sorted(config))
+
+
 def capture_cloud_state(resource_uid: str, *, provider: str, region: str = "",
                         env: dict) -> CloudState:
     """Query one cloud resource's configuration. Raises ValueError on any
@@ -244,8 +443,9 @@ def capture_cloud_state(resource_uid: str, *, provider: str, region: str = "",
     if not resource_uid:
         raise ValueError("cloud-state verification needs a resource uid; the finding "
                          "record names none")
+    capture = {"aws": _capture_aws, "azure": _capture_azure}[provider]
     return CloudState(provider=provider, resource_uid=resource_uid, region=region,
-                      config=_capture_aws(resource_uid, region, env))
+                      config=capture(resource_uid, region, env))
 
 
 def assert_unchanged(before: CloudState, *, env: dict) -> list[str]:

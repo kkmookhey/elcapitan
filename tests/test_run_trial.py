@@ -70,7 +70,7 @@ def make_workspace(workspace: Path) -> dict:
     adapter_dir = workspace / "adapter"
     adapter_dir.mkdir()
     adapter = adapter_dir / "env.yaml"
-    adapter.write_text("name: test\n")
+    adapter.write_text("name: test\ncloud: aws\n")
 
     gt = workspace / "gt-outside"
     gt.mkdir()
@@ -502,3 +502,116 @@ def test_missing_finding_is_refused(tmp_path):
     result = run_trial(env, ("anna", "FIND-999", "A", "1"))
     assert result.returncode != 0
     assert "missing finding" in result.stderr
+
+
+# --- provider-agnostic harness ---------------------------------------------
+#
+# Until this section existed the script demanded ELCAP_SCANNER_AWS_* on every
+# path, stub mode included, so no scored trial could run against Eiger at all
+# (environments/eiger/env.yaml, GAP-2). The provider is read from the
+# environment adapter's `cloud:` field — the one place that names it that no
+# agent can reach and no ambient export can override.
+
+import fake_az
+
+AZURE_FIXTURE = ROOT / "tests" / "fixtures" / "prowler-ocsf-azure-sample.json"
+AZURE_TRIAL = ("eiger", "FIND-002", "A", "1")
+
+
+def make_azure_workspace(workspace: Path) -> dict:
+    """The Eiger shape: an Azure finding, an adapter that says `cloud: azure`,
+    a real executable named `az`, and NOT ONE AWS variable set."""
+    repo = workspace / "repo"
+    repo.mkdir()
+    git(repo, "init", "-q")
+    git(repo, "config", "user.email", "t@t")
+    git(repo, "config", "user.name", "t")
+    (repo / "main.tf").write_text("resource {}\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "init")
+
+    findings = workspace / "findings"
+    findings.mkdir()
+    shutil.copyfile(AZURE_FIXTURE, findings / "FIND-002.json")
+
+    adapter_dir = workspace / "adapter"
+    adapter_dir.mkdir()
+    adapter = adapter_dir / "env.yaml"
+    adapter.write_text("name: eiger\ncloud: azure\n")
+
+    gt = workspace / "gt-outside"
+    gt.mkdir()
+
+    az_bin = fake_az.install(workspace / "az-bin")
+
+    return {"ELCAP_WORKSPACE": str(workspace), "ELCAP_CANONICAL_REPO": str(repo),
+            "ELCAP_GROUND_TRUTH_DIR": str(gt), "ELCAP_ENV_ADAPTER": str(adapter),
+            "ELCAP_STUB": "1",
+            "PATH": f"{az_bin}{os.pathsep}{os.environ['PATH']}",
+            **fake_az.scanner_credentials()}
+
+
+def test_an_azure_trial_starts_with_no_aws_credentials_set(tmp_path):
+    env = make_azure_workspace(tmp_path)
+    assert not any(k.startswith("ELCAP_SCANNER_AWS") for k in env)
+    result = run_trial(env, AZURE_TRIAL)
+    assert result.returncode == 0, f"stdout={result.stdout}\nstderr={result.stderr}"
+
+
+def test_an_azure_trial_anchors_the_storage_account_it_names(tmp_path):
+    env = make_azure_workspace(tmp_path)
+    assert run_trial(env, AZURE_TRIAL).returncode == 0
+    anchor = json.loads((tmp_path / "anchors" / "eiger-FIND-002-armA-n1"
+                         / "cloud-state-before.json").read_text())
+    assert anchor["provider"] == "azure"
+    assert anchor["resource_uid"] == fake_az.RESOURCE_UID
+    # TRAP-1's own attribute and the CONTROL's, from two different documents.
+    config = dict(anchor["config"])
+    assert config["public_network_access"] == '"Enabled"'
+    assert config["blob_versioning"] == "false"
+
+
+def test_an_azure_trial_still_requires_its_own_credentials(tmp_path):
+    env = make_azure_workspace(tmp_path)
+    del env["ELCAP_SCANNER_AZURE_CLIENT_SECRET"]
+    result = run_trial(env, AZURE_TRIAL)
+    assert result.returncode != 0
+    assert "ELCAP_SCANNER_AZURE_CLIENT_SECRET" in result.stderr
+
+
+def test_an_aws_trial_still_requires_the_aws_credentials(tmp_path):
+    # Anna must not regress: making the harness flexible must not make it
+    # possible to start an AWS trial with no way to verify it.
+    env = make_workspace(tmp_path)
+    del env["ELCAP_SCANNER_AWS_SESSION_TOKEN"]
+    result = run_trial(env)
+    assert result.returncode != 0
+    assert "ELCAP_SCANNER_AWS_SESSION_TOKEN" in result.stderr
+
+
+def test_an_adapter_that_names_no_provider_fails_loudly(tmp_path):
+    env = make_workspace(tmp_path)
+    Path(env["ELCAP_ENV_ADAPTER"]).write_text("name: test\n")
+    result = run_trial(env)
+    assert result.returncode != 0
+    assert "cloud:" in result.stderr
+
+
+def test_an_adapter_naming_an_unknown_provider_names_it(tmp_path):
+    env = make_workspace(tmp_path)
+    Path(env["ELCAP_ENV_ADAPTER"]).write_text("name: test\ncloud: gcp\n")
+    result = run_trial(env)
+    assert result.returncode != 0
+    assert "gcp" in result.stderr
+
+
+def test_a_finding_from_another_cloud_than_the_adapter_is_refused(tmp_path):
+    # The hole this closes: an Azure finding run under Anna's adapter would
+    # pass the credential guard (the adapter says aws, the AWS trio is set)
+    # and then capture nothing meaningful. The adapter and the scanner
+    # artifact must agree about which cloud the trial is in.
+    env = make_workspace(tmp_path)
+    shutil.copyfile(AZURE_FIXTURE, Path(env["ELCAP_WORKSPACE"]) / "findings" / "FIND-001.json")
+    result = run_trial(env)
+    assert result.returncode != 0
+    assert "azure" in result.stderr and "aws" in result.stderr

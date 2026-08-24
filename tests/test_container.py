@@ -271,3 +271,24 @@ def test_engineer_spec_has_no_arm():
     # By design the engineer container is identical across both arms — the
     # arm difference lives entirely in which bundle the challenger receives.
     assert eng().arm is None
+
+
+def test_the_engineer_may_hold_an_azure_scanner_credential():
+    # The asymmetry is the design, and it is easy to "tidy away": the
+    # CHALLENGER holds no cloud credential and runs --network=none, while the
+    # ENGINEER holds the scoped read-only scanner credential because it is the
+    # side that reads the cloud. Copying the challenger's guard into
+    # engineer_spec would break every Eiger trial at once.
+    names = ["AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET", "AZURE_TENANT_ID",
+             "ANTHROPIC_API_KEY"]
+    spec = engineer_spec(runtime_image_id=IMAGE, run_dir="/w/runs/R1",
+                         canonical_repo="/w/repos/eiger", host_hermes_home="/tmp/h1",
+                         env_passthrough=names)
+    assert set(names) <= set(spec.env_passthrough)
+
+
+def test_the_engineer_may_hold_an_arm_credential():
+    spec = engineer_spec(runtime_image_id=IMAGE, run_dir="/w/runs/R1",
+                         canonical_repo="/w/repos/eiger", host_hermes_home="/tmp/h1",
+                         env_passthrough=["ARM_CLIENT_ID", "ARM_SUBSCRIPTION_ID"])
+    assert "ARM_CLIENT_ID" in spec.env_passthrough
