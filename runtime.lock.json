@@ -13,5 +13,10 @@
     "prowler": "5.37.1",
     "awscli": "2.36.19",
     "azure-cli": "2.89.0"
+  },
+  "host_tool_versions": {
+    "_comment": "The HOST tooling, which is a different set from tool_versions above. elcapitan.cloud and elcapitan.collector both run host-side and shell out to the host `az`, so the image's azure-cli is not the one they use. Measured 2026-08-24.",
+    "azure-cli": "2.86.0",
+    "azure-cli-extension:log-analytics": "1.0.0b1 (preview)"
   }
 }

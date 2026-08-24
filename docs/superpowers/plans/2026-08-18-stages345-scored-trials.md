@@ -130,7 +130,7 @@ say so.
 
 Host-side, deterministic, **no LLM**. It runs after the engineer stage and before the challenger.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
   - One `collect(...)` call produces **both** bundles; `Arm A ⊂ Arm B`.
   - Arm A contains **no** telemetry artifact — assert by content, not by filename.
   - Both bundles carry the same proposal, verification output and live resource configuration.
@@ -138,7 +138,7 @@ Host-side, deterministic, **no LLM**. It runs after the engineer stage and befor
   - Bundles are written under `anchors/<run-id>/bundles/`, **outside `run_dir`** — the challenger must not read anything the engineer could have written.
   - The collector **never raises**: an unreachable telemetry endpoint degrades to a structured "telemetry unavailable" marker in Arm B, and the trial records that rather than crashing.
 
-- [ ] **Step 2–4:** red, implement, green.
+- [x] **Step 2–4:** red, implement, green.
 
   What goes in the bundle:
 
@@ -153,7 +153,31 @@ Host-side, deterministic, **no LLM**. It runs after the engineer stage and befor
 
   The telemetry window must cover the trial, and the query must be recorded alongside its result so a reader can tell what was asked.
 
-- [ ] **Step 5:** Commit.
+- [x] **Step 5:** Commit.
+
+**What Task 2 built** (2026-08-24): `src/elcapitan/collector.py`,
+`schemas/challenge-bundle.schema.json`, `tests/test_collector.py` (29 tests).
+`take_snapshot` does all the querying once; `collect` derives both bundles from that one
+value and **cannot query anything** — the single-snapshot property is structural, and a
+test asserts `collect`'s source contains no `subprocess` and no `_az`.
+
+**A bug this task shipped and then caught, of the exact class this project keeps finding:**
+the first `take_snapshot` never ran `az login` and passed `HOME` through. All 26 tests
+passed, because the fake `az` does not care about logins — but against real Azure every
+telemetry query would have run as **whoever the operator last logged in as**, and would
+have looked like it was working: queries succeeding, windows populated, Arm B gathered
+under the wrong identity. Task 1 had measured this exact hazard and fixed it in `cloud.py`;
+the new module reintroduced it. Three tests now assert the sign-in, the isolated
+`AZURE_CONFIG_DIR`, and that a failed sign-in degrades every probe to `unavailable`.
+
+Ten load-bearing assertions have killed mutants.
+
+**Not measured live yet.** `take_snapshot` has never run against real Azure under a real
+observer principal — the tenant has none, and it needs different roles from the scanner
+(Monitoring Reader + Log Analytics Reader). The telemetry *fixtures* are real, captured
+from the live account, but the sign-in-and-query path is exercised only through the fake.
+That is the same gap Task 1's Step 5 closed for the scanner, and it wants the same
+treatment before a scored batch runs.
 
 ---
 
