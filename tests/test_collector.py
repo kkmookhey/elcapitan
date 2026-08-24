@@ -385,3 +385,19 @@ def test_a_failed_observer_sign_in_degrades_every_probe(az):
     snap = az(responses)
     assert all(p.status == UNAVAILABLE for p in snap.telemetry)
     assert "AADSTS7000215" in snap.telemetry[0].detail
+
+
+def test_the_isolated_config_dir_does_not_isolate_away_the_extension(az):
+    # FOUND LIVE, 2026-08-24, by the first real run — and only by a real run.
+    # Two individually-correct guards combined into a bug: az installs
+    # extensions into $AZURE_CONFIG_DIR/cliextensions, so isolating the config
+    # dir (right, for credentials) also hid the `log-analytics` extension,
+    # and refusing dynamic install (also right) meant it could not be
+    # reinstalled. Every log probe came back UNAVAILABLE with "'query' is
+    # misspelled or not recognized by the system" while the metric probe was
+    # fine. AZURE_EXTENSION_DIR keeps the extensions where they already are
+    # while the credentials stay isolated.
+    az()
+    for call in fake_az.calls(az.bin_dir):
+        assert "AZURE_EXTENSION_DIR" in call["env"], \
+            f"{call['operation']} could not see installed extensions"

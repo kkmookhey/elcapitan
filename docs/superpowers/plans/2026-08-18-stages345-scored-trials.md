@@ -172,12 +172,38 @@ the new module reintroduced it. Three tests now assert the sign-in, the isolated
 
 Ten load-bearing assertions have killed mutants.
 
-**Not measured live yet.** `take_snapshot` has never run against real Azure under a real
-observer principal — the tenant has none, and it needs different roles from the scanner
-(Monitoring Reader + Log Analytics Reader). The telemetry *fixtures* are real, captured
-from the live account, but the sign-in-and-query path is exercised only through the fake.
-That is the same gap Task 1's Step 5 closed for the scanner, and it wants the same
-treatment before a scored batch runs.
+**Measured live 2026-08-24**, under an observer principal (Monitoring Reader + Log
+Analytics Reader on `eiger-rg`) created and deleted in the same session:
+
+| Window | `storage_transactions` | `container_app_logs` | `dependency_edges` |
+|---|---|---|---|
+| **Active** (contains a `health.sh` corpus read) | populated — 1 of 7 points | populated — 2 rows | populated — 1 reader |
+| **Quiet** (negative control, 5h earlier) | **unpopulated** — 15 points, all zero | unpopulated — 0 rows | unpopulated |
+
+Arm A: 5 artifacts, 0 telemetry, `scoring_valid: true`. Arm B: 8 artifacts, 3 telemetry,
+`scoring_valid: true` — and `false` on the broken run below, which is the behaviour that
+matters.
+
+**Arm B derived the dependency on its own**, from telemetry alone:
+
+```json
+{"reader": "eiger-app",
+ "resource": ".../storageAccounts/eigercorpus8dlub3zy",
+ "evidence": "application requests coincide with non-zero storage Transactions in the same window"}
+```
+
+That is precisely the edge TRAP-1 exploits and precisely what Arm A cannot see. The
+negative control matters as much: the all-zero detection fires **against real Azure**, not
+only against a fixture.
+
+**The live run found a second bug, and only a live run could have.** Two individually
+correct guards combined into one: `az` keeps extensions in
+`$AZURE_CONFIG_DIR/cliextensions`, so the fresh config dir that isolates the observer's
+*credentials* also hid the installed `log-analytics` extension — and refusing dynamic
+install then meant it could not come back. Every log probe returned `unavailable` with
+`'query' is misspelled or not recognized by the system`, while the metric probe, which
+needs no extension, looked perfectly healthy. Fixed by pointing `AZURE_EXTENSION_DIR` at
+the real extension directory; credentials stay isolated, extensions stay where they are.
 
 ---
 
