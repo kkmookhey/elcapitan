@@ -879,3 +879,71 @@ def test_every_name_agent_run_imports_from_elcapitan_exists(module_name):
     missing = [name for name in wanted if not hasattr(module, name)]
     assert not missing, f"bin/agent-run.sh imports {missing} from {module_name}, " \
                         f"which does not define them"
+
+
+# --- the challenger stage in bin/agent-run.sh --------------------------------
+#
+# The challenger's isolation is the experiment's only structural guarantee that
+# arms differ by bundle content and nothing else. If the challenger could reach
+# the cloud, the network, or the repository, "Arm A has no telemetry" would be
+# a statement about what it was handed rather than about what it could know.
+
+def _agent_run_source() -> str:
+    return (Path(__file__).resolve().parents[1] / "bin" / "agent-run.sh").read_text()
+
+
+def test_agent_run_accepts_the_challenger_stage():
+    source = _agent_run_source()
+    assert "challenger_spec" in source, "the challenger stage is not wired"
+
+
+def test_the_challenger_stage_never_passes_a_cloud_credential():
+    # engineer_spec gets the scanner credential; challenger_spec must not, and
+    # challenger_spec itself raises if it is handed one. The script must not
+    # reach that raise — it must never build the list in the first place.
+    import ast
+
+    tree = ast.parse(_agent_run_python_block())
+    source = ast.unparse(tree)
+    # The scanner block must be guarded by the stage, not run unconditionally.
+    assert "scanner" in source
+    assert 'stage ==' in source or 'stage !=' in source, \
+        "credential wiring is not conditioned on the stage"
+
+
+def test_the_challenger_gets_a_bundle_and_not_the_canonical_repository():
+    from elcapitan.container import challenger_spec
+
+    spec = challenger_spec(runtime_image_id="sha256:" + "a" * 64,
+                           run_dir="/w/runs/R1", bundle_path="/w/anchors/R1/bundles/arm-a",
+                           host_hermes_home="/w/homes/R1-ch", arm="A",
+                           env_passthrough=["ANTHROPIC_API_KEY"])
+    sources = [m.source for m in spec.mounts]
+    assert "/w/anchors/R1/bundles/arm-a" in sources
+    assert not any("canonical" in s for s in sources), \
+        "the challenger must not be able to read the repository"
+    assert spec.network == "none"
+
+
+def test_the_challenger_bundle_mount_is_read_only():
+    from elcapitan.container import challenger_spec
+
+    spec = challenger_spec(runtime_image_id="sha256:" + "a" * 64,
+                           run_dir="/w/runs/R1", bundle_path="/w/anchors/R1/bundles/arm-b",
+                           host_hermes_home="/w/homes/R1-ch", arm="B",
+                           env_passthrough=["ANTHROPIC_API_KEY"])
+    bundle = [m for m in spec.mounts if "bundles" in m.source][0]
+    assert bundle.read_only is True, "a bundle the challenger can rewrite is not evidence"
+
+
+@pytest.mark.parametrize("arm", ["A", "B"])
+def test_neither_arms_challenger_may_hold_a_cloud_credential(arm):
+    from elcapitan.container import challenger_spec
+
+    for name in ("AWS_ACCESS_KEY_ID", "AZURE_CLIENT_ID", "ARM_CLIENT_SECRET"):
+        with pytest.raises(ValueError, match="cloud credentials"):
+            challenger_spec(runtime_image_id="sha256:" + "a" * 64,
+                            run_dir="/w/runs/R1",
+                            bundle_path=f"/w/anchors/R1/bundles/arm-{arm.lower()}",
+                            host_hermes_home="/w/homes/R1-ch", arm=arm,
+                            env_passthrough=["ANTHROPIC_API_KEY", name])

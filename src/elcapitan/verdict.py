@@ -26,6 +26,8 @@ to a tuple in `__post_init__`, so the aliasing cannot happen at all.
 """
 import json
 import re
+
+from .hashing import canonical_json, sha256_bytes
 from dataclasses import dataclass
 
 APPROVE = "APPROVE"
@@ -284,3 +286,57 @@ def result_to_dict(result: TrialResult) -> dict:
             "moa_preset": result.moa_preset, "moa_fanout": result.moa_fanout,
             "hermes_version": result.hermes_version,
             "scanner_versions": dict(result.scanner_versions)}
+
+
+def assemble_verdict(*, verdict_doc: dict, raw_trace, run_id: str, arm: str,
+                     verdict_id: str, now: str,
+                     bundle_evidence_ids) -> tuple[ReviewVerdict, list[str]]:
+    """The challenger's output plus the raw trace -> one record, host-side.
+
+    The challenger supplies only what it decided and why: decision,
+    objections, citations. Everything about the MEMBERS is derived here from
+    the raw trace, never read out of `verdict_doc` — the aggregator's account
+    of what the reference models thought is the aggregator's opinion, and a
+    verdict that reported its own members would be marking its own homework.
+    `dissent` in particular is recomputed even when the challenger volunteers
+    one.
+
+    Returns (verdict, failures). Never raises: the challenger is a model, and
+    a model can return a decision outside the enum or cite evidence it never
+    had. Both are things a trial must RECORD — a harness that died while
+    assembling its own record would lose the run that proved the point.
+    """
+    failures = []
+
+    decision = verdict_doc.get("decision")
+    if decision not in DECISIONS:
+        failures.append(
+            f"the challenger returned decision {decision!r}, which is not one of "
+            f"{DECISIONS}; recorded as {NEEDS_MORE_EVIDENCE} because an "
+            f"unrecognised decision is not evidence of any of them")
+        decision = NEEDS_MORE_EVIDENCE
+
+    objections = [o for o in (verdict_doc.get("objections") or []) if isinstance(o, str)]
+    cited = [c for c in (verdict_doc.get("evidence_cited") or []) if isinstance(c, str)]
+
+    positions, extraction_incomplete = parse_member_positions(raw_trace)
+
+    # Derived, never taken from the challenger. Two members that disagree
+    # dissent; a member nobody could read makes agreement UNKNOWABLE, and
+    # unknowable is recorded as dissent rather than as consensus — the whole
+    # point of retaining dissent is that it does not get averaged away by a
+    # parsing failure. No members at all is not disagreement either.
+    decided = {p.decision for p in positions if p.parsed}
+    unreadable = any(not p.parsed for p in positions)
+    dissent = len(decided) > 1 or (unreadable and len(positions) > 1)
+
+    verdict = ReviewVerdict(
+        verdict_id=verdict_id, schema_version=1, created_at=now, run_id=run_id,
+        arm=arm, decision=decision, objections=tuple(objections),
+        evidence_cited=tuple(cited), member_positions=positions, dissent=dissent,
+        extraction_incomplete=extraction_incomplete,
+        raw_trace_sha256=sha256_bytes(canonical_json(raw_trace)))
+
+    failures += validate_verdict_against_bundle(
+        verdict, bundle_evidence_ids=bundle_evidence_ids)
+    return verdict, failures

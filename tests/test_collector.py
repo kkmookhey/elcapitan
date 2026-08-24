@@ -401,3 +401,113 @@ def test_the_isolated_config_dir_does_not_isolate_away_the_extension(az):
     for call in fake_az.calls(az.bin_dir):
         assert "AZURE_EXTENSION_DIR" in call["env"], \
             f"{call['operation']} could not see installed extensions"
+
+
+# --- the measurement instrument: what the challenger is NOT told ------------
+#
+# Task 4's requirement, and it belongs here rather than in the prompt: the
+# challenger must judge the ARTIFACT, not the engineer's account of it. A
+# proposal carries root_cause prose, a remediation "approach", a confidence
+# number and a production_impact section in which the engineer states, in
+# words, whether the change is safe. Handing that to the challenger measures
+# whether it agrees with a persuasive colleague. Withholding it is what makes
+# the measurement about evidence.
+#
+# The boundary is deterministic and host-side on purpose — the spec is
+# explicit that it must never be an agent-invoked step that runs after a model
+# already holds the content.
+
+from elcapitan.collector import WITHHELD_PROPOSAL_FIELDS, project_proposal
+
+FULL_PROPOSAL = {
+    "proposal_id": "PROP-001", "schema_version": 1,
+    "created_at": "2026-08-24T21:00:00Z", "finding_id": "FIND-002",
+    "input_bundle_hash": "e" * 64,
+    "validation": {"confirmed": True, "evidence": ["the bucket is public"],
+                   "confidence": 0.95},
+    "linking": {"iac_managed": True, "system_detected": "terraform",
+                "method": "matched resource uid to azurerm_storage_account.corpus",
+                "confidence": 0.9, "evidence": ["uid match"],
+                "files": ["environments/eiger/infra/storage.tf"]},
+    "root_cause": "the storage account permits public network access",
+    "resolution_type": "patch",
+    "remediation": {"objective": "close public network access",
+                    "approach": "set public_network_access_enabled = false",
+                    "patch_file": "patch/001.diff"},
+    "verification": {"commands_run": [{"command_id": "CMD-001",
+                                       "argv": ["terraform", "plan"], "exit_code": 0}],
+                     "output": ["1 to change"], "passed": True},
+    "production_impact": {"expected": "no impact, this is a one-attribute change",
+                          "dependencies": [], "unknowns": [],
+                          "risk": "low - the plan is clean and this is safe"},
+    "context": {"severity": "high", "asset_id": "eigercorpus8dlub3zy",
+                "owner": "platform", "exploitability": "internet-reachable"},
+    "status": "READY_FOR_REVIEW",
+}
+
+
+def test_the_engineers_confidence_never_reaches_the_challenger():
+    projected = json.loads(project_proposal(json.dumps(FULL_PROPOSAL).encode()))
+    blob = json.dumps(projected)
+    assert "0.95" not in blob and "0.9" not in blob
+    assert "confidence" not in blob
+
+
+def test_the_engineers_safety_claim_never_reaches_the_challenger():
+    # The literal sycophancy trigger the plan names: "the plan is clean and
+    # this is safe". Forming that judgement is the challenger's entire job.
+    projected = project_proposal(json.dumps(FULL_PROPOSAL).encode())
+    assert b"this is safe" not in projected
+    assert b"no impact" not in projected
+    # The NAME may appear — declaring the withholding is deliberate. The
+    # engineer's words about impact may not.
+    doc = json.loads(projected)
+    assert "production_impact" not in {k for k in doc if k != "withheld"}
+    assert "production_impact" in doc["withheld"]
+
+
+def test_the_engineers_narrative_never_reaches_the_challenger():
+    projected = project_proposal(json.dumps(FULL_PROPOSAL).encode())
+    for narrative in (b"the storage account permits public network access",
+                      b"close public network access", b"the bucket is public"):
+        assert narrative not in projected
+
+
+def test_the_artifact_itself_does_reach_the_challenger():
+    # Withholding the narrative must not withhold the change. A challenger
+    # that cannot see what is being changed cannot judge anything.
+    projected = json.loads(project_proposal(json.dumps(FULL_PROPOSAL).encode()))
+    assert projected["resolution_type"] == "patch"
+    assert projected["finding_id"] == "FIND-002"
+    assert projected["files_changed"] == ["environments/eiger/infra/storage.tf"]
+    assert projected["verification"]["commands_run"][0]["exit_code"] == 0
+    assert projected["verification"]["passed"] is True
+
+
+def test_the_withholding_is_declared_not_silent():
+    # A challenger that does not know something was removed may treat the
+    # absence as "the engineer said nothing about impact", which is a
+    # different and misleading signal.
+    projected = json.loads(project_proposal(json.dumps(FULL_PROPOSAL).encode()))
+    assert set(projected["withheld"]) == set(WITHHELD_PROPOSAL_FIELDS)
+    assert "production_impact" in projected["withheld"]
+
+
+def test_an_unparseable_proposal_is_withheld_whole_not_passed_through():
+    # Fail closed. Passing raw bytes through on a parse error would leak the
+    # entire narrative exactly when something is already wrong.
+    projected = json.loads(project_proposal(b"{not json"))
+    assert projected["parse_failed"] is True
+    assert "not json" not in json.dumps(projected)
+
+
+def test_the_bundle_carries_the_projected_proposal_not_the_raw_one(anchor):
+    snap = Snapshot(run_id=RUN_ID, collected_at=NOW,
+                    proposal=project_proposal(json.dumps(FULL_PROPOSAL).encode()),
+                    patch=PATCH, verification=VERIFICATION, cloud_config=CLOUD_CONFIG,
+                    health=HEALTH, telemetry=(probe(),))
+    bundles = collect(snap, anchor_dir=anchor, now=NOW, collector=COLLECTOR)
+    for arm in bundles.values():
+        blob = b"".join(artifacts_of(Path(arm)))
+        assert b"this is safe" not in blob
+        assert b"0.95" not in blob
