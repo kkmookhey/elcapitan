@@ -54,6 +54,7 @@ and marking it invalid for the absence would invalidate the control half of
 every pair.
 """
 import json
+import os
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -158,6 +159,18 @@ def observer_env(env: dict) -> dict:
     # a configuration problem someone can fix, rather than a silent version
     # change nobody records.
     resolved["AZURE_EXTENSION_USE_DYNAMIC_INSTALL"] = "no"
+    # FOUND LIVE, and only live: az keeps extensions in
+    # $AZURE_CONFIG_DIR/cliextensions, so the fresh config dir that isolates
+    # the observer's CREDENTIALS also hides the installed `log-analytics`
+    # extension — and the line above then refuses to reinstall it. Both
+    # guards are right on their own; together they made every log probe come
+    # back UNAVAILABLE with "'query' is misspelled or not recognized by the
+    # system" while the metric probe, which needs no extension, looked
+    # perfectly healthy. Pointing at the real extension directory keeps
+    # credentials isolated and extensions where they already are.
+    resolved["AZURE_EXTENSION_DIR"] = env.get(
+        "AZURE_EXTENSION_DIR",
+        str(Path(env.get("HOME", os.path.expanduser("~"))) / ".azure" / "cliextensions"))
     for name in ("PATH", "HOME"):
         if name in env:
             resolved[name] = env[name]
