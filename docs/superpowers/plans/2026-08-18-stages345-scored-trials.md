@@ -72,11 +72,11 @@ The blocker. `run-trial.sh` unconditionally requires the three `ELCAP_SCANNER_AW
 
 - [x] **Step 2–4:** run red, implement, run green. Derive the required credential set from `env.yaml`'s `cloud:` field rather than hard-coding a provider.
 
-- [ ] **Step 5 — CORRECTED.** This step said "`cloud.py` already dispatches on provider for capture. Confirm the Azure path works." **It did not.** `SUPPORTED_PROVIDERS` was `("aws",)` and `capture_cloud_state` called `_capture_aws` unconditionally; `environments/eiger/env.yaml`'s GAP-2 said so too. Implementing the Azure capture was therefore part of Task 1, and is done. What remains is the measurement this step actually asks for:
+- [x] **Step 5 — CORRECTED, and now measured.** This step said "`cloud.py` already dispatches on provider for capture. Confirm the Azure path works." **It did not.** `SUPPORTED_PROVIDERS` was `("aws",)` and `capture_cloud_state` called `_capture_aws` unconditionally; `environments/eiger/env.yaml`'s GAP-2 said so too. Implementing the Azure capture was therefore part of Task 1, and is done. What remains is the measurement this step actually asks for:
 
-  Capture `eigercorpus8dlub3zy`, mutate a property, confirm `assert_unchanged` reports it, restore. **Blocked on a credential:** the scanner principal was deleted the day it was created (`identities.lifecycle: created_for_the_scan_then_deleted`), so this tenant has no standing scanner identity. Creating an ephemeral Reader service principal is the human partner's call. Until then, the Azure path is *harness-complete and account-unconfirmed*, and `az login --service-principal` in particular has never run.
+  **Done 2026-08-24.** A Reader service principal scoped to `eiger-rg` was created, used, and deleted. Capture returned 22 aspects matching direct reads; a tag was merged and `assert_unchanged` reported exactly one failure naming `tags` with both values; the tag was deleted and it returned `[]`. Invariants re-checked after: blob versioning still `false`, `publicNetworkAccess` still `Enabled`, tags byte-identical, `health.sh` HEALTHY. `az login --service-principal` is now measured, including its ~26s role-assignment propagation delay — see `environments/eiger/env.yaml` under `identities:`.
 
-- [ ] **Step 6:** Commit.
+- [x] **Step 6:** Commit.
 
 **What Task 1 actually changed** (2026-08-21):
 
