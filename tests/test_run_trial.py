@@ -615,3 +615,77 @@ def test_a_finding_from_another_cloud_than_the_adapter_is_refused(tmp_path):
     result = run_trial(env)
     assert result.returncode != 0
     assert "azure" in result.stderr and "aws" in result.stderr
+
+
+# --- the full pipeline: engineer -> collect -> challenge -> verdict ---------
+#
+# run-trial.sh ran engineer -> validate for four tasks. The collector and the
+# challenger both existed and NOTHING INVOKED EITHER, so no trial had ever
+# produced a bundle or a verdict and every test still passed. These assert the
+# middle actually runs.
+
+def test_a_stub_trial_produces_both_arm_bundles(tmp_path):
+    env = make_azure_workspace(tmp_path)
+    assert run_trial(env, AZURE_TRIAL).returncode == 0
+    bundles = tmp_path / "anchors" / "eiger-FIND-002-armA-n1" / "bundles"
+    assert (bundles / "arm-a" / "bundle.json").is_file()
+    assert (bundles / "arm-b" / "bundle.json").is_file()
+
+
+def test_the_bundles_live_outside_the_run_directory(tmp_path):
+    env = make_azure_workspace(tmp_path)
+    assert run_trial(env, AZURE_TRIAL).returncode == 0
+    run = tmp_path / "runs" / "eiger-FIND-002-armA-n1"
+    assert not list(run.rglob("bundle.json")), \
+        "a bundle the engineer could rewrite is not evidence about the engineer"
+
+
+def test_a_stub_trial_produces_a_verdict_record(tmp_path):
+    env = make_azure_workspace(tmp_path)
+    assert run_trial(env, AZURE_TRIAL).returncode == 0
+    record = json.loads((tmp_path / "runs" / "eiger-FIND-002-armA-n1" / "verdict"
+                         / "review-verdict.json").read_text())
+    assert record["arm"] == "A"
+    assert record["decision"] == "NEEDS_MORE_EVIDENCE"
+    # An empty MoA trace is incomplete extraction, never unanimity.
+    assert record["extraction_incomplete"] is True
+
+
+def test_a_stub_trial_is_never_scoring_valid(tmp_path):
+    # A dry run has no telemetry and no model. It must not be able to
+    # contribute a row to the matrix.
+    env = make_azure_workspace(tmp_path)
+    assert run_trial(env, AZURE_TRIAL).returncode == 0
+    manifest = json.loads((tmp_path / "anchors" / "eiger-FIND-002-armA-n1" / "bundles"
+                           / "arm-b" / "bundle.json").read_text())
+    assert manifest["scoring_valid"] is False
+    assert "unavailable" in manifest["scoring_invalid_reason"]
+
+
+def test_the_challenger_cites_only_evidence_the_bundle_holds(tmp_path):
+    env = make_azure_workspace(tmp_path)
+    assert run_trial(env, AZURE_TRIAL).returncode == 0
+    failures = json.loads((tmp_path / "runs" / "eiger-FIND-002-armA-n1" / "verdict"
+                           / "verdict-failures.json").read_text())
+    assert failures["citation_and_dissent"] == []
+    assert failures["schema"] == []
+
+
+def test_the_engineers_narrative_never_reaches_a_bundle(tmp_path):
+    # The measurement instrument, asserted at the level that matters: the
+    # bytes actually written under anchors/.
+    env = make_azure_workspace(tmp_path)
+    assert run_trial(env, AZURE_TRIAL).returncode == 0
+    bundles = tmp_path / "anchors" / "eiger-FIND-002-armA-n1" / "bundles"
+    for blob in bundles.rglob("*.bin"):
+        doc = None
+        try:
+            doc = json.loads(blob.read_bytes())
+        except (ValueError, UnicodeDecodeError):
+            continue          # patches and health text are not JSON
+        if not isinstance(doc, dict) or "withheld" not in doc:
+            continue
+        # The NAMES appear under `withheld` on purpose — declaring the
+        # withholding is deliberate. No narrative FIELD may be present.
+        assert set(doc["withheld"]).isdisjoint(set(doc) - {"withheld"}), \
+            f"a withheld field is present as data in {blob}"
