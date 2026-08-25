@@ -115,6 +115,12 @@ from elcapitan.shim import (ALL_SCANNER_ENV_NAMES, MODEL_ENV_MAP,
 (run_dir, prompt_path, canonical_repo, host_hermes_home,
  lock_path, seeded_home, arm, stage, bundle_path) = sys.argv[1:10]
 
+# THE LINUX CAPABILITY OPT-IN. Off unless explicitly asked for, and the fact
+# travels into the trial's summary so a run made with a weaker boundary is
+# identifiable from its own record rather than from someone's memory of which
+# machine it was on.
+restore_caps = os.environ.get("ELCAP_RESTORE_CAPS", "0") == "1"
+
 model = os.environ.get("ELCAP_MODEL", "claude-sonnet-5")
 provider = os.environ.get("ELCAP_PROVIDER", "anthropic")
 
@@ -194,12 +200,14 @@ with egress as proxy_host:
         spec = challenger_spec(runtime_image_id=lock["runtime_image_id"],
                                run_dir=run_dir, bundle_path=bundle_path,
                                host_hermes_home=host_hermes_home, arm=arm,
-                               env_passthrough=env_passthrough)
+                               env_passthrough=env_passthrough,
+                               restore_caps=restore_caps)
     else:
         spec = engineer_spec(runtime_image_id=lock["runtime_image_id"], run_dir=run_dir,
                              canonical_repo=canonical_repo,
                              host_hermes_home=host_hermes_home,
-                             env_passthrough=env_passthrough)
+                             env_passthrough=env_passthrough,
+                             restore_caps=restore_caps)
 
     result = run_agent(spec, prompt_path, secret_env=secret_env,
                        model=f"{provider}/{model}")
@@ -218,6 +226,7 @@ summary = {
     "state_db_captured": result.state_db_captured,
     "arm": arm,
     "stage": stage,
+    "caps_restored": spec.caps_restored,
 }
 print(json.dumps(summary, indent=2))
 sys.exit(0 if result.succeeded else 1)

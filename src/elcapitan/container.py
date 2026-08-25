@@ -55,6 +55,37 @@ DOCKER_SOCKETS = ("/var/run/docker.sock", "/run/docker.sock")
 HARDENING = ("--cap-drop=ALL", "--cap-add=SETUID", "--cap-add=SETGID",
              "--security-opt=no-new-privileges",
              "--pids-limit=512", "--memory=4g", "--cpus=2")
+
+# The three the Hermes init sequence needs on Linux, and does not get.
+#
+# THE DECISION, 2026-08-25: available behind an explicit opt-in, never the
+# default, and always recorded on the spec that used them.
+#
+# On macOS the harness works without them. On Linux, --cap-drop=ALL plus
+# SETUID/SETGID leaves the container exiting 0 having done nothing — the
+# false-green shape — because the init sequence chowns and traverses paths it
+# no longer may. tests/test_smoke_container.py holds two strict-xfail
+# detectors and their passing companions, which is what makes "the capability
+# set is wrong" a measurement rather than a guess.
+#
+# Restoring them meaningfully weakens the boundary: DAC_OVERRIDE in particular
+# bypasses file permission checks inside the container. So it is opt-in, and
+# ContainerSpec.caps_restored carries the fact into the trial's own record. A
+# harness that silently ran with a weaker boundary on one machine and a
+# stronger one on another would make the isolation boundary a property of
+# whoever happened to run the batch, and no result would be comparable across
+# machines.
+RESTORED_CAPS = ("--cap-add=CHOWN", "--cap-add=FOWNER", "--cap-add=DAC_OVERRIDE")
+
+
+def hardening_for(*, restore_caps: bool) -> tuple[str, ...]:
+    """The container flags, with or without the three Linux capabilities.
+
+    The --cap-drop=ALL baseline is never removed: the restored set is three
+    capabilities added back ON TOP of dropping everything, not a decision to
+    stop dropping.
+    """
+    return HARDENING + RESTORED_CAPS if restore_caps else HARDENING
 # Both characters are docker `--mount` option separators. Letting either
 # through a path would let a mount source/target inject extra mount options
 # (e.g. smuggling in `readonly` on a mount meant to be writable, or vice versa).
@@ -87,6 +118,7 @@ class ContainerSpec:
     command: tuple[str, ...] = ()
     hardening: tuple[str, ...] = HARDENING
     arm: str | None = None             # which experimental arm this spec was built for
+    caps_restored: bool = False        # was the boundary deliberately weakened?
 
     def to_argv(self) -> list[str]:
         argv = ["docker", "run", "--rm", f"--network={self.network}", *self.hardening]
@@ -225,7 +257,8 @@ def _reject_overbroad_mounts(mounts, protected_paths) -> None:
                     f"directory) to the container")
 
 def engineer_spec(*, runtime_image_id, run_dir, canonical_repo, host_hermes_home,
-                  env_passthrough, extra_mounts=None, command=None) -> ContainerSpec:
+                  env_passthrough, extra_mounts=None, command=None,
+                  restore_caps: bool = False) -> ContainerSpec:
     """Precondition: run_dir, canonical_repo and host_hermes_home must be
     mutually disjoint host paths (see `_require_disjoint_spec_paths`)."""
     _require_disjoint_spec_paths(run_dir=str(run_dir), canonical_repo=str(canonical_repo),
@@ -243,10 +276,13 @@ def engineer_spec(*, runtime_image_id, run_dir, canonical_repo, host_hermes_home
     return ContainerSpec(image=runtime_image_id, mounts=tuple(mounts),
                          env_passthrough=tuple(env_passthrough),
                          host_hermes_home=str(host_hermes_home),
-                         network="bridge", command=tuple(command or []))
+                         network="bridge", command=tuple(command or []),
+                         hardening=hardening_for(restore_caps=restore_caps),
+                         caps_restored=restore_caps)
 
 def challenger_spec(*, runtime_image_id, run_dir, bundle_path, host_hermes_home,
-                    arm, env_passthrough, command=None) -> ContainerSpec:
+                    arm, env_passthrough, command=None,
+                    restore_caps: bool = False) -> ContainerSpec:
     if arm not in VALID_ARMS:
         raise ValueError(f"unknown arm {arm!r}; expected one of {VALID_ARMS}")
     for name in env_passthrough:
@@ -278,4 +314,6 @@ def challenger_spec(*, runtime_image_id, run_dir, bundle_path, host_hermes_home,
     return ContainerSpec(image=runtime_image_id, mounts=tuple(mounts),
                          env_passthrough=tuple(env_passthrough),
                          host_hermes_home=str(host_hermes_home),
-                         network=EGRESS_NETWORK, command=tuple(command or []), arm=arm)
+                         network=EGRESS_NETWORK, command=tuple(command or []), arm=arm,
+                         hardening=hardening_for(restore_caps=restore_caps),
+                         caps_restored=restore_caps)

@@ -334,3 +334,58 @@ def test_the_challenger_still_refuses_a_cloud_credential_on_the_new_network():
     # actually keeps the arms apart.
     with pytest.raises(ValueError, match="cloud credentials"):
         ch_with(["AZURE_CLIENT_ID"])
+
+
+# --- the Linux capability decision ------------------------------------------
+#
+# --cap-drop=ALL plus SETUID/SETGID breaks Hermes home initialisation on
+# Linux: the init sequence needs CHOWN, FOWNER and DAC_OVERRIDE, and without
+# them the container exits 0 having done nothing (tests/test_smoke_container.py
+# holds two strict-xfail detectors for exactly this).
+#
+# The decision, taken 2026-08-25: the capabilities are available behind an
+# explicit opt-in, and a spec built with them RECORDS that it was. A harness
+# that silently ran with a weaker boundary on one machine and a stronger one
+# on another would make "the isolation boundary" a property of whoever
+# happened to run the batch.
+
+def test_the_capabilities_are_dropped_by_default():
+    from elcapitan.container import HARDENING
+
+    for cap in ("CHOWN", "FOWNER", "DAC_OVERRIDE"):
+        assert f"--cap-add={cap}" not in HARDENING
+
+
+def test_the_restored_set_is_opt_in_and_explicit():
+    from elcapitan.container import hardening_for
+
+    default = hardening_for(restore_caps=False)
+    restored = hardening_for(restore_caps=True)
+    assert "--cap-add=DAC_OVERRIDE" not in default
+    assert "--cap-add=DAC_OVERRIDE" in restored
+    # The drop-all baseline is never removed — the restored set is three
+    # capabilities ON TOP of it, not an abandonment of it.
+    assert "--cap-drop=ALL" in restored
+
+
+def test_a_spec_records_that_it_weakened_the_boundary():
+    # The property that matters. A trial run with restored capabilities must
+    # be identifiable as such afterwards, from its own record.
+    spec = engineer_spec(runtime_image_id=IMAGE, run_dir="/w/runs/R1",
+                         canonical_repo="/w/repos/anna", host_hermes_home="/tmp/h1",
+                         env_passthrough=NAMES, restore_caps=True)
+    assert spec.caps_restored is True
+    assert "--cap-add=DAC_OVERRIDE" in spec.to_argv()
+
+
+def test_a_default_spec_records_that_it_did_not():
+    assert eng().caps_restored is False
+
+
+def test_the_challenger_can_also_be_told_and_records_it():
+    spec = challenger_spec(runtime_image_id=IMAGE, run_dir="/w/runs/R1",
+                           bundle_path="/w/runs/R1/bundle-a",
+                           host_hermes_home="/tmp/h2", arm="A",
+                           env_passthrough=["ANTHROPIC_API_KEY"], restore_caps=True)
+    assert spec.caps_restored is True
+    assert "--cap-add=CHOWN" in spec.to_argv()
