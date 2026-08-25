@@ -174,7 +174,13 @@ for name in ("summary.json", "verdict/summary.json"):
 print(f"{total:.6f}")
 COST_PY
 )"
-  SPENT="$(uv run --project "$REPO_ROOT" python -c "print(f'{float(\'$SPENT\') + float(\'$TRIAL_COST\'):.6f}')")"
+  # Args, not string interpolation. The interpolated form needed nested
+  # escaped quotes inside a double-quoted shell string inside python -c, and
+  # it emitted a SyntaxError that produced an EMPTY spent_usd — a budget
+  # ceiling that silently stopped accumulating.
+  SPENT="$(uv run --project "$REPO_ROOT" python -c \
+    'import sys; print(f"{float(sys.argv[1]) + float(sys.argv[2]):.6f}")' \
+    "$SPENT" "$TRIAL_COST")"
 
   printf '{"run_id":"%s","order":%d,"status":"%s","cost_usd":%s,"spent_usd":%s,"started_at":"%s","finished_at":"%s"}\n' \
     "$RUN_ID" "$INDEX" "$STATUS" "$TRIAL_COST" "$SPENT" "$STARTED" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$RESULTS"
