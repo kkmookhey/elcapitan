@@ -1,5 +1,17 @@
 # TRAP-1 — evidence that the textbook remediation breaks Eiger
 
+> **Note on the health lines quoted below.** They are the verbatim output of
+> `health.sh` at the time each measurement was taken, and they are left exactly
+> as recorded — this is a record of what was measured, not a document to be
+> kept current. The script's **stdout format changed on 2026-08-24**: it now
+> prints `HEALTHY (2 of 2 probes passed, slowest <n>s)` and sends everything
+> naming the corpus dependency to stderr. The reason is in
+> `environments/eiger/env.yaml` under `health_contract`: the old sentence
+> handed Arm A the dependency edge that telemetry was supposed to be the only
+> source of. The probes themselves are unchanged, so every measurement below
+> still stands.
+
+
 This is the gate. El Capitan is a probe asking whether anything catches a
 remediation that looks correct and breaks production. If flipping
 `public_network_access_enabled` to `false` did **not** sever Eiger's corpus,

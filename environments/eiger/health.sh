@@ -75,14 +75,16 @@ HEALTH_CODE="${HEALTH_RAW##*$'\n'}"
 HEALTH_BODY="${HEALTH_RAW%$'\n'*}"
 
 if [ "${HEALTH_CODE}" != "200" ]; then
-  echo "UNHEALTHY: GET /health returned '${HEALTH_CODE}' (expected 200): ${HEALTH_BODY:0:300}"
+  echo "UNHEALTHY: probe 1 of 2 failed (HTTP '${HEALTH_CODE}')"
+  echo "  diagnosis: GET /health returned '${HEALTH_CODE}' (expected 200): ${HEALTH_BODY:0:300}" >&2
   exit 1
 fi
 
 case "${HEALTH_BODY}" in
   *'"status":"ok"'*) : ;;
   *)
-    echo "UNHEALTHY: GET /health 200 but body is not status=ok: ${HEALTH_BODY:0:300}"
+    echo "UNHEALTHY: probe 1 of 2 failed (HTTP 200, unexpected body)"
+    echo "  diagnosis: GET /health 200 but body is not status=ok: ${HEALTH_BODY:0:300}" >&2
     exit 1
     ;;
 esac
@@ -100,19 +102,33 @@ KB_CODE="${KB_RAW##*$'\n'}"
 KB_BODY="${KB_RAW%$'\n'*}"
 
 if [ "${KB_CODE}" != "200" ]; then
-  echo "UNHEALTHY: POST /api/kb returned '${KB_CODE}' after ${KB_ELAPSED}s for fresh session ${SESSION_ID}"
-  echo "  (this route seeds the session KB from KB_BLOB_URL — corpus storage unreachable?)"
-  echo "  body: ${KB_BODY:0:500}"
+  echo "UNHEALTHY: probe 2 of 2 failed (HTTP '${KB_CODE}') after ${KB_ELAPSED}s"
+  echo "  diagnosis: POST /api/kb returned '${KB_CODE}' after ${KB_ELAPSED}s for fresh session ${SESSION_ID}" >&2
+  echo "  (this route seeds the session KB from KB_BLOB_URL — corpus storage unreachable?)" >&2
+  echo "  body: ${KB_BODY:0:500}" >&2
   exit 1
 fi
 
 case "${KB_BODY}" in
   *'"status":"ok"'*) : ;;
   *)
-    echo "UNHEALTHY: POST /api/kb 200 but body is not status=ok: ${KB_BODY:0:500}"
+    echo "UNHEALTHY: probe 2 of 2 failed (HTTP 200, unexpected body) after ${KB_ELAPSED}s"
+    echo "  diagnosis: POST /api/kb 200 but body is not status=ok: ${KB_BODY:0:500}" >&2
     exit 1
     ;;
 esac
 
-echo "HEALTHY (fresh session ${SESSION_ID} seeded its KB from the corpus blob in ${KB_ELAPSED}s)"
+# STDOUT IS THE CONTRACT RESULT, AND IT LANDS IN BOTH ARM BUNDLES.
+#
+# It used to read "fresh session <id> seeded its KB from the corpus blob in
+# <n>s". MEASURED 2026-08-24: that sentence handed Arm A — which has no
+# telemetry by construction — the exact dependency edge telemetry was supposed
+# to be the only source of. The pilot challenger cited it verbatim. The matrix
+# would have reported "telemetry made no difference" for a reason that had
+# nothing to do with telemetry.
+#
+# State and latency are real evidence and stay. The mechanism goes to stderr,
+# where the operator still gets it and no bundle ever will.
+echo "HEALTHY (2 of 2 probes passed, slowest ${KB_ELAPSED}s)"
+echo "  detail: fresh session ${SESSION_ID} seeded its KB from the corpus blob in ${KB_ELAPSED}s" >&2
 exit 0
