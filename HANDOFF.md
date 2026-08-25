@@ -220,6 +220,24 @@ account.
    showed it is *not* what breaks the challenger on macOS — that was
    `--network=none`, now fixed.
 
+### Two operational traps that cost a batch each, measured 2026-08-25
+
+**Do not edit a harness script while a batch is running.** Bash reads a script
+incrementally by byte offset. Editing `bin/agent-run.sh` mid-batch shifted the
+bytes under a running shell, which resumed mid-line and tried to execute
+`e.db` out of the middle of `state.db`. The engineer had already completed
+successfully — exit 0, 97 tool calls, a real proposal on disk — and the trial
+was recorded as failed anyway.
+
+**Do not delete and recreate a workspace directory that Docker mounts.**
+Docker Desktop's virtiofs caches the parent inode, and every subsequent bind
+mount fails with `bind source path does not exist` for a path that plainly
+does exist on the host. Measured directly: a brand-new path mounts; the same
+path after `rm -rf` + `mkdir` does not. **Use a fresh workspace path per
+batch** (`~/elcap-batch-<timestamp>`) rather than reusing one. This one is
+especially nasty because the natural instinct after a failed batch — clean the
+workspace and re-run — is what triggers it.
+
 ### When you do run it
 
 ```
