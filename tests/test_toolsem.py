@@ -81,3 +81,61 @@ def test_trivy_exit_code_two_is_not_ambiguous():
 
 def test_terraform_verdict_defaults_to_not_ambiguous():
     assert interpret_exit("terraform", ["validate"], 0).ambiguous is False
+
+
+# --- argv that repeats the tool name ----------------------------------------
+#
+# FOUND BY THE FIRST REAL BATCH, and it cost six trials and about $13.
+#
+# A CommandRecord's argv has two conventions in the wild, and the engineer
+# picked between them differently on different runs:
+#
+#     ["terraform", "plan", "-detailed-exitcode"]     tool included
+#     ["plan", "-detailed-exitcode"]                  tool excluded
+#
+# _terraform read argv[0] as the subcommand, so the first form made `sub`
+# "terraform", the -detailed-exitcode branch never matched, and a plan exiting
+# 2 — SUCCESS, meaning changes are present, which is the expected outcome of
+# every remediation this system generates — was scored as a failure. The error
+# read "terraform terraform exit 2", which is the tell.
+#
+# Identical work scoring differently because of a recording convention is an
+# experimental confound, not a formatting nit.
+
+@pytest.mark.parametrize("argv", [
+    ["terraform", "plan", "-detailed-exitcode"],
+    ["plan", "-detailed-exitcode"],
+])
+def test_a_plan_with_changes_is_success_under_either_argv_convention(argv):
+    verdict = interpret_exit("terraform", argv, 2)
+    assert verdict.ok, f"exit 2 with -detailed-exitcode means CHANGES PRESENT: {argv}"
+    assert "changes present" in verdict.meaning
+
+
+@pytest.mark.parametrize("argv", [
+    ["terraform", "plan", "-detailed-exitcode"],
+    ["plan", "-detailed-exitcode"],
+])
+def test_a_plan_with_no_changes_is_also_success(argv):
+    assert interpret_exit("terraform", argv, 0).ok
+
+
+@pytest.mark.parametrize("argv", [
+    ["terraform", "plan", "-detailed-exitcode"],
+    ["plan", "-detailed-exitcode"],
+])
+def test_a_real_plan_error_is_still_a_failure(argv):
+    # The fix must not turn every non-zero exit into a pass. Exit 1 from
+    # terraform plan is a genuine error under both conventions.
+    assert not interpret_exit("terraform", argv, 1).ok
+
+
+def test_the_duplicated_tool_name_does_not_leak_into_the_message():
+    # "terraform terraform exit 2" is what a reader saw. It should never
+    # appear again.
+    verdict = interpret_exit("terraform", ["terraform", "validate", "-json"], 0)
+    assert "terraform terraform" not in verdict.meaning
+
+
+def test_a_bare_tool_name_argv_does_not_crash():
+    assert interpret_exit("terraform", ["terraform"], 0) is not None

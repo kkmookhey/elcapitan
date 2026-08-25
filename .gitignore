@@ -6,3 +6,5 @@ __pycache__/
 .pytest_cache/
 .venv/
 .terraform/
+environments/eiger/trap2/trap2.tfplan
+environments/eiger/trap2/.terraform/

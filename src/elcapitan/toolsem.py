@@ -53,8 +53,30 @@ def _trivy(argv: list[str], code: int) -> ExitVerdict:
 
 _HANDLERS = {"terraform": _terraform, "cdk": _cdk, "trivy": _trivy}
 
+def _without_tool_name(tool: str, argv: list[str]) -> list[str]:
+    """argv with a leading repeat of the tool name removed.
+
+    A CommandRecord's argv has two conventions in the wild and an agent picks
+    between them freely:
+
+        ["terraform", "plan", "-detailed-exitcode"]   tool included
+        ["plan", "-detailed-exitcode"]                tool excluded
+
+    The handlers read argv[0] as the SUBCOMMAND. Under the first convention
+    that made `sub` equal "terraform", the -detailed-exitcode branch never
+    matched, and a plan exiting 2 — which means CHANGES PRESENT, the expected
+    outcome of every remediation this system generates — was scored as a
+    failure reading "terraform terraform exit 2".
+
+    That cost six trials and about $13 in the first real batch. Identical work
+    scoring differently because of a recording convention is an experimental
+    confound, not a formatting nit.
+    """
+    return argv[1:] if argv and argv[0] == tool else argv
+
+
 def interpret_exit(tool: str, argv: list[str], code: int) -> ExitVerdict:
     handler = _HANDLERS.get(tool)
     if handler is None:
         return ExitVerdict(code == 0, f"generic semantics: exit {code}")
-    return handler(argv, code)
+    return handler(_without_tool_name(tool, argv), code)
