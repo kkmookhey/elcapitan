@@ -491,18 +491,18 @@ The spec requires this **before** any scored trial: §3.3 commits to "one OCSF f
 
 **Files:** `src/elcapitan/score.py`, `results/matrix.md`, tests
 
-- [ ] **Step 1: The primary matrix** — catch rate and false-reject rate per arm.
+- [x] **Step 1: The primary matrix** — catch rate and false-reject rate per arm.
 
-- [ ] **Step 2: The assertion-level matrix.** Verdict-only scoring would count "correctly rejected for entirely the wrong reason" as success. Score each trial on: finding confirmation · IaC ownership · source linking · resolution type · toolchain verification · dependency identification · final verdict · evidence use · calibration.
+- [x] **Step 2: The assertion-level matrix.** Verdict-only scoring would count "correctly rejected for entirely the wrong reason" as success. Score each trial on: finding confirmation · IaC ownership · source linking · resolution type · toolchain verification · dependency identification · final verdict · evidence use · calibration.
 
-- [ ] **Step 3: Interpret honestly.** N=5 separates "never" from "often"; it is **not** a rate estimate. Report observed outcomes, run-to-run consistency, failure patterns and evidence-use patterns. **Avoid percentage claims about production capability.**
+- [ ] **Step 3: Interpret honestly.** *(needs a real batch)* N=5 separates "never" from "often"; it is **not** a rate estimate. Report observed outcomes, run-to-run consistency, failure patterns and evidence-use patterns. **Avoid percentage claims about production capability.**
 
   The three outcomes and what each means:
   - **A catches it** → telemetry unnecessary. Cheap product, surprising result.
   - **A misses, B catches** → the required evidence surface is derived. Most likely, and it is the product spec.
   - **Both miss** → remediation needs an ephemeral staging environment. A large architectural finding, far better learned now.
 
-- [ ] **Step 4:** Write `results/matrix.md` with the failure taxonomy and a recommendation: *reasoning-only · telemetry-grounded · staging-required · stop*.
+- [x] **Step 4:** `render_matrix` writes `results/matrix.md` with the failure taxonomy and a recommendation: *reasoning-only · telemetry-grounded · staging-required · stop*.
 
 ---
 
