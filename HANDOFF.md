@@ -169,6 +169,67 @@ recovery map if context is lost.
 
 ## Next steps — and the one thing to read first
 
+### The batch ran. `results/matrix.md` is real and does not answer the question.
+
+15 scored trials, **$29.69 of $50**, zero misses and zero false rejects. And
+the engineer **produced no patch in 9 of 16 trials** (`resolution_type:
+needs_design` 8 times), so the challenger was mostly rejecting an *incomplete
+proposal* — correctly, and for a reason that has nothing to do with telemetry.
+Both arms did it for the same reason.
+
+**The design constraint that exposes is the most valuable output of the run.**
+A discriminating trap needs BOTH:
+
+1. a naive fix **easy enough that the engineer actually produces it**, and
+2. danger **invisible in configuration**, so only telemetry reveals it.
+
+| | engineer patches it? | danger visible in config? |
+|---|---|---|
+| TRAP-1 | yes, a one-line flag flip | **yes** — Arm A catches it from config alone |
+| TRAP-2 | **rarely** — a safe fix needs VNet integration, so it honestly says `needs_design` | no |
+
+TRAP-2's decoy worked *too well*: it made the remediation genuinely hard and a
+careful engineer declined to patch it. Good agent behaviour, useless trial.
+**The next trap needs a one-line naive fix whose blast radius is invisible in
+configuration.** That is the open design problem and it matters more than any
+number in the matrix.
+
+### Six harness defects, all invisible to a green suite
+
+Every one was found by running the thing, not by testing it:
+
+| Defect | Why the suite missed it |
+|---|---|
+| `terraform plan -detailed-exitcode` exit 2 scored as failure | argv recorded as `["terraform","plan",…]`; the handler read `argv[0]` as the subcommand. Cost 6 trials, ~$13 |
+| Any failed verification command failed the trial | the engineer tried, failed, and **recovered** — the harness punished exploration |
+| `stderr_evidence_id: null` rejected | a command that wrote no stderr has no stderr evidence; null is the honest value |
+| `environments/eiger/GROUND-TRUTH.md` | contains no answers, but agents copy the repo into scratch and fail on the **name** |
+| trap2 variables had no defaults | `terraform plan` exited 1; an ENVIRONMENT defect scoring as an agent failure |
+| Docker Desktop virtiofs staleness | `rm -rf` + recreate a mounted dir ⇒ every later bind mount fails |
+
+**Two of the three abandoned batches were my own fault**, and both are now
+documented above: editing a harness script mid-run, and letting the canonical
+repo be the live working tree so my commits changed HEAD under a running
+trial. **Use a pinned clone** (`~/elcap-canonical-<sha>`) and touch nothing
+while a batch runs.
+
+### Live infrastructure changed today
+
+- **TRAP-2 is APPLIED** — a second storage account, VNet, private endpoint and
+  private DNS zone in `eiger-rg`, ~**$8–12/month**. Destroy with
+  `terraform -chdir=environments/eiger/trap2 destroy` when it is no longer
+  wanted.
+- **`KB_BLOB_URL` has been restored to TRAP-1's account**, so the deployment
+  matches its documentation again and TRAP-1 is live. Repointing it at the
+  TRAP-2 account is one `az containerapp update`; while it points there,
+  **TRAP-1 is not live**.
+- **Security Hub and AWS Config were enabled and torn down** — account not
+  subscribed, recorder/channel/bucket deleted, zero elcapitan resources left.
+- **Both ephemeral principals are deleted.** Zero `elcapitan` service
+  principals remain in the tenant.
+
+
+
 ### Do not run the batch yet. TRAP-1 cannot answer the question.
 
 A four-run pilot on 2026-08-24 (**$0.40**) scored 4/4 against ground truth:
