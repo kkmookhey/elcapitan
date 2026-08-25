@@ -226,11 +226,21 @@ def test_terraform_plan_exit_2_is_not_a_failure(tmp_path, repo):
                         expected_bundle_hash=anchor).passed
 
 
-def test_terraform_plan_exit_1_is_a_failure(tmp_path, repo):
+def test_terraform_plan_exit_1_with_a_passed_claim_still_fails(tmp_path, repo):
+    """The rule changed deliberately, and this is the half that survives.
+
+    A failed command an agent RECOVERED from no longer fails a trial — see
+    verification_failures. But a proposal whose ONLY command failed while it
+    claims verification passed is making a claim its own evidence does not
+    support, and that still fails. The tool is named in the notes rather than
+    in the failure, because the failure is about the claim, not the command.
+    """
     run, before, anchor, cloud = build_run(tmp_path, repo, command_exit=1)
     r = validate_run(run, canonical_repo=repo, repo_state_before=before, cloud_state_before=cloud,
                      expected_bundle_hash=anchor)
-    assert any("terraform" in f for f in r.failures)
+    assert not r.passed
+    assert any("unsupported" in f or "actually succeeded" in f for f in r.failures), r.failures
+    assert any("terraform" in n for n in r.notes), r.notes
 
 
 def test_ground_truth_inside_run_dir_fails(tmp_path, repo):
@@ -941,3 +951,85 @@ def test_coherent_input_forgery_is_caught_by_the_pre_trial_anchor(tmp_path, repo
                      expected_bundle_hash=anchor)
     assert not r.passed
     assert any("pre-trial anchor" in f for f in r.failures)
+
+
+def _proposal_with_commands(commands, *, passed):
+    return {"verification": {"commands_run": [
+        {**c, "command_id": f"CMD-{i:03d}",
+         "started_at": "2026-08-25T03:00:00Z", "completed_at": "2026-08-25T03:00:01Z",
+         "stdout_evidence_id": None, "stderr_evidence_id": None}
+        for i, c in enumerate(commands, 1)], "output": [], "passed": passed}}
+
+
+def _verification_failures(proposal):
+    from elcapitan.validate import verification_failures
+    return verification_failures(proposal)[0]
+
+
+def _verification_notes(proposal):
+    from elcapitan.validate import verification_failures
+    return verification_failures(proposal)[1]
+
+
+# --- a failed command an agent RECOVERED from is not a failed trial ---------
+#
+# FOUND BY THE LIVE BATCH. The engineer ran:
+#
+#   terraform plan -detailed-exitcode                  -> exit 1 (needs refresh creds)
+#   terraform plan -refresh=false -detailed-exitcode    -> exit 2 (changes present)
+#
+# It tried something, saw it fail, understood why, and adapted. That is good
+# engineering, and the validator failed the trial for it — because ANY failed
+# verification command failed the run. A harness that punishes exploration
+# biases the experiment against exactly the behaviour it is trying to measure.
+#
+# The fraud case the rule existed for is narrower and is kept: an agent
+# claiming verification passed when NOTHING it ran actually succeeded.
+
+def test_a_recovered_command_failure_does_not_fail_the_trial(tmp_path):
+    proposal = _proposal_with_commands([
+        {"tool": "terraform", "argv": ["terraform", "plan", "-detailed-exitcode"],
+         "exit_code": 1},
+        {"tool": "terraform",
+         "argv": ["terraform", "plan", "-refresh=false", "-detailed-exitcode"],
+         "exit_code": 2},
+    ], passed=True)
+    failures = _verification_failures(proposal)
+    assert not any("verification command failed" in f for f in failures), failures
+
+
+def test_the_recovered_failure_is_still_reported_as_an_observation():
+    # Not failing the trial is not the same as hiding it. A reader has to be
+    # able to see that the first attempt did not work.
+    proposal = _proposal_with_commands([
+        {"tool": "terraform", "argv": ["terraform", "plan", "-detailed-exitcode"],
+         "exit_code": 1},
+        {"tool": "terraform",
+         "argv": ["terraform", "plan", "-refresh=false", "-detailed-exitcode"],
+         "exit_code": 2},
+    ], passed=True)
+    notes = _verification_notes(proposal)
+    assert any("exit 1" in n or "error" in n.lower() for n in notes), notes
+
+
+def test_claiming_passed_when_nothing_succeeded_still_fails():
+    # THE fraud case, and it must keep failing: every command failed and the
+    # proposal says verification passed.
+    proposal = _proposal_with_commands([
+        {"tool": "terraform", "argv": ["terraform", "plan", "-detailed-exitcode"],
+         "exit_code": 1},
+        {"tool": "terraform", "argv": ["terraform", "validate"], "exit_code": 1},
+    ], passed=True)
+    failures = _verification_failures(proposal)
+    assert any("passed" in f for f in failures), failures
+
+
+def test_all_commands_failing_with_passed_false_is_honest_not_a_failure():
+    # An agent that ran things, watched them all fail, and SAID SO is being
+    # honest. That is a legitimate trial outcome, not a broken run.
+    proposal = _proposal_with_commands([
+        {"tool": "terraform", "argv": ["terraform", "plan", "-detailed-exitcode"],
+         "exit_code": 1},
+    ], passed=False)
+    failures = _verification_failures(proposal)
+    assert not any("verification command failed" in f for f in failures), failures

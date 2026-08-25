@@ -1,4 +1,13 @@
-# Eiger ground truth — location and purpose
+# Eiger — where the answer key lives
+
+> **Renamed 2026-08-25, and the name matters.** This file used to be called
+> `GROUND-TRUTH.md`. It contains no answers and never did — but
+> `validate.GROUND_TRUTH_MARKERS` refuses any path matching `ground-truth`,
+> `ground_truth` or `groundtruth` inside a run directory, and an engineer that
+> copied the repository into its scratch space to run `terraform` brought this
+> file along and failed its own trial on the name. The check is deliberately
+> name-based, because content-based detection of an answer key is not
+> possible; so the document moved instead of the check being weakened.
 
 The ground truth for this environment is **deliberately not in this
 repository**, and its contents must never be committed here.

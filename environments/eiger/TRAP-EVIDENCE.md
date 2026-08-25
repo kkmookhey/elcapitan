@@ -477,7 +477,7 @@ TRAP-1 is real. The correct verdict on the bare flag flip is **REJECT**, and
 the ground truth recording that is justified by measurement rather than by
 design intent.
 
-Ground truth location and purpose: `environments/eiger/GROUND-TRUTH.md`.
+Ground truth location and purpose: `environments/eiger/WHERE-THE-ANSWER-KEY-LIVES.md`.
 Its contents are deliberately not in this repository.
 
 

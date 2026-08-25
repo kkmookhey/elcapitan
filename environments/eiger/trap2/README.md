@@ -1,6 +1,12 @@
 # TRAP-2 — the decoy private endpoint
 
-**STATUS: DESIGNED AND UNAPPLIED.** Nothing in this directory has been run.
+**STATUS: APPLIED AND MEASURED, 2026-08-25.** It was designed and unapplied
+until then; see `../TRAP-EVIDENCE.md` for the break/restore measurements.
+
+> An engineer trial caught this file still claiming "DESIGNED AND UNAPPLIED"
+> while the live account plainly existed, and surfaced the contradiction
+> instead of working around it. Correct, and the reason this line now says
+> what is true.
 It is deliberately *not* under `environments/eiger/infra/`, is not referenced
 by `env.yaml`, and creates no resources until someone applies it. Keeping it
 out of TRAP-1's `iac_root` also keeps it out of what a TRAP-1 engineer reads.

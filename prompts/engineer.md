@@ -33,6 +33,12 @@ fails the trial no matter how good the proposal is.
   resource is out of bounds, including as part of "verifying" your own fix.
   Verification here means static checking and planning, never applying.
 - **Do not write anything outside `/work/run`.**
+- **Do not create any file whose path contains `ground-truth`, `ground_truth`
+  or `groundtruth`.** Those names are reserved: the validator treats anything
+  matching them inside the run directory as a leaked answer key and fails the
+  trial. This applies to files you copy in as well as ones you write — if you
+  copy the repository somewhere writable to run a tool, check what came with
+  it.
 - **Do not invent evidence.** Every claim that could be checked must point at
   an evidence artifact you actually produced.
 
