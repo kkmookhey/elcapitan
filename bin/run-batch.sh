@@ -36,6 +36,7 @@ ENV_NAME="eiger"
 CASES="FIND-002,FIND-003"
 ARMS="A,B"
 TRIALS=5
+N_START=1
 PLAN_ONLY=0
 CONTINUE_ON_FAILURE=1
 # A HARD ceiling, not a warning. The batch stops when the next trial could
@@ -49,6 +50,10 @@ while [ $# -gt 0 ]; do
     --cases)  CASES="${2:?--cases needs a value}"; shift 2 ;;
     --arms)   ARMS="${2:?--arms needs a value}"; shift 2 ;;
     --trials) TRIALS="${2:?--trials needs a value}"; shift 2 ;;
+    # Where the trial numbering STARTS. Run ids are immutable and globally
+    # unique, so topping up an existing matrix needs new numbers rather than
+    # a second n1 that would collide with, or silently replace, the first.
+    --n-start) N_START="${2:?--n-start needs a value}"; shift 2 ;;
     --plan-only) PLAN_ONLY=1; shift ;;
     --budget-usd) BUDGET_USD="${2:?--budget-usd needs a value}"; shift 2 ;;
     --stop-on-failure) CONTINUE_ON_FAILURE=0; shift ;;
@@ -76,17 +81,17 @@ PLAN_FILE="$(mktemp)"
 trap 'rm -f "$PLAN_FILE" "${ORDER_FILE:-}"' EXIT
 
 uv run --project "$REPO_ROOT" python - \
-  "$SEED" "$ENV_NAME" "$CASES" "$ARMS" "$TRIALS" "$PLAN_FILE" <<'PLAN_PY'
+  "$SEED" "$ENV_NAME" "$CASES" "$ARMS" "$TRIALS" "$PLAN_FILE" "$N_START" <<'PLAN_PY'
 import json
 import random
 import sys
 
-seed, env_name, cases, arms, trials, out_path = sys.argv[1:7]
+seed, env_name, cases, arms, trials, out_path, n_start = sys.argv[1:8]
 
 cells = []
 for finding_id in cases.split(","):
     for arm in arms.split(","):
-        for n in range(1, int(trials) + 1):
+        for n in range(int(n_start), int(n_start) + int(trials)):
             cells.append({"env": env_name, "finding_id": finding_id, "arm": arm,
                           "n": n, "run_id": f"{env_name}-{finding_id}-arm{arm}-n{n}"})
 
