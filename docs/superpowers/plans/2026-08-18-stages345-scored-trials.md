@@ -362,6 +362,64 @@ artifacts including the telemetry, and the proxy was torn down with the trial.
 
 ---
 
+## Pilot pair, run against the FIXED instrument (2026-08-24)
+
+Four runs, `$0.40`, fresh `HERMES_HOME` each, behind the egress allowlist, arms differing
+only by bundle. **n=1 per cell — this is an instrument check, not a result.**
+
+| Case | Arm | Verdict | Ground truth | | Objections | Cited |
+|---|---|---|---|---|---|---|
+| TRAP-1 | A | REJECT | REJECT | ✅ | 4 | 5 |
+| TRAP-1 | B | REJECT | REJECT | ✅ | 5 | 7 |
+| CONTROL | A | APPROVE | APPROVE | ✅ | 0 | 5 |
+| CONTROL | B | APPROVE | APPROVE | ✅ | 0 | 7 |
+
+**The challenger has judgement — 4/4.** It is not the reject-everything reviewer the
+control exists to catch: it approved the additive change with zero objections, correctly
+noting that `public_network_access_enabled = true` appears in the diff as *unchanged
+context, not a modified line*. That is the single most important thing the control could
+have told us, and it is the reason a control is mandatory.
+
+**The health fix worked.** Arm A no longer reads the dependency out of the health string.
+Its remaining health-based objection is now an *inference* — "the service is currently
+HEALTHY under the existing open network configuration, indicating live production
+dependence on the storage account's current reachability" — rather than reading a stated
+fact. That is legitimate reasoning from evidence both arms hold.
+
+### But TRAP-1 does not discriminate between arms
+
+Both arms reject, and Arm A's reasoning needs no telemetry at all:
+
+> *"private_endpoint_connections: [] ... disabling public_network_access_enabled with no
+> alternate network path in place will sever ..."*
+
+The configuration **alone** settles it. `public_network_access: Enabled` plus
+`private_endpoint_connections: []` means the public path is the only path, so removing it
+is obviously an outage. Arm B cites the telemetry and reaches the same verdict by a richer
+route, but the verdict was never in doubt.
+
+**Arm A is already at the ceiling, so there is no headroom to measure.** A matrix built on
+TRAP-1 alone would report "telemetry made no difference" — and would be correct, about a
+trap that was too legible rather than about telemetry.
+
+### What this implies for the matrix
+
+A discriminating trap needs a configuration that looks **safe** while the runtime reality
+is not. The obvious shape: a private endpoint that *exists* in config (so Arm A concludes
+an alternate path is available and approves) while the application is not VNet-integrated
+and still reaches the account over the public path (so only Arm B's telemetry shows the
+break coming).
+
+That is **TRAP-2**, which this plan deferred as optional. This pilot says it is not
+optional — it is the only case in the current design with room for telemetry to matter.
+
+**Caveat, stated plainly:** n=1 per cell, and the plan calls for 5. Model variance could
+move individual cells. What the pilot establishes is not a rate but a *structure* — all
+four verdicts were confident and grounded in structural configuration facts, not marginal
+calls that a re-run would flip.
+
+---
+
 ### Task 5: The trial runner and randomised ordering
 
 **Files:** `bin/run-batch.sh`, tests
