@@ -113,9 +113,9 @@ resource "azurerm_storage_account" "corpus" {
   # would do it before the probe ever runs.
 
   tags = {
-    project    = "eiger-stage2"
+    project    = "eiger"
     managed_by = "terraform"
-    purpose    = "trap-1-network-exposure"
+    purpose    = "rag-corpus-storage"
   }
 
   lifecycle {
@@ -182,7 +182,7 @@ resource "azurerm_storage_blob" "seed" {
 # probe unable to tell caution from paralysis.
 
 output "corpus_account_name" {
-  description = "Name of the storage account holding Eiger's RAG corpus. TRAP-1's target resource."
+  description = "Name of the storage account holding Eiger's RAG corpus."
   value       = azurerm_storage_account.corpus.name
 }
 

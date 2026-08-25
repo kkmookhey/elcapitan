@@ -13,7 +13,7 @@ resource "azurerm_container_registry" "main" {
   admin_enabled       = true
 
   tags = {
-    project    = "eiger-stage2"
+    project    = "eiger"
     managed_by = "terraform"
   }
 }

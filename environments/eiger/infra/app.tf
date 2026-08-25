@@ -14,7 +14,7 @@ resource "azurerm_log_analytics_workspace" "main" {
   retention_in_days   = 30
 
   tags = {
-    project    = "eiger-stage2"
+    project    = "eiger"
     managed_by = "terraform"
   }
 }
@@ -45,7 +45,7 @@ resource "azurerm_container_app_environment" "main" {
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
 
   tags = {
-    project    = "eiger-stage2"
+    project    = "eiger"
     managed_by = "terraform"
   }
 }
@@ -128,7 +128,7 @@ resource "azurerm_container_app" "eiger" {
 
       env {
         name  = "KB_BLOB_URL"
-        value = azurerm_storage_blob.seed.url
+        value = "https://eigercorpus8dlub3zy.blob.core.windows.net/runtime-kb/kb-seed.json"
       }
 
       env {
@@ -172,7 +172,7 @@ resource "azurerm_container_app" "eiger" {
   }
 
   tags = {
-    project    = "eiger-stage2"
+    project    = "eiger"
     managed_by = "terraform"
   }
 }
