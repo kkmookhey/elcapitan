@@ -450,9 +450,26 @@ only a full run could surface:
 
 The spec requires this **before** any scored trial: §3.3 commits to "one OCSF finding, not the Prowler JSON," and until a second producer is normalised that is an untested claim.
 
-- [ ] **Step 1:** Take one finding from AWS Security Hub's OCSF export in account `331145994818` (profile `sara-sales`), run it through `normalise_ocsf`, confirm the FindingRecord validates.
+- [ ] **Step 1: BLOCKED — the account is not subscribed to Security Hub.** Measured 2026-08-24: `get-findings` in both `ap-south-1` and `us-east-1` returns `InvalidAccessException — Account 331145994818 is not subscribed to AWS Security Hub`. Subscribing is a paid, ongoing change to the account and is the human partner's call.
 
-- [ ] **Step 2:** Record what differs from Prowler's dialect. **Expect it to be thinner** where linking needs depth — Prowler states check semantics precisely; Security Hub often gives a resource ARN and a control ID. That gap is a linking-difficulty finding and belongs in the results, not a bug list.
+  **What was done instead, and what it does and does not prove.** A Security Hub OCSF finding built to the shape the Security Lake export emits was run through `normalise_ocsf`. That proves the intake does not *structurally* depend on Prowler, and it found three real dialect gaps (below). It does **not** prove the intake survives a live export, because no live export has been through it. **The gate stays open.**
+
+- [x] **Step 2: What differs, measured.** Three gaps, each of which the intake was silently depending on:
+
+  | Prowler | Security Hub | What broke |
+  |---|---|---|
+  | `"provider": "aws"` | `"provider": "AWS"` | this string keys `SCANNER_ENV_MAPS` and the capture dispatch, so an unnormalised `"AWS"` surfaces as *"no scanner credential map for provider 'AWS'"* — a confusing way to say wrong case |
+  | `"severity": "High"` | `"severity_id": 4` | severity was dropped entirely; every Security Hub finding would reach the challenger's context looking as though the scanner had no opinion |
+  | `"time_dt": "..."` | `"time": 1787616000000` | `observed_at` was dropped — provenance, which is the part of a record that has to survive for a result to mean anything later |
+
+  All three are now handled, and a regression test pins that Prowler findings normalise
+  unchanged: widening the intake must not alter what the first producer produces, or every
+  trial run so far is bound to a manifest the code no longer reproduces.
+
+  The plan's own expectation — that Security Hub is **thinner where linking needs depth**
+  — is confirmed by inspection: it gives a resource ARN and a control id (`S3.8`) where
+  Prowler states check semantics. That is a linking-difficulty finding for the results, not
+  a bug.
 
 - [ ] **Step 3:** If the intake needs changes to accept it, make them and say so — that is the point of the gate. **Step 4:** Commit.
 

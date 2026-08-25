@@ -13,6 +13,53 @@ from .evidence import Collector, write_evidence
 from .hashing import canonical_json
 
 
+# OCSF severity_id -> name (OCSF 1.1, Security Finding class). Security Hub
+# sends the id and no `severity` string; Prowler sends the string. Both are
+# legal OCSF, and an intake that read only one of them would silently report
+# every finding from the other producer as severity-less — which reaches the
+# challenger's context, where it looks like the scanner had no opinion.
+OCSF_SEVERITY = {0: "Unknown", 1: "Informational", 2: "Low", 3: "Medium",
+                 4: "High", 5: "Critical", 6: "Fatal"}
+
+
+def _severity(raw: dict) -> str:
+    severity = raw.get("severity")
+    if isinstance(severity, str) and severity:
+        return severity
+    severity_id = raw.get("severity_id")
+    if isinstance(severity_id, bool) or not isinstance(severity_id, int):
+        return ""
+    # An id outside the table is reported as itself rather than as "Unknown":
+    # a new OCSF severity is a fact about the producer, and mapping it to
+    # Unknown would hide that a scanner is speaking a newer dialect.
+    return OCSF_SEVERITY.get(severity_id, f"severity_id={severity_id}")
+
+
+def _observed_at(raw: dict) -> str:
+    """RFC3339, from whichever of OCSF's two time fields the producer sent.
+
+    `time_dt` is the string form and `time` is epoch milliseconds. Prowler
+    sends the first, Security Hub the second, and both are legal. Reading only
+    time_dt drops the timestamp for every Security Hub finding — and
+    observed_at is provenance, which is the part of a record that has to
+    survive for the result to mean anything later.
+    """
+    time_dt = raw.get("time_dt")
+    if isinstance(time_dt, str) and time_dt:
+        return time_dt
+    epoch = raw.get("time")
+    if isinstance(epoch, bool) or not isinstance(epoch, (int, float)):
+        return ""
+    from datetime import datetime, UTC
+    # OCSF `time` is milliseconds. Seconds would put it in 1970; the guard is
+    # a sanity bound, not a parse.
+    seconds = epoch / 1000 if epoch > 1e11 else epoch
+    try:
+        return datetime.fromtimestamp(seconds, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    except (OverflowError, OSError, ValueError):
+        return ""
+
+
 def cloud_target(raw: dict) -> tuple[str, str, str]:
     """(provider, resource_uid, region) for the raw OCSF finding's primary
     resource — the same three values normalise_ocsf writes into the record.
@@ -42,7 +89,13 @@ def cloud_target(raw: dict) -> tuple[str, str, str]:
     region = cloud.get("region", "")
     if not isinstance(region, str):
         region = "" if region is None else str(region)
-    return (cloud.get("provider", ""), primary.get("uid", ""), region)
+    # Lower-cased because this string keys constants.SCANNER_ENV_MAPS and the
+    # cloud-capture dispatch. Prowler writes "aws", Security Hub writes "AWS",
+    # and an unnormalised "AWS" surfaces as "no scanner credential map for
+    # provider \'AWS\'" — a confusing way to say "wrong case".
+    provider = cloud.get("provider", "")
+    return (provider.lower() if isinstance(provider, str) else "",
+            primary.get("uid", ""), region)
 
 
 def normalise_ocsf(raw: dict, *, run_dir, finding_id: str,
@@ -77,13 +130,13 @@ def normalise_ocsf(raw: dict, *, run_dir, finding_id: str,
             "provider": provider,
             "account": cloud.get("account", {}).get("uid", ""),
             "region": region,
-            "observed_at": raw.get("time_dt", ""),
+            "observed_at": _observed_at(raw),
         },
         "resource": {
             "uid": resource_uid,
             "type": primary.get("type", ""),
         },
-        "severity": raw.get("severity", ""),
+        "severity": _severity(raw),
         "raw_event": raw_ref.to_dict(),
         "vendor_extensions": dict(raw.get("unmapped", {})),
     }
