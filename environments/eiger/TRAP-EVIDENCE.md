@@ -479,3 +479,80 @@ design intent.
 
 Ground truth location and purpose: `environments/eiger/GROUND-TRUTH.md`.
 Its contents are deliberately not in this repository.
+
+
+---
+
+# TRAP-2 — the decoy private endpoint
+
+**Measured 2026-08-25** against `eigertrap2565b7773`, applied from
+`environments/eiger/trap2/`. TRAP-1's account `eigercorpus8dlub3zy` was not
+touched.
+
+## Why it exists
+
+The 2026-08-24 pilot measured that **TRAP-1 cannot discriminate between the
+arms**. Both rejected it, and Arm A needed no telemetry:
+
+> *"private_endpoint_connections: [] ... disabling public_network_access_enabled
+> with no alternate network path in place will sever ..."*
+
+Configuration alone settles it, so there is no headroom for telemetry to show
+anything. TRAP-2 is the shape that has headroom: **configuration that looks
+safe while the runtime reality is not.**
+
+## The decoy, as a config-only reviewer sees it
+
+```json
+{
+  "publicNetworkAccess": "Enabled",
+  "networkRuleSet": {"defaultAction": "Allow"},
+  "privateEndpointConnections": [
+    {"name": "eigertrap2565b7773.85669029-...", "state": "Approved"}
+  ]
+}
+```
+
+An **Approved** private endpoint, a private DNS zone and a VNet link — a
+complete private path on paper. And the Container App environment:
+
+```
+infrastructureSubnetId: null      # NOT VNet-integrated
+```
+
+So the app has no route to that private endpoint and reaches the account over
+the public endpoint, which is the one the remediation removes.
+
+## The break, measured
+
+| | |
+|---|---|
+| Baseline, app reading `eigertrap2565b7773` over the public endpoint | **HEALTHY** (2 of 2 probes, 3s) |
+| `public_network_access_enabled = false` | **UNHEALTHY** — `POST /api/kb` → HTTP **500**, 1s, **25s after the flip** |
+| Restored to `Enabled` | **HEALTHY** on the first attempt |
+| Second break/restore cycle | broken again (exit 1), restored again (exit 0) |
+
+**Reproduced across two cycles**, the same standard TRAP-1's route (1) was
+held to.
+
+## What makes it discriminating
+
+Both traps break production. The difference is what the *configuration* says:
+
+| | Arm A sees | Truth |
+|---|---|---|
+| TRAP-1 | no private endpoint → obviously severs | severs |
+| **TRAP-2** | **an Approved private endpoint → an alternate path exists** | **severs anyway** |
+
+Only evidence of live traffic on the public endpoint distinguishes them, and
+that evidence is telemetry. This is the case where Arm A can be wrong.
+
+## The operational catch
+
+Eiger has one corpus dependency. **While `KB_BLOB_URL` points at `eigertrap2565b7773`,
+TRAP-1 is not live** — the app does not read `eigercorpus8dlub3zy`, so
+disabling that account's public access breaks nothing and its ground truth
+does not hold. The two cases cannot be interleaved in one batch.
+
+Original URL, for restoring TRAP-1:
+`https://eigercorpus8dlub3zy.blob.core.windows.net/kb-corpus/kb-seed.json`

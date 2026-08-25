@@ -38,6 +38,9 @@ ARMS="A,B"
 TRIALS=5
 PLAN_ONLY=0
 CONTINUE_ON_FAILURE=1
+# A HARD ceiling, not a warning. The batch stops when the next trial could
+# cross it, because a budget checked only afterwards is a report, not a limit.
+BUDGET_USD="${ELCAP_BUDGET_USD:-50}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -47,6 +50,7 @@ while [ $# -gt 0 ]; do
     --arms)   ARMS="${2:?--arms needs a value}"; shift 2 ;;
     --trials) TRIALS="${2:?--trials needs a value}"; shift 2 ;;
     --plan-only) PLAN_ONLY=1; shift ;;
+    --budget-usd) BUDGET_USD="${2:?--budget-usd needs a value}"; shift 2 ;;
     --stop-on-failure) CONTINUE_ON_FAILURE=0; shift ;;
     *) echo "run-batch.sh: unknown argument '$1'" >&2; exit 2 ;;
   esac
@@ -129,11 +133,14 @@ ORDER_PY
 
 FAILED=0
 INDEX=0
+SPENT=0
+BUDGET_STOPPED=0
 while IFS=$'\t' read -r RUN_ID FINDING_ID ARM N; do
   INDEX=$((INDEX + 1))
   echo ""
   echo "=== [${INDEX}] ${RUN_ID} ==="
   STARTED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  RUN_DIR_FOR_COST="${ELCAP_WORKSPACE}/runs/${RUN_ID}"
   if "${REPO_ROOT}/bin/run-trial.sh" "$ENV_NAME" "$FINDING_ID" "$ARM" "$N"; then
     STATUS="completed"
   else
@@ -147,8 +154,53 @@ while IFS=$'\t' read -r RUN_ID FINDING_ID ARM N; do
       break
     fi
   fi
-  printf '{"run_id":"%s","order":%d,"status":"%s","started_at":"%s","finished_at":"%s"}\n' \
-    "$RUN_ID" "$INDEX" "$STATUS" "$STARTED" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$RESULTS"
+  # Cost is read from what the agents actually reported, never estimated from
+  # a per-trial average: an average is exactly wrong on the trial that runs
+  # long, which is the one that would cross the ceiling.
+  TRIAL_COST="$(uv run --project "$REPO_ROOT" python - "$RUN_DIR_FOR_COST" <<'COST_PY'
+import json
+import sys
+from pathlib import Path
+
+total = 0.0
+for name in ("summary.json", "verdict/summary.json"):
+    path = Path(sys.argv[1]) / name
+    if path.is_file():
+        try:
+            usage = json.loads(path.read_text()).get("usage") or {}
+            total += float(usage.get("estimated_cost_usd") or 0.0)
+        except (ValueError, TypeError):
+            pass
+print(f"{total:.6f}")
+COST_PY
+)"
+  SPENT="$(uv run --project "$REPO_ROOT" python -c "print(f'{float(\'$SPENT\') + float(\'$TRIAL_COST\'):.6f}')")"
+
+  printf '{"run_id":"%s","order":%d,"status":"%s","cost_usd":%s,"spent_usd":%s,"started_at":"%s","finished_at":"%s"}\n' \
+    "$RUN_ID" "$INDEX" "$STATUS" "$TRIAL_COST" "$SPENT" "$STARTED" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$RESULTS"
+
+  # Stop BEFORE the trial that could cross, using the most expensive trial so
+  # far as the estimate for the next one. Stopping after would mean the
+  # ceiling was a description of what happened.
+  OVER="$(uv run --project "$REPO_ROOT" python - "$RESULTS" "$BUDGET_USD" <<'BUDGET_PY'
+import json
+import sys
+
+rows = [json.loads(line) for line in open(sys.argv[1]) if line.strip()]
+spent = rows[-1]["spent_usd"] if rows else 0.0
+worst = max((r.get("cost_usd", 0.0) for r in rows), default=0.0)
+print("1" if spent + worst > float(sys.argv[2]) else "0")
+BUDGET_PY
+)"
+  if [ "$OVER" = "1" ]; then
+    echo "" >&2
+    echo "run-batch.sh: STOPPING — spent \$${SPENT} of \$${BUDGET_USD}, and the next" >&2
+    echo "  trial could cross it. ${INDEX} of $(wc -l < "$ORDER_FILE" | tr -d ' ') cells ran." >&2
+    echo "  The cells that did NOT run are recorded in the manifest; a partial" >&2
+    echo "  batch with a named gap is honest, a silently truncated one is not." >&2
+    BUDGET_STOPPED=1
+    break
+  fi
 done < "$ORDER_FILE"
 
 COMPLETED=$(grep -c '"status":"completed"' "$RESULTS" || true)
@@ -159,12 +211,15 @@ cat > "${BATCH_DIR}/batch-manifest.json" <<MANIFEST
   "cells_planned": $(echo "$PLAN" | grep -c '"run_id"'),
   "completed": ${COMPLETED},
   "failed": ${FAILED},
+  "budget_usd": ${BUDGET_USD},
+  "spent_usd": ${SPENT},
+  "stopped_on_budget": ${BUDGET_STOPPED},
   "finished_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 }
 MANIFEST
 
 echo ""
-echo "run-batch.sh: ${COMPLETED} completed, ${FAILED} failed"
+echo "run-batch.sh: ${COMPLETED} completed, ${FAILED} failed, \$${SPENT} of \$${BUDGET_USD}"
 echo "  ${BATCH_DIR}/batch-manifest.json"
 # A batch with failures still exits 0: the failures are DATA, recorded per
 # trial, and a non-zero exit would make a partially-successful batch look like
