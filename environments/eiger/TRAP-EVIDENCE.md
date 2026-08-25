@@ -485,6 +485,12 @@ Its contents are deliberately not in this repository.
 
 # TRAP-2 — the decoy private endpoint
 
+> **The infrastructure was destroyed on 2026-08-25**, after these measurements
+> were taken. They stand: this is a record of what was measured, not of what
+> is currently deployed. `environments/eiger/trap2/` rebuilds it in about
+> three minutes. See that README for why keeping it deployed was not worth
+> ~$8-12/month.
+
 **Measured 2026-08-25** against `eigertrap2565b7773`, applied from
 `environments/eiger/trap2/`. TRAP-1's account `eigercorpus8dlub3zy` was not
 touched.

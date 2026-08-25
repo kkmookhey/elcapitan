@@ -1,12 +1,45 @@
 # TRAP-2 — the decoy private endpoint
 
-**STATUS: APPLIED AND MEASURED, 2026-08-25.** It was designed and unapplied
-until then; see `../TRAP-EVIDENCE.md` for the break/restore measurements.
+**STATUS: APPLIED, MEASURED, AND DESTROYED — all on 2026-08-25.** The
+measurements stand and are in `../TRAP-EVIDENCE.md`. The infrastructure is
+gone; `terraform apply` here rebuilds it in about three minutes.
 
-> An engineer trial caught this file still claiming "DESIGNED AND UNAPPLIED"
-> while the live account plainly existed, and surfaced the contradiction
-> instead of working around it. Correct, and the reason this line now says
-> what is true.
+> **Why it was destroyed, and it is not a cost decision.** The private
+> endpoint was ~90% of the ~$8-12/month, and the private endpoint is the
+> decoy — the whole point of this trap. It worked *too well*: with a
+> plausible alternate path in the configuration, a safe remediation genuinely
+> requires VNet-integrating the Container App, so the engineer correctly
+> answered `resolution_type: needs_design` and produced **no patch in 9 of 16
+> trials**. With no patch there is nothing for the challenger to judge, and
+> both arms rejected for the same non-telemetry reason. The expensive
+> component is the one measured as counterproductive.
+>
+> An engineer trial also caught this file still claiming "DESIGNED AND
+> UNAPPLIED" while the live account plainly existed, and surfaced the
+> contradiction instead of working around it. Correct, and the reason this
+> status line is now kept honest.
+
+## What the next trap needs instead
+
+The flaw is not the decoy, it is **where** the decoy hides. TRAP-2 hides the
+danger from the *cloud configuration* — but the engineer reads the whole
+repository, including `app.tf`, which shows the Container App has no VNet
+integration. So the engineer can infer the trap from IaC alone, without any
+telemetry, and a careful one declines to patch.
+
+A usable trap must hide the danger from the **IaC**, not just from the cloud
+config, while keeping the naive fix to one line:
+
+> **a blob container the application creates at runtime and Terraform never
+> mentions.** Restricting container access reads as harmless in IaC because
+> the container is not in the IaC. It needs a storage account — TRAP-1's
+> already exists — and a change to the Eiger application. It needs no VNet,
+> no private endpoint and no DNS zone, which is the rest of the reason this
+> directory is not worth keeping deployed.
+
+That was the plan's original TRAP-2 concept, deferred because it needs an
+Eiger app change. The measurements here are what establish that the deferral
+has to be revisited.
 It is deliberately *not* under `environments/eiger/infra/`, is not referenced
 by `env.yaml`, and creates no resources until someone applies it. Keeping it
 out of TRAP-1's `iac_root` also keeps it out of what a TRAP-1 engineer reads.

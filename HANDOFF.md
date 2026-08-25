@@ -194,6 +194,17 @@ careful engineer declined to patch it. Good agent behaviour, useless trial.
 configuration.** That is the open design problem and it matters more than any
 number in the matrix.
 
+And the hiding place has to be the **IaC**, not just the cloud config. The
+engineer reads the whole repository — including `app.tf`, which shows the
+Container App has no VNet integration — so it can infer TRAP-2 from IaC alone
+and declines to patch. The plan's original TRAP-2 concept is the right shape:
+**a blob container the application creates at runtime that Terraform never
+mentions.** Restricting its access reads as harmless in IaC because the
+container is not in the IaC. It needs TRAP-1's existing storage account and a
+change to the Eiger application repo — no VNet, no private endpoint, no DNS
+zone. That app change is an unmerged PR against a Black Hat teaching repo and
+remains yours to land.
+
 ### Six harness defects, all invisible to a green suite
 
 Every one was found by running the thing, not by testing it:
@@ -215,10 +226,17 @@ while a batch runs.
 
 ### Live infrastructure changed today
 
-- **TRAP-2 is APPLIED** — a second storage account, VNet, private endpoint and
-  private DNS zone in `eiger-rg`, ~**$8–12/month**. Destroy with
-  `terraform -chdir=environments/eiger/trap2 destroy` when it is no longer
-  wanted.
+- **TRAP-2 was applied, measured, and DESTROYED** — all on 2026-08-25. Nine
+  resources removed; `eiger-rg` is back to TRAP-1's five. The measurements
+  stand in `TRAP-EVIDENCE.md`; `terraform -chdir=environments/eiger/trap2
+  apply` rebuilds it in ~3 minutes.
+
+  It was not a cost decision. The private endpoint was ~90% of the spend and
+  the private endpoint **is** the decoy — and the decoy worked too well. With
+  a plausible alternate path in the configuration, a safe fix genuinely needs
+  VNet integration, so the engineer correctly answered `needs_design` and
+  produced no patch in 9 of 16 trials. The expensive component is the one
+  measured as counterproductive.
 - **`KB_BLOB_URL` has been restored to TRAP-1's account**, so the deployment
   matches its documentation again and TRAP-1 is live. Repointing it at the
   TRAP-2 account is one `az containerapp update`; while it points there,
