@@ -265,7 +265,57 @@ rather than text.
 
 - [ ] **Step 3: Tests.** A challenger container built for either arm carries no cloud credential; the bundle mount is read-only; the canonical repo is **not** mounted; `member_positions` survive into the verdict.
 
-- [ ] **Step 4:** One live end-to-end run against a stub proposal. **Step 5:** Commit.
+- [x] **Step 4:** One live end-to-end run against a stub proposal. **Step 5:** Commit.
+
+**The run happened 2026-08-24 and found two things, one of them blocking.**
+
+#### BLOCKER — `--network=none` is incompatible with an LLM challenger
+
+`challenger_spec` hardcodes `network="none"`, the plan restates it, and the spec never
+addresses it. But the challenger *is* a model-backed agent: it must reach
+`api.anthropic.com`. Measured — the container starts, the prompt arrives, and then:
+
+```
+⚠️  API call failed (attempt 3/3): APIConnectionError
+   🌐 Endpoint: https://api.anthropic.com
+❌ API failed after 3 retries — Connection error.
+```
+
+Exit code **0**, `tool_call_count: 0`, `usage: {}`, no verdict — the false-green shape
+this project keeps finding. Restoring `CHOWN`/`FOWNER`/`DAC_OVERRIDE` does **not** fix it;
+that hypothesis was tested and rejected before the real cause was found.
+
+With `network="bridge"` the same run succeeds completely, so nothing else in the pipeline
+is at fault. **This is a decision, not a bug fix:** the property worth keeping is that the
+challenger cannot fetch *evidence*, and options range from an egress-allowlisted proxy
+(keeps the guarantee, real work) to accepting a general network and relying on the
+no-credentials/no-repo guarantees (weaker, free).
+
+#### CONFOUND — the health artifact leaks the dependency into Arm A
+
+Both arms were run against the same stub proposal. **Both returned `REJECT`** — and the
+reasoning is why that matters:
+
+| Arm | Cited | Where the dependency came from |
+|---|---|---|
+| B | EVD-002..008 | the telemetry: *"EVD-006 and EVD-007 show eiger-app issuing live GET/POST requests in the same window that non-zero storage transactions are recorded, and EVD-008 explicitly derives that eiger-app reads from this exact storage account"* |
+| A | EVD-002..005 | **the health string**: *"The health evidence (EVD-005) shows a real, working dependent process pulling data from this exact blob over that path at collection time."* |
+
+`health.sh:117` emits `HEALTHY (fresh session <id> seeded its KB from the corpus blob in
+<n>s)`. That sentence **names the corpus dependency in plain English**, and it is in
+*both* bundles. Arm A did not need telemetry to find the edge; it read it in the health
+line.
+
+So the independent variable is not currently isolated. Left alone, this produces a null
+result — "telemetry made no difference" — for an entirely artifactual reason, which is the
+spec's own "most plausible way the probe quietly produces garbage".
+
+**n=1, and it proves nothing about the hypothesis.** What it does establish is that the
+*instrument* needs fixing before the matrix is worth running: the health artifact must
+report health without narrating the dependency (e.g. a status and a latency, with the
+mechanism removed), or it belongs in Arm B only.
+
+Cost of the pilot: **$0.19** across four runs (two failed on the network, two succeeded).
 
 ---
 

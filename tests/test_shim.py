@@ -947,3 +947,48 @@ def test_neither_arms_challenger_may_hold_a_cloud_credential(arm):
                             bundle_path=f"/w/anchors/R1/bundles/arm-{arm.lower()}",
                             host_hermes_home="/w/homes/R1-ch", arm=arm,
                             env_passthrough=["ANTHROPIC_API_KEY", name])
+
+
+def test_run_agent_works_with_a_challenger_spec(tmp_path):
+    # Found while wiring Task 4: challenger_spec has no /work/run mount — the
+    # challenger deliberately cannot see the engineer's run directory — and
+    # _run_dir looked for exactly that mount. Both halves were well tested;
+    # their COMBINATION never was, so run_agent crashed on the first
+    # challenger it was ever handed.
+    from elcapitan.container import challenger_spec
+
+    bundle = tmp_path / "bundle"; bundle.mkdir()
+    (bundle / "bundle.json").write_text("{}")
+    verdict_dir = tmp_path / "run" / "verdict"; verdict_dir.mkdir(parents=True)
+    home = tmp_path / "home"; home.mkdir()
+    prompt = tmp_path / "challenger.md"; prompt.write_text("judge the bundle")
+
+    spec = challenger_spec(runtime_image_id="sha256:" + "a" * 64,
+                           run_dir=str(tmp_path / "run"), bundle_path=str(bundle),
+                           host_hermes_home=str(home), arm="A",
+                           env_passthrough=["ANTHROPIC_API_KEY"])
+    result = run_agent(spec, prompt, secret_env={}, model="anthropic/claude-sonnet-5",
+                       stub=lambda argv, text, env: (0, "stubbed"))
+    assert result is not None
+
+
+def test_the_challengers_stdout_does_not_overwrite_the_engineers(tmp_path):
+    # Both stages run against the same trial. If the challenger's stdout.log
+    # landed in the engineer's run_dir it would destroy the engineer's, and
+    # the engineer's is the record of the thing being judged.
+    from elcapitan.container import challenger_spec
+
+    run_dir = tmp_path / "run"
+    (run_dir / "verdict").mkdir(parents=True)
+    (run_dir / "stdout.log").write_text("THE ENGINEER'S OUTPUT")
+    bundle = tmp_path / "bundle"; bundle.mkdir()
+    home = tmp_path / "home"; home.mkdir()
+    prompt = tmp_path / "challenger.md"; prompt.write_text("judge it")
+
+    spec = challenger_spec(runtime_image_id="sha256:" + "a" * 64,
+                           run_dir=str(run_dir), bundle_path=str(bundle),
+                           host_hermes_home=str(home), arm="B",
+                           env_passthrough=["ANTHROPIC_API_KEY"])
+    run_agent(spec, prompt, secret_env={}, model="anthropic/claude-sonnet-5",
+              stub=lambda argv, text, env: (0, "challenger output"))
+    assert (run_dir / "stdout.log").read_text() == "THE ENGINEER'S OUTPUT"
