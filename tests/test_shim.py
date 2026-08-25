@@ -922,7 +922,12 @@ def test_the_challenger_gets_a_bundle_and_not_the_canonical_repository():
     assert "/w/anchors/R1/bundles/arm-a" in sources
     assert not any("canonical" in s for s in sources), \
         "the challenger must not be able to read the repository"
-    assert spec.network == "none"
+    # Not "none" — measured unworkable for a model-backed agent. The internal
+    # egress network is what holds the property now; elcapitan.egress's smoke
+    # tests measure that a denied host is genuinely denied.
+    from elcapitan.egress import NETWORK_NAME
+
+    assert spec.network == NETWORK_NAME
 
 
 def test_the_challenger_bundle_mount_is_read_only():

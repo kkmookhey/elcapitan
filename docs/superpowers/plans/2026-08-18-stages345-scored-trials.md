@@ -253,7 +253,7 @@ rather than text.
 
 **Files:** `prompts/challenger.md`, `bin/run-trial.sh` (challenger stage), tests
 
-- [ ] **Step 1: Write the prompt.** It states obligations, not methods. The challenger is an SRE whose responsibility is availability, not security. It must:
+- [x] **Step 1: Write the prompt.** It states obligations, not methods. The challenger is an SRE whose responsibility is availability, not security. It must:
   - judge **only** the supplied bundle — it has no network and no credentials, by construction;
   - return `APPROVE | REJECT | NEEDS_MORE_EVIDENCE`;
   - cite evidence ids for every objection;
@@ -261,9 +261,9 @@ rather than text.
 
   **It must not receive the engineer's reasoning, narrative or confidence** — only the artifact. That withholding is the measurement instrument; if the challenger reads "plan is clean, this is safe," the experiment measures sycophancy.
 
-- [ ] **Step 2: Wire the stage.** Fresh `HERMES_HOME`, `challenger_spec`, `--network=none`, no cloud credentials, bundle mounted read-only. Capture `state.db` before cleanup, exactly as the engineer stage does.
+- [x] **Step 2: Wire the stage.** Fresh `HERMES_HOME`, `challenger_spec`, ~~`--network=none`~~ **an egress allowlist**, no cloud credentials, bundle mounted read-only. Capture `state.db` before cleanup, exactly as the engineer stage does.
 
-- [ ] **Step 3: Tests.** A challenger container built for either arm carries no cloud credential; the bundle mount is read-only; the canonical repo is **not** mounted; `member_positions` survive into the verdict.
+- [x] **Step 3: Tests.** A challenger container built for either arm carries no cloud credential; the bundle mount is read-only; the canonical repo is **not** mounted; `member_positions` survive into the verdict.
 
 - [x] **Step 4:** One live end-to-end run against a stub proposal. **Step 5:** Commit.
 
@@ -316,6 +316,49 @@ report health without narrating the dependency (e.g. a status and a latency, wit
 mechanism removed), or it belongs in Arm B only.
 
 Cost of the pilot: **$0.19** across four runs (two failed on the network, two succeeded).
+
+#### Both findings resolved 2026-08-24
+
+**The network.** `--network=none` is replaced by an egress allowlist, which is what the
+`none` was actually protecting: not "no network", but "cannot fetch evidence".
+`src/elcapitan/egress.py` stands up an **internal** docker network (no route off the host,
+so a challenger ignoring its proxy variables still has nowhere to go) plus one proxy
+permitting exactly `api.anthropic.com` over CONNECT :443. Both halves matter — the
+internal network alone would be a suggestion, since proxy variables are environment and
+environment is advice.
+
+Measured against real docker, both directions:
+
+| Probe from the challenger's own network | Result |
+|---|---|
+| `https://example.com` through the proxy | **blocked** |
+| `https://api.anthropic.com` through the proxy | reachable |
+| `https://api.anthropic.com` ignoring the proxy | no route |
+
+Mutation-tested. `FilterDefaultDeny No` makes `example.com` reachable and the first test
+dies. `FilterURLs On` was assumed to leak and **measured to do the opposite** — it
+over-blocks, taking the model endpoint down with it, which would produce a challenger that
+never runs and a connection error indistinguishable from having no network at all. That
+mutant is killed by the companion test, which is precisely why the companion exists.
+The proxy image, its config and its filter are pinned separately in `runtime.lock.json`:
+either of the latter two can widen the boundary without the Dockerfile changing.
+
+**The health leak.** `health.sh` now splits its output — stdout is the contract result and
+is what gets bundled, stderr is the operator's diagnosis and never is:
+
+```
+stdout   HEALTHY (2 of 2 probes passed, slowest 2s)
+stderr     detail: fresh session <id> seeded its KB from the corpus blob in 3s
+```
+
+State and latency stay, because the plan asks for application health at collection time
+and both are real evidence. The probes are untouched — a fresh session id still forces a
+live corpus read. Verified against the live deployment.
+
+#### Step 4 re-run, code unmodified
+
+`succeeded: true`, 4 tool calls, `$0.09`. Arm B returned `REJECT` citing all seven
+artifacts including the telemetry, and the proxy was torn down with the trial.
 
 ---
 

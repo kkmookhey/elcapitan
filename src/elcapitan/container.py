@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 
 from .constants import GROUND_TRUTH_MARKERS
+from .egress import NETWORK_NAME as EGRESS_NETWORK
 
 VALID_ARMS = ("A", "B")
 # Every well-known host path for the docker control socket. Mounting any of
@@ -265,7 +266,16 @@ def challenger_spec(*, runtime_image_id, run_dir, bundle_path, host_hermes_home,
     _reject_docker_socket(mounts)
     _reject_writable_remount(mounts, [str(bundle_path)])
     _reject_overbroad_mounts(mounts, [str(bundle_path), verdict_dir, str(host_hermes_home)])
+    # NOT "none", and the reason is measured. The challenger is a model-backed
+    # agent: with no network it starts, receives the prompt, retries
+    # api.anthropic.com three times, and exits 0 having produced no verdict —
+    # the false-green shape. What "none" was protecting is narrower than "no
+    # network": the challenger must not be able to fetch EVIDENCE. That is now
+    # an internal docker network with no route off the host, plus one proxy
+    # allowing exactly the model endpoint. See elcapitan.egress, whose smoke
+    # tests measure both directions — a denied host really is denied, and the
+    # allowed one really is reachable.
     return ContainerSpec(image=runtime_image_id, mounts=tuple(mounts),
                          env_passthrough=tuple(env_passthrough),
                          host_hermes_home=str(host_hermes_home),
-                         network="none", command=tuple(command or []), arm=arm)
+                         network=EGRESS_NETWORK, command=tuple(command or []), arm=arm)

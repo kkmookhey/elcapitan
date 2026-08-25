@@ -104,7 +104,10 @@ import json
 import os
 import sys
 
+import contextlib
+
 from elcapitan.container import challenger_spec, engineer_spec
+from elcapitan.egress import egress_network, proxy_env
 from elcapitan.home import seed_hermes_home
 from elcapitan.shim import (ALL_SCANNER_ENV_NAMES, MODEL_ENV_MAP,
                             resolve_secret_env, run_agent, scanner_env_map)
@@ -173,18 +176,33 @@ if scanner_present:
     secret_env.update(resolve_secret_env(os.environ, scanner_map))
     env_passthrough += list(scanner_map.values())
 
+# The challenger runs behind an egress allowlist: an internal docker network
+# with no route off the host, plus one proxy permitting exactly the model
+# endpoint. The proxy is started here and torn down when this block exits, so
+# it never outlives the trial that needed it. The engineer needs a general
+# network — it reads the cloud — and gets no proxy at all.
 if stage == "challenger":
-    spec = challenger_spec(runtime_image_id=lock["runtime_image_id"], run_dir=run_dir,
-                           bundle_path=bundle_path, host_hermes_home=host_hermes_home,
-                           arm=arm, env_passthrough=env_passthrough)
+    egress = egress_network()
 else:
-    spec = engineer_spec(runtime_image_id=lock["runtime_image_id"], run_dir=run_dir,
-                         canonical_repo=canonical_repo,
-                         host_hermes_home=host_hermes_home,
-                         env_passthrough=env_passthrough)
+    egress = contextlib.nullcontext(None)
 
-result = run_agent(spec, prompt_path, secret_env=secret_env,
-                   model=f"{provider}/{model}")
+with egress as proxy_host:
+    if stage == "challenger":
+        routing = proxy_env(proxy_host)
+        secret_env.update(routing)
+        env_passthrough += list(routing)
+        spec = challenger_spec(runtime_image_id=lock["runtime_image_id"],
+                               run_dir=run_dir, bundle_path=bundle_path,
+                               host_hermes_home=host_hermes_home, arm=arm,
+                               env_passthrough=env_passthrough)
+    else:
+        spec = engineer_spec(runtime_image_id=lock["runtime_image_id"], run_dir=run_dir,
+                             canonical_repo=canonical_repo,
+                             host_hermes_home=host_hermes_home,
+                             env_passthrough=env_passthrough)
+
+    result = run_agent(spec, prompt_path, secret_env=secret_env,
+                       model=f"{provider}/{model}")
 
 summary = {
     "exit_code": result.exit_code,

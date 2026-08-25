@@ -53,3 +53,25 @@ def test_dockerfile_pins_every_tool_it_installs():
 def test_no_floating_specifiers_anywhere():
     for token in (">=", "<=", "^", "~", ":latest", ":main"):
         assert token not in LOCK.read_text(), f"floating specifier {token!r}"
+
+
+def test_the_egress_proxy_is_pinned_and_its_files_match_disk():
+    """The challenger's boundary is part of the experiment's identity.
+
+    An unpinned proxy means a batch could run behind a different allowlist
+    than the one recorded, and nothing afterwards could tell. The config and
+    filter are hashed separately from the Dockerfile because either can widen
+    the boundary without the Dockerfile changing at all.
+    """
+    import hashlib
+
+    lock = json.loads(LOCK.read_text())
+    egress = lock["egress_proxy"]
+    assert SHA256.match(egress["image_id"])
+    assert egress["allowed_hosts"] == ["api.anthropic.com"]
+    ctx = ROOT / "docker" / "egress-proxy"
+    for key, name in (("dockerfile_sha256", "Dockerfile"),
+                      ("config_sha256", "tinyproxy.conf"),
+                      ("filter_sha256", "filter")):
+        actual = hashlib.sha256((ctx / name).read_bytes()).hexdigest()
+        assert egress[key] == actual, f"{name} changed without re-pinning"
