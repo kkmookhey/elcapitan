@@ -18,5 +18,16 @@
     "_comment": "The HOST tooling, which is a different set from tool_versions above. elcapitan.cloud and elcapitan.collector both run host-side and shell out to the host `az`, so the image's azure-cli is not the one they use. Measured 2026-08-24.",
     "azure-cli": "2.86.0",
     "azure-cli-extension:log-analytics": "1.0.0b1 (preview)"
+  },
+  "egress_proxy": {
+    "_comment": "The challenger's egress allowlist. Pinned for the same reason the runtime image is: a scored batch run behind an unidentifiable boundary cannot be defended afterwards. Rebuild: docker build -t elcapitan-egress:0.1.0 docker/egress-proxy/",
+    "image_ref": "elcapitan-egress:0.1.0",
+    "image_id": "sha256:e3d9528116df6993d27dcb09dd57b1e421959bce69d7ccc8d33f49fb78e6b104",
+    "dockerfile_sha256": "0b6828e057774df971f9c343d856d4e5f0bc4620a184ad930a9b9b6a57af539e",
+    "config_sha256": "7cb766ff2843992276a3d59f663c92dc8af149c15ffa1a8da8e25f75f1eeb031",
+    "filter_sha256": "14abb549b6566c0aa4b98fba033b0c7fd27773e3f475a7a5dc7e7735303934c5",
+    "allowed_hosts": [
+      "api.anthropic.com"
+    ]
   }
 }

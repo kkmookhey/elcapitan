@@ -31,6 +31,7 @@ The load-bearing tests here:
       appeared THREE times in Stages 0-1.
 """
 import json
+import re
 
 import pytest
 
@@ -335,3 +336,104 @@ def test_a_trace_entry_that_is_not_an_object_still_yields_a_position():
     positions, incomplete = parse_member_positions(["just a string", 42])
     assert len(positions) == 2 and incomplete is True
     assert all(not p.parsed for p in positions)
+
+
+# --- assembly: the challenger's output becomes a record ---------------------
+#
+# The challenger writes /work/out/verdict.json — decision, objections,
+# citations. Everything else in a ReviewVerdict is DERIVED here, host-side,
+# from the raw MoA trace: the member positions, whether they dissented,
+# whether extraction was complete. None of it is taken from the challenger's
+# own account of its members, because the aggregator's summary of what the
+# reference models thought is the aggregator's opinion, not theirs.
+
+from elcapitan.verdict import assemble_verdict
+
+
+def trace_entry(model, decision, cited=("EVD-001",)):
+    return {"model": model, "content": json.dumps(
+        {"decision": decision, "objections": [], "evidence_cited": list(cited),
+         "confidence": 0.7})}
+
+
+def test_member_positions_survive_into_the_verdict():
+    v, failures = assemble_verdict(
+        verdict_doc={"decision": "REJECT", "objections": ["breaks the corpus read"],
+                     "evidence_cited": ["EVD-001"]},
+        raw_trace=[trace_entry("m1", REJECT), trace_entry("m2", REJECT)],
+        run_id="eiger-FIND-002-armB-n1", arm="B", verdict_id="VERD-001", now=NOW,
+        bundle_evidence_ids=BUNDLE_EVIDENCE)
+    assert failures == []
+    assert len(v.member_positions) == 2
+    assert [p.model for p in v.member_positions] == ["m1", "m2"]
+    assert v.decision == REJECT
+
+
+def test_dissent_is_derived_from_the_trace_not_from_the_aggregator():
+    v, _ = assemble_verdict(
+        verdict_doc={"decision": REJECT, "objections": [], "evidence_cited": [],
+                     "dissent": False},   # the aggregator says they agreed
+        raw_trace=[trace_entry("m1", REJECT), trace_entry("m2", APPROVE)],
+        run_id="eiger-FIND-002-armB-n1", arm="B", verdict_id="VERD-001", now=NOW,
+        bundle_evidence_ids=BUNDLE_EVIDENCE)
+    assert v.dissent is True, "the trace disagreed; the aggregator's claim is not evidence"
+
+
+def test_extraction_incomplete_is_derived_from_the_trace():
+    v, _ = assemble_verdict(
+        verdict_doc={"decision": REJECT, "objections": [], "evidence_cited": []},
+        raw_trace=[trace_entry("m1", REJECT), {"model": "m2", "content": "hmm"}],
+        run_id="eiger-FIND-002-armB-n1", arm="B", verdict_id="VERD-001", now=NOW,
+        bundle_evidence_ids=BUNDLE_EVIDENCE)
+    assert v.extraction_incomplete is True
+    assert v.dissent is True, "one member unreadable means agreement is unknown"
+
+
+def test_assembly_reports_a_citation_the_bundle_never_held():
+    _, failures = assemble_verdict(
+        verdict_doc={"decision": REJECT, "objections": ["see EVD-099"],
+                     "evidence_cited": ["EVD-099"]},
+        raw_trace=[trace_entry("m1", REJECT)],
+        run_id="eiger-FIND-002-armA-n1", arm="A", verdict_id="VERD-001", now=NOW,
+        bundle_evidence_ids=BUNDLE_EVIDENCE)
+    assert any("EVD-099" in f for f in failures)
+
+
+def test_an_unknown_decision_from_the_challenger_is_a_failure_not_a_crash():
+    # The challenger is a model. It can return something outside the enum, and
+    # a trial must record that rather than die assembling its own record.
+    v, failures = assemble_verdict(
+        verdict_doc={"decision": "probably fine", "objections": [],
+                     "evidence_cited": []},
+        raw_trace=[trace_entry("m1", REJECT)],
+        run_id="eiger-FIND-002-armA-n1", arm="A", verdict_id="VERD-001", now=NOW,
+        bundle_evidence_ids=BUNDLE_EVIDENCE)
+    assert v.decision == NEEDS_MORE_EVIDENCE
+    assert any("probably fine" in f for f in failures)
+
+
+def test_the_raw_trace_is_hashed_into_the_verdict():
+    v, _ = assemble_verdict(
+        verdict_doc={"decision": REJECT, "objections": [], "evidence_cited": []},
+        raw_trace=[trace_entry("m1", REJECT)],
+        run_id="eiger-FIND-002-armB-n1", arm="B", verdict_id="VERD-001", now=NOW,
+        bundle_evidence_ids=BUNDLE_EVIDENCE)
+    assert re.match(r"^[0-9a-f]{64}$", v.raw_trace_sha256)
+
+
+def test_an_assembled_verdict_validates_against_its_schema():
+    v, _ = assemble_verdict(
+        verdict_doc={"decision": APPROVE, "objections": [], "evidence_cited": ["EVD-002"]},
+        raw_trace=[trace_entry("m1", APPROVE, cited=("EVD-002",))],
+        run_id="eiger-FIND-002-armB-n1", arm="B", verdict_id="VERD-001", now=NOW,
+        bundle_evidence_ids=BUNDLE_EVIDENCE)
+    assert validate_doc("review-verdict", verdict_to_dict(v)) == []
+
+
+def test_an_empty_trace_assembles_but_is_flagged():
+    v, failures = assemble_verdict(
+        verdict_doc={"decision": APPROVE, "objections": [], "evidence_cited": []},
+        raw_trace=[], run_id="eiger-FIND-002-armB-n1", arm="B",
+        verdict_id="VERD-001", now=NOW, bundle_evidence_ids=BUNDLE_EVIDENCE)
+    assert v.member_positions == () and v.extraction_incomplete is True
+    assert v.dissent is False, "no members is not disagreement either"

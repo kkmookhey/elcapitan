@@ -49,17 +49,36 @@ PROMPT_PATH="${2:?missing prompt path}"
 STAGE="${3:?missing stage}"
 ARM="${4:?missing arm}"
 HOST_HERMES_HOME="${5:?missing host hermes home}"
-: "${ELCAP_CANONICAL_REPO:?ELCAP_CANONICAL_REPO must be set}"
 : "${ELCAP_MODEL_API_KEY:?ELCAP_MODEL_API_KEY must be set (maps to ANTHROPIC_API_KEY)}"
 
-if [ "$STAGE" != "engineer" ]; then
-  # Plain "$STAGE" quoting, not "${STAGE@Q}" — @Q is a bash 4.4+ operator
-  # and stock macOS ships bash 3.2, which dies with "bad substitution" on
-  # this exact line — the error path meant to give a clear message instead
-  # gave a confusing one on the most common dev machine for this project.
-  echo "agent-run.sh: unsupported stage '$STAGE' (only \"engineer\" is implemented)" >&2
-  exit 2
-fi
+# The two stages want DIFFERENT inputs, and the difference is the experiment's
+# only structural guarantee. The engineer reads the repository; the challenger
+# reads one bundle and has no repository at all, because "Arm A has no
+# telemetry" must be a fact about what it could know, not about what it was
+# politely handed.
+case "$STAGE" in
+  engineer)
+    : "${ELCAP_CANONICAL_REPO:?ELCAP_CANONICAL_REPO must be set for the engineer stage}"
+    BUNDLE_PATH=""
+    ;;
+  challenger)
+    : "${ELCAP_BUNDLE_PATH:?ELCAP_BUNDLE_PATH must be set for the challenger stage — the bundle it judges}"
+    [ -d "$ELCAP_BUNDLE_PATH" ] || {
+      echo "agent-run.sh: bundle $ELCAP_BUNDLE_PATH does not exist" >&2; exit 2; }
+    # Deliberately empty. The challenger gets no repository, and passing one
+    # here would be the quietest possible way to break the arms apart.
+    ELCAP_CANONICAL_REPO=""
+    BUNDLE_PATH="$ELCAP_BUNDLE_PATH"
+    ;;
+  *)
+    # Plain "$STAGE" quoting, not "${STAGE@Q}" — @Q is a bash 4.4+ operator
+    # and stock macOS ships bash 3.2, which dies with "bad substitution" on
+    # this exact line — the error path meant to give a clear message instead
+    # gave a confusing one on the most common dev machine for this project.
+    echo "agent-run.sh: unsupported stage '$STAGE' (expected \"engineer\" or \"challenger\")" >&2
+    exit 2
+    ;;
+esac
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCK_FILE="$REPO_ROOT/runtime.lock.json"
@@ -80,18 +99,21 @@ trap cleanup EXIT
 # a bare python3 has no elcapitan on sys.path and no pinned dependencies.
 uv run --project "$REPO_ROOT" python - \
   "$RUN_DIR" "$PROMPT_PATH" "$ELCAP_CANONICAL_REPO" "$HOST_HERMES_HOME" \
-  "$LOCK_FILE" "$SEEDED_HOME" "$ARM" <<'PY'
+  "$LOCK_FILE" "$SEEDED_HOME" "$ARM" "$STAGE" "$BUNDLE_PATH" <<'PY'
 import json
 import os
 import sys
 
-from elcapitan.container import engineer_spec
+import contextlib
+
+from elcapitan.container import challenger_spec, engineer_spec
+from elcapitan.egress import egress_network, proxy_env
 from elcapitan.home import seed_hermes_home
 from elcapitan.shim import (ALL_SCANNER_ENV_NAMES, MODEL_ENV_MAP,
                             resolve_secret_env, run_agent, scanner_env_map)
 
 (run_dir, prompt_path, canonical_repo, host_hermes_home,
- lock_path, seeded_home, arm) = sys.argv[1:8]
+ lock_path, seeded_home, arm, stage, bundle_path) = sys.argv[1:10]
 
 model = os.environ.get("ELCAP_MODEL", "claude-sonnet-5")
 provider = os.environ.get("ELCAP_PROVIDER", "anthropic")
@@ -118,7 +140,12 @@ env_passthrough += ["HERMES_UID", "HERMES_GID"]
 # environment is in. ELCAP_CLOUD is set by bin/run-trial.sh from the
 # environment adapter's `cloud:` field; it is not defaulted here, because a
 # default is how every entry point in this harness came to demand AWS.
-scanner_present = sorted(ALL_SCANNER_ENV_NAMES & set(os.environ))
+# THE CHALLENGER GETS NO CLOUD CREDENTIAL, and the check is here rather than
+# only in challenger_spec because reaching that raise would mean this script
+# had already decided to hand one over. challenger_spec still refuses — two
+# independent guards on the one property the whole comparison rests on.
+scanner_present = (sorted(ALL_SCANNER_ENV_NAMES & set(os.environ))
+                   if stage == "engineer" else [])
 if scanner_present:
     cloud = os.environ.get("ELCAP_CLOUD", "")
     if not cloud:
@@ -149,12 +176,33 @@ if scanner_present:
     secret_env.update(resolve_secret_env(os.environ, scanner_map))
     env_passthrough += list(scanner_map.values())
 
-spec = engineer_spec(runtime_image_id=lock["runtime_image_id"], run_dir=run_dir,
-                     canonical_repo=canonical_repo, host_hermes_home=host_hermes_home,
-                     env_passthrough=env_passthrough)
+# The challenger runs behind an egress allowlist: an internal docker network
+# with no route off the host, plus one proxy permitting exactly the model
+# endpoint. The proxy is started here and torn down when this block exits, so
+# it never outlives the trial that needed it. The engineer needs a general
+# network — it reads the cloud — and gets no proxy at all.
+if stage == "challenger":
+    egress = egress_network()
+else:
+    egress = contextlib.nullcontext(None)
 
-result = run_agent(spec, prompt_path, secret_env=secret_env,
-                   model=f"{provider}/{model}")
+with egress as proxy_host:
+    if stage == "challenger":
+        routing = proxy_env(proxy_host)
+        secret_env.update(routing)
+        env_passthrough += list(routing)
+        spec = challenger_spec(runtime_image_id=lock["runtime_image_id"],
+                               run_dir=run_dir, bundle_path=bundle_path,
+                               host_hermes_home=host_hermes_home, arm=arm,
+                               env_passthrough=env_passthrough)
+    else:
+        spec = engineer_spec(runtime_image_id=lock["runtime_image_id"], run_dir=run_dir,
+                             canonical_repo=canonical_repo,
+                             host_hermes_home=host_hermes_home,
+                             env_passthrough=env_passthrough)
+
+    result = run_agent(spec, prompt_path, secret_env=secret_env,
+                       model=f"{provider}/{model}")
 
 summary = {
     "exit_code": result.exit_code,
@@ -169,6 +217,7 @@ summary = {
     # is invisible to anyone reading this script's output.
     "state_db_captured": result.state_db_captured,
     "arm": arm,
+    "stage": stage,
 }
 print(json.dumps(summary, indent=2))
 sys.exit(0 if result.succeeded else 1)

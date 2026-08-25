@@ -241,12 +241,23 @@ def test_challenger_rejects_arm_credential_names():
     with pytest.raises(ValueError, match="cloud credentials"):
         ch_with(["ARM_CLIENT_SECRET"])
 
-def test_challenger_network_is_disabled():
-    assert ch().network == "none"
+def test_challenger_is_not_on_a_general_network():
+    # This asserted network == "none" until 2026-08-24, when the first live
+    # run measured that "none" cannot work: the challenger is a model-backed
+    # agent and needs api.anthropic.com. The property being protected was
+    # never "no network" — it was "cannot fetch evidence" — so the assertion
+    # now names what actually protects it. What must NOT come back is the
+    # engineer's general bridge.
+    from elcapitan.egress import NETWORK_NAME
+
+    assert ch().network == NETWORK_NAME
+    assert ch().network not in ("bridge", "host", "")
 
 # finding 3: docker reads argv, not the dataclass field
-def test_challenger_network_none_is_in_argv():
-    assert "--network=none" in ch().to_argv()
+def test_challenger_network_is_in_argv():
+    from elcapitan.egress import NETWORK_NAME
+
+    assert f"--network={NETWORK_NAME}" in ch().to_argv()
 
 def test_challenger_bundle_is_read_only():
     assert next(m for m in ch().mounts if m.target.endswith("/bundle")).read_only
@@ -292,3 +303,34 @@ def test_the_engineer_may_hold_an_arm_credential():
                          canonical_repo="/w/repos/eiger", host_hermes_home="/tmp/h1",
                          env_passthrough=["ARM_CLIENT_ID", "ARM_SUBSCRIPTION_ID"])
     assert "ARM_CLIENT_ID" in spec.env_passthrough
+
+
+# --- the challenger's network is an allowlist, not an absence ---------------
+
+def test_the_challenger_runs_on_the_internal_egress_network():
+    # It used to be network="none", which cannot work: the challenger is a
+    # model-backed agent and must reach api.anthropic.com. MEASURED — with no
+    # network it exits 0 having produced no verdict. The property that
+    # mattered was never "no network", it was "cannot fetch evidence", and
+    # that is now an internal network plus a one-host allowlist.
+    from elcapitan.egress import NETWORK_NAME
+
+    spec = challenger_spec(runtime_image_id=IMAGE, run_dir="/w/runs/R1",
+                           bundle_path="/w/runs/R1/bundle-a",
+                           host_hermes_home="/tmp/h2", arm="A",
+                           env_passthrough=["ANTHROPIC_API_KEY"])
+    assert spec.network == NETWORK_NAME
+    assert "--network=" + NETWORK_NAME in spec.to_argv()
+
+
+def test_the_engineer_is_untouched_by_the_egress_change():
+    # The engineer needs a general network — it reads the cloud. Quietly
+    # moving it onto the challenger's allowlist would break every trial.
+    assert eng().network == "bridge"
+
+
+def test_the_challenger_still_refuses_a_cloud_credential_on_the_new_network():
+    # The network changed; the credential rule did not. This is the guard that
+    # actually keeps the arms apart.
+    with pytest.raises(ValueError, match="cloud credentials"):
+        ch_with(["AZURE_CLIENT_ID"])

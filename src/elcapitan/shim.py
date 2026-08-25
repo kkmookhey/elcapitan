@@ -79,7 +79,22 @@ def resolve_secret_env(host_env: dict, mapping: dict) -> dict:
 
 
 def _run_dir(spec: ContainerSpec) -> Path:
-    return Path(next(m.source for m in spec.mounts if m.target == "/work/run"))
+    """Where this stage's host-side artifacts go — stdout.log and the state.db
+    capture.
+
+    The engineer has /work/run. The challenger deliberately does NOT: it
+    cannot see the engineer's run directory, which is the whole point. So its
+    artifacts go to its own output directory instead. Returning the engineer's
+    run_dir for a challenger would have the challenger's stdout.log overwrite
+    the engineer's — destroying the record of the very thing being judged.
+    """
+    by_target = {m.target: m.source for m in spec.mounts}
+    for target in ("/work/run", "/work/out"):
+        if target in by_target:
+            return Path(by_target[target])
+    raise ValueError(
+        "container spec has neither a /work/run nor a /work/out mount, so there "
+        "is nowhere to put this stage's stdout or session capture")
 
 
 # Wall-clock ceiling on one Connection.backup() call.

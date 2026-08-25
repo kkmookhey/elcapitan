@@ -93,6 +93,78 @@ _TIMEOUT_SECONDS = 120
 SHARED_ARTIFACTS = ("proposal", "patch", "verification", "cloud_configuration", "health")
 
 
+# THE MEASUREMENT INSTRUMENT.
+#
+# A RemediationProposal carries two very different kinds of content: what the
+# engineer DID, and what the engineer THINKS about what it did. The second
+# kind reads like this, verbatim from a real proposal shape:
+#
+#     "risk": "low - the plan is clean and this is safe"
+#     "confidence": 0.95
+#
+# Hand that to the challenger and the experiment stops measuring whether
+# telemetry improves judgement and starts measuring whether a model agrees
+# with a confident colleague. Forming the production-impact judgement is the
+# challenger's entire job; being told the answer first is the confound.
+#
+# So the bundle carries a PROJECTION: the artifact, not the account of it.
+# Deterministic and host-side, before any model sees anything — the spec is
+# explicit that this boundary must never be an agent-invoked step running
+# after a model already holds the content.
+WITHHELD_PROPOSAL_FIELDS = (
+    "root_cause",           # narrative: why the engineer thinks it happened
+    "remediation",          # objective/approach: the engineer's framing of the fix
+    "validation",           # confirmed/evidence/confidence: the engineer's certainty
+    "linking",              # method/confidence/evidence — files_changed survives below
+    "production_impact",    # THE one: "expected", "risk", in the engineer's words
+    "context",             # severity/owner/exploitability as the engineer framed them
+    "status",              # READY_FOR_REVIEW reads as an endorsement
+)
+
+
+def project_proposal(raw: bytes) -> bytes:
+    """The engineer's artifact, with the engineer's persuasion removed.
+
+    Fails CLOSED: an unparseable proposal is withheld whole rather than passed
+    through, because passing raw bytes on a parse error would leak the entire
+    narrative at exactly the moment something is already wrong.
+
+    The withholding is DECLARED. A challenger that cannot tell something was
+    removed might read the absence as "the engineer offered no view on impact",
+    which is a different and misleading signal from "you are not being shown
+    it".
+    """
+    try:
+        proposal = json.loads(raw)
+        if not isinstance(proposal, dict):
+            raise ValueError("proposal is not an object")
+    except (json.JSONDecodeError, RecursionError, ValueError):
+        return canonical_json({"parse_failed": True,
+                               "withheld": list(WITHHELD_PROPOSAL_FIELDS),
+                               "note": "the proposal could not be parsed and was "
+                                       "withheld in full rather than passed through"})
+
+    verification = proposal.get("verification") or {}
+    linking = proposal.get("linking") or {}
+    projected = {
+        "proposal_id": proposal.get("proposal_id", ""),
+        "finding_id": proposal.get("finding_id", ""),
+        "resolution_type": proposal.get("resolution_type", ""),
+        # WHICH files changed is a fact about the artifact. HOW the engineer
+        # decided, and how sure it was, are not.
+        "files_changed": sorted(linking.get("files") or []),
+        # Commands and exit codes are observations. `output` is excluded: it
+        # is where an engineer's narrative reappears as quoted console text.
+        "verification": {
+            "commands_run": verification.get("commands_run") or [],
+            "passed": verification.get("passed"),
+        },
+        "withheld": list(WITHHELD_PROPOSAL_FIELDS),
+        "parse_failed": False,
+    }
+    return canonical_json(projected)
+
+
 @dataclass(frozen=True)
 class TelemetryProbe:
     """One telemetry question, its answer, and whether the answer is usable.
