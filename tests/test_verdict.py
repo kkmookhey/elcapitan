@@ -431,9 +431,59 @@ def test_an_assembled_verdict_validates_against_its_schema():
 
 
 def test_an_empty_trace_assembles_but_is_flagged():
+    # Flagged for an ENSEMBLE, which was asked for positions and produced
+    # none. A single-model challenger is covered separately: it was never
+    # asked, so its empty trace is not an extraction failure.
     v, failures = assemble_verdict(
         verdict_doc={"decision": APPROVE, "objections": [], "evidence_cited": []},
         raw_trace=[], run_id="eiger-FIND-002-armB-n1", arm="B",
-        verdict_id="VERD-001", now=NOW, bundle_evidence_ids=BUNDLE_EVIDENCE)
+        verdict_id="VERD-001", now=NOW, bundle_evidence_ids=BUNDLE_EVIDENCE,
+        composition="moa")
     assert v.member_positions == () and v.extraction_incomplete is True
     assert v.dissent is False, "no members is not disagreement either"
+
+
+# --- single-model is a CHOICE, and the record has to say so -----------------
+#
+# The spec describes an MoA challenger and makes dissent a product
+# requirement. In practice nothing produces an MoA trace, so every verdict so
+# far reads `member_positions: []`, `extraction_incomplete: true` — which
+# says "we tried to parse positions and could not". That is not what happened.
+# No ensemble was ever run.
+#
+# The plan's own words: "MoA composition is held constant across arms.
+# Single-model vs ensemble is a legitimate follow-up experiment, not this
+# one." So running single-model is defensible. Silently reporting it as a
+# parsing failure is not.
+
+def test_a_single_model_challenger_says_so(): 
+    v, _ = assemble_verdict(
+        verdict_doc={"decision": REJECT, "objections": [], "evidence_cited": []},
+        raw_trace=[], run_id="eiger-FIND-002-armB-n1", arm="B",
+        verdict_id="VERD-001", now=NOW, bundle_evidence_ids=BUNDLE_EVIDENCE,
+        composition="single-model")
+    assert v.challenger_composition == "single-model"
+    # And the absence of positions is then NOT an extraction failure.
+    assert v.extraction_incomplete is False
+    assert v.member_positions == ()
+
+
+def test_an_moa_challenger_with_an_empty_trace_is_still_incomplete():
+    # The distinction that matters: an ensemble that produced no readable
+    # positions IS an extraction failure, and must keep saying so.
+    v, _ = assemble_verdict(
+        verdict_doc={"decision": REJECT, "objections": [], "evidence_cited": []},
+        raw_trace=[], run_id="eiger-FIND-002-armB-n1", arm="B",
+        verdict_id="VERD-001", now=NOW, bundle_evidence_ids=BUNDLE_EVIDENCE,
+        composition="moa")
+    assert v.extraction_incomplete is True
+
+
+def test_the_composition_reaches_the_record():
+    v, _ = assemble_verdict(
+        verdict_doc={"decision": APPROVE, "objections": [], "evidence_cited": []},
+        raw_trace=[], run_id="eiger-FIND-002-armB-n1", arm="B",
+        verdict_id="VERD-001", now=NOW, bundle_evidence_ids=BUNDLE_EVIDENCE,
+        composition="single-model")
+    assert verdict_to_dict(v)["challenger_composition"] == "single-model"
+    assert validate_doc("review-verdict", verdict_to_dict(v)) == []

@@ -82,6 +82,12 @@ class ReviewVerdict:
     dissent: bool
     extraction_incomplete: bool
     raw_trace_sha256: str
+    # "single-model" or "moa". Recorded because the two produce the same
+    # EMPTY member_positions for completely different reasons: an ensemble
+    # whose positions could not be parsed is an extraction failure, and a
+    # single model that was never asked for positions is not. Reporting the
+    # second as the first says the harness tried something it never tried.
+    challenger_composition: str = "single-model"
 
     def __post_init__(self):
         if self.decision not in DECISIONS:
@@ -270,7 +276,8 @@ def verdict_to_dict(verdict: ReviewVerdict) -> dict:
             "member_positions": [position_to_dict(p) for p in verdict.member_positions],
             "dissent": verdict.dissent,
             "extraction_incomplete": verdict.extraction_incomplete,
-            "raw_trace_sha256": verdict.raw_trace_sha256}
+            "raw_trace_sha256": verdict.raw_trace_sha256,
+            "challenger_composition": verdict.challenger_composition}
 
 
 def result_to_dict(result: TrialResult) -> dict:
@@ -289,8 +296,9 @@ def result_to_dict(result: TrialResult) -> dict:
 
 
 def assemble_verdict(*, verdict_doc: dict, raw_trace, run_id: str, arm: str,
-                     verdict_id: str, now: str,
-                     bundle_evidence_ids) -> tuple[ReviewVerdict, list[str]]:
+                     verdict_id: str, now: str, bundle_evidence_ids,
+                     composition: str = "single-model"
+                     ) -> tuple[ReviewVerdict, list[str]]:
     """The challenger's output plus the raw trace -> one record, host-side.
 
     The challenger supplies only what it decided and why: decision,
@@ -320,6 +328,11 @@ def assemble_verdict(*, verdict_doc: dict, raw_trace, run_id: str, arm: str,
     cited = [c for c in (verdict_doc.get("evidence_cited") or []) if isinstance(c, str)]
 
     positions, extraction_incomplete = parse_member_positions(raw_trace)
+    # An empty trace from a SINGLE-MODEL challenger is not a failed
+    # extraction; nothing was ever asked to produce positions. From an MoA
+    # challenger it is, and must keep saying so.
+    if composition == "single-model" and not positions:
+        extraction_incomplete = False
 
     # Derived, never taken from the challenger. Two members that disagree
     # dissent; a member nobody could read makes agreement UNKNOWABLE, and
@@ -335,7 +348,8 @@ def assemble_verdict(*, verdict_doc: dict, raw_trace, run_id: str, arm: str,
         arm=arm, decision=decision, objections=tuple(objections),
         evidence_cited=tuple(cited), member_positions=positions, dissent=dissent,
         extraction_incomplete=extraction_incomplete,
-        raw_trace_sha256=sha256_bytes(canonical_json(raw_trace)))
+        raw_trace_sha256=sha256_bytes(canonical_json(raw_trace)),
+        challenger_composition=composition)
 
     failures += validate_verdict_against_bundle(
         verdict, bundle_evidence_ids=bundle_evidence_ids)

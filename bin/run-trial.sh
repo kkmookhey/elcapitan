@@ -546,6 +546,7 @@ fi
 uv run --project "$REPO_ROOT" python - \
   "$RUN_DIR" "$BUNDLE_PATH" "$RUN_ID" "$ARM" <<'VERDICT_PY'
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -566,7 +567,8 @@ evidence_ids = [r["evidence_id"] for r in manifest["artifacts"]]
 
 verdict, failures = assemble_verdict(
     verdict_doc=doc, raw_trace=trace, run_id=run_id, arm=arm,
-    verdict_id="VERD-001", now=now_rfc3339(), bundle_evidence_ids=evidence_ids)
+    verdict_id="VERD-001", now=now_rfc3339(), bundle_evidence_ids=evidence_ids,
+    composition=os.environ.get("ELCAP_CHALLENGER_COMPOSITION", "single-model"))
 
 record = verdict_to_dict(verdict)
 Path(run_dir, "verdict", "review-verdict.json").write_text(json.dumps(record, indent=2))

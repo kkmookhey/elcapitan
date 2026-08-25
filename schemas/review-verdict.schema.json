@@ -2,46 +2,161 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "review-verdict.schema.json",
   "title": "ReviewVerdict",
-  "description": "The challenger's judgement over one arm's bundle. Citations are checked against the bundle by elcapitan.verdict.validate_verdict_against_bundle — this schema constrains shape, not truthfulness: a verdict can be schema-valid and still cite evidence it was never given, which is how an arm crosses into the other one.",
+  "description": "The challenger's judgement over one arm's bundle. Citations are checked against the bundle by elcapitan.verdict.validate_verdict_against_bundle \u2014 this schema constrains shape, not truthfulness: a verdict can be schema-valid and still cite evidence it was never given, which is how an arm crosses into the other one.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["verdict_id", "schema_version", "created_at", "run_id", "arm",
-               "decision", "objections", "evidence_cited", "member_positions",
-               "dissent", "extraction_incomplete", "raw_trace_sha256"],
+  "required": [
+    "verdict_id",
+    "schema_version",
+    "created_at",
+    "run_id",
+    "arm",
+    "decision",
+    "objections",
+    "evidence_cited",
+    "member_positions",
+    "dissent",
+    "extraction_incomplete",
+    "raw_trace_sha256",
+    "challenger_composition"
+  ],
   "properties": {
-    "verdict_id":     { "type": "string", "pattern": "^VERD-[0-9]{3,}$" },
-    "schema_version": { "type": "integer", "minimum": 1 },
-    "created_at":     { "type": "string", "format": "date-time" },
-    "run_id":         { "type": "string", "minLength": 1 },
-    "arm":            { "enum": ["A", "B"] },
-    "decision":       { "enum": ["APPROVE", "REJECT", "NEEDS_MORE_EVIDENCE"] },
-    "objections":     { "type": "array", "items": { "type": "string" } },
-    "evidence_cited": { "type": "array",
-                        "items": { "type": "string", "pattern": "^EVD-[0-9]{3,}$" } },
+    "verdict_id": {
+      "type": "string",
+      "pattern": "^VERD-[0-9]{3,}$"
+    },
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "arm": {
+      "enum": [
+        "A",
+        "B"
+      ]
+    },
+    "decision": {
+      "enum": [
+        "APPROVE",
+        "REJECT",
+        "NEEDS_MORE_EVIDENCE"
+      ]
+    },
+    "objections": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "evidence_cited": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^EVD-[0-9]{3,}$"
+      }
+    },
     "member_positions": {
-      "description": "Derived from the RAW MoA trace, never reconstructed from the aggregator's summary. A position that cannot be parsed is retained with its raw text and parsed:false — dropping it would manufacture consensus out of silence.",
+      "description": "Derived from the RAW MoA trace, never reconstructed from the aggregator's summary. A position that cannot be parsed is retained with its raw text and parsed:false \u2014 dropping it would manufacture consensus out of silence.",
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["model", "decision", "objections", "evidence_cited",
-                     "confidence", "raw_text", "parsed"],
+        "required": [
+          "model",
+          "decision",
+          "objections",
+          "evidence_cited",
+          "confidence",
+          "raw_text",
+          "parsed"
+        ],
         "properties": {
-          "model":          { "type": "string", "minLength": 1 },
-          "decision":       { "type": "string" },
-          "objections":     { "type": "array", "items": { "type": "string" } },
-          "evidence_cited": { "type": "array",
-                              "items": { "type": "string", "pattern": "^EVD-[0-9]{3,}$" } },
-          "confidence":     { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
-          "raw_text":       { "type": "string" },
-          "parsed":         { "type": "boolean" }
+          "model": {
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "type": "string"
+          },
+          "objections": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "evidence_cited": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^EVD-[0-9]{3,}$"
+            }
+          },
+          "confidence": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "raw_text": {
+            "type": "string"
+          },
+          "parsed": {
+            "type": "boolean"
+          }
         },
         "allOf": [
-          { "if":   { "properties": { "parsed": { "const": true } }, "required": ["parsed"] },
-            "then": { "properties": { "decision": { "enum": ["APPROVE", "REJECT",
-                                                             "NEEDS_MORE_EVIDENCE"] } } } },
-          { "if":   { "properties": { "parsed": { "const": false } }, "required": ["parsed"] },
-            "then": { "properties": { "raw_text": { "minLength": 1 } } } }
+          {
+            "if": {
+              "properties": {
+                "parsed": {
+                  "const": true
+                }
+              },
+              "required": [
+                "parsed"
+              ]
+            },
+            "then": {
+              "properties": {
+                "decision": {
+                  "enum": [
+                    "APPROVE",
+                    "REJECT",
+                    "NEEDS_MORE_EVIDENCE"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "parsed": {
+                  "const": false
+                }
+              },
+              "required": [
+                "parsed"
+              ]
+            },
+            "then": {
+              "properties": {
+                "raw_text": {
+                  "minLength": 1
+                }
+              }
+            }
+          }
         ]
       }
     },
@@ -53,6 +168,16 @@
       "description": "True when any position could not be parsed into the structured form, or the trace was empty. An empty trace is NOT unanimity.",
       "type": "boolean"
     },
-    "raw_trace_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+    "raw_trace_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "challenger_composition": {
+      "description": "Which challenger was run. 'single-model' and 'moa' produce the same empty member_positions for different reasons: an ensemble whose positions could not be parsed is an extraction failure; a single model never asked for positions is not. Recording it keeps extraction_incomplete honest. Single-model is a deliberate descope \u2014 the plan states single-vs-ensemble is a separate experiment \u2014 not an accident.",
+      "enum": [
+        "single-model",
+        "moa"
+      ]
+    }
   }
 }

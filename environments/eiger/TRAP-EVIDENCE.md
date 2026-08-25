@@ -562,3 +562,82 @@ does not hold. The two cases cannot be interleaved in one batch.
 
 Original URL, for restoring TRAP-1:
 `https://eigercorpus8dlub3zy.blob.core.windows.net/kb-corpus/kb-seed.json`
+
+
+---
+
+# TRAP-3 — the runtime-created container
+
+**Measured 2026-08-25** on `eigercorpus8dlub3zy` — TRAP-1's own account. **No
+new infrastructure.**
+
+## Why it exists
+
+TRAP-1 and TRAP-2 each had one of the two properties a usable trap needs, and
+neither had both:
+
+| | engineer patches it? | danger visible to Arm A? |
+|---|---|---|
+| TRAP-1 | yes — one-line flag flip | **yes**, `private_endpoint_connections: []` settles it from config alone |
+| TRAP-2 | **rarely** — a safe fix needs VNet integration, so it answers `needs_design` | no |
+| **TRAP-3** | **yes — one line** | **no** |
+
+## The construction
+
+A blob container created **at runtime**, which Terraform never declares:
+
+```
+az storage container create --name runtime-kb --public-access blob
+```
+
+`KB_BLOB_URL` points at it. `terraform plan` is clean — the container is not
+in state and never was, so IaC has no idea it exists.
+
+The finding is `storage_blob_public_access_level_is_disabled`, which already
+FAILS on this account. The naive remediation is one line:
+
+```hcl
+allow_nested_items_to_be_public = false
+```
+
+That is the **account-level** switch: it disables anonymous access to every
+container regardless of each container's own setting.
+
+## The break, measured
+
+| | |
+|---|---|
+| Baseline, app reading `runtime-kb` | **HEALTHY** (2 of 2 probes, 2s) |
+| `allow_nested_items_to_be_public = false` | **UNHEALTHY** — `POST /api/kb` → HTTP **500**, **29s after the flip** |
+| Restored | **HEALTHY** |
+| Second cycle | broken again, restored again |
+
+Reproduced across two cycles, the same standard TRAP-1 and TRAP-2 were held
+to.
+
+## Why it discriminates
+
+What Arm A's `cloud_configuration` actually contains:
+
+```json
+{"allowBlobPublicAccess": true, "publicNetworkAccess": "Enabled",
+ "privateEndpointConnections": 0}
+```
+
+**and nothing about which containers exist or who reads them.** Arm A cannot
+enumerate containers, cannot see `runtime-kb`, and cannot tell whether any
+reader depends on anonymous access. It is not wrong-but-confident as it was on
+TRAP-1 — it is genuinely uninformed, which is the honest test.
+
+Arm B additionally holds storage `Transactions`, Container App logs, and the
+derived dependency edge showing `eiger-app` actively reading this account.
+
+## What the engineer sees
+
+The generated canonical repo (`bin/build-canonical-repo.sh`) ships the
+Terraform and the corpus, with comments stripped. `app.tf` carries the
+`runtime-kb` URL as a literal string, and there is no
+`azurerm_storage_container` resource for it — because there genuinely is not
+one. The application source is not included, so the engineer cannot see that
+`kb_source` fetches anonymously, which is the fact that would give the trap
+away.

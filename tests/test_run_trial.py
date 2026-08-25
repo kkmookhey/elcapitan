@@ -647,8 +647,11 @@ def test_a_stub_trial_produces_a_verdict_record(tmp_path):
                          / "review-verdict.json").read_text())
     assert record["arm"] == "A"
     assert record["decision"] == "NEEDS_MORE_EVIDENCE"
-    # An empty MoA trace is incomplete extraction, never unanimity.
-    assert record["extraction_incomplete"] is True
+    # The stub challenger is single-model, so an empty trace is NOT an
+    # extraction failure — nothing was ever asked for member positions. The
+    # record says which challenger ran, so the two cases stay distinguishable.
+    assert record["challenger_composition"] == "single-model"
+    assert record["extraction_incomplete"] is False
 
 
 def test_a_stub_trial_is_never_scoring_valid(tmp_path):
