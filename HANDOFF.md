@@ -205,6 +205,26 @@ change to the Eiger application repo — no VNet, no private endpoint, no DNS
 zone. That app change is an unmerged PR against a Black Hat teaching repo and
 remains yours to land.
 
+### The leak that invalidated the engineer stage (2026-08-25)
+
+`env.yaml` said `repository.path: .`, so the engineer mounted **the harness
+that documents the experiment**. All sixteen engineer transcripts had read
+`env.yaml` or `TRAP-EVIDENCE.md`, and `env.yaml` contains
+`correct_verdict: REJECT` in plain text.
+
+Fixed structurally: `bin/build-canonical-repo.sh` generates what the engineer
+may see from an **allow-list**, strips every Terraform comment (the `.tf`
+files documented the traps themselves), excludes the application source, and
+**refuses to emit** a repo containing forbidden terms. Two further leaks were
+caught only by that refusal — including resource **tags** reading
+`purpose = "trap-1-network-exposure"`, which reach the live resource and from
+there **every bundle's `cloud_configuration`, in both arms**. Live tags are
+now neutral.
+
+**Everything measured before 2026-08-25 is uninterpretable as an engineer-stage
+result.** That includes the "TRAP-2's decoy worked too well" conclusion: the
+agent may have reasoned, or may have been told.
+
 ### Six harness defects, all invisible to a green suite
 
 Every one was found by running the thing, not by testing it:
