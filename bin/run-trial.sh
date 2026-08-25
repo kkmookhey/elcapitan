@@ -508,7 +508,8 @@ else:
 bundles = collect(snapshot, anchor_dir=anchor_dir, now=now_rfc3339(),
                   collector=Collector(tool="elcapitan-collector", version="0.1.0",
                                       identity=os.environ.get("ELCAP_OBSERVER_AZURE_CLIENT_ID",
-                                                              "stub")))
+                                                              "stub")),
+                  stub=stub)
 Path(anchor_dir, "bundles.json").write_text(json.dumps(bundles, indent=2))
 for arm, path in sorted(bundles.items()):
     manifest = json.loads(Path(path, "bundle.json").read_text())

@@ -424,11 +424,23 @@ calls that a re-run would flip.
 
 **Files:** `bin/run-batch.sh`, tests
 
-- [ ] **Step 1:** `run-batch.sh` enumerates the 20 (case × arm × n) cells, **shuffles them with a recorded seed**, and runs each through engineer → collector → challenger → validate.
+- [x] **Step 1:** `run-batch.sh` enumerates the 20 (case × arm × n) cells, **shuffles them with a recorded seed**, and runs each through engineer → collector → challenger → validate.
 
-- [ ] **Step 2: Tests.** The seed is recorded and the order is reproducible from it; no cell is skipped or duplicated; a failed trial does not abort the batch but is recorded as failed; **each trial gets a fresh `HERMES_HOME`** and no run directory is reused.
+- [x] **Step 2: Tests.** The seed is recorded and the order is reproducible from it; no cell is skipped or duplicated; a failed trial does not abort the batch but is recorded as failed; **each trial gets a fresh `HERMES_HOME`** and no run directory is reused.
 
-- [ ] **Step 3:** Dry-run the whole batch in stub mode — all 20 cells, no LLM. Confirm 20 distinct run directories, 20 anchors, and a validator pass on each. **Step 4:** Commit.
+- [x] **Step 3:** Dry-run the whole batch in stub mode — all 20 cells, no LLM. Confirm 20 distinct run directories, 20 anchors, and a validator pass on each. **Step 4:** Commit.
+
+**Dry run, 2026-08-24: 20/20 completed**, 20 distinct run directories, 20 anchors, 40
+bundles, 20 verdict records, validator PASS on every one. It also found two defects that
+only a full run could surface:
+
+- The validator's scope note read **"22 configuration aspects of one S3 bucket"** for an
+  Azure storage account — and printed it twenty times. Cosmetic alone, but it is the line a
+  human reads to decide what a trial actually verified, and a note that misnames what was
+  checked is read as precision. Now derived from the provider.
+- **A stub Arm A bundle looked scorable.** `scoring_valid` is about telemetry usability,
+  and Arm A is legitimately valid with no telemetry — so it cannot also carry "no agent ran
+  here". Bundles now record `stub` separately, and any scorer must exclude them.
 
 ---
 

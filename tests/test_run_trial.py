@@ -689,3 +689,31 @@ def test_the_engineers_narrative_never_reaches_a_bundle(tmp_path):
         # withholding is deliberate. No narrative FIELD may be present.
         assert set(doc["withheld"]).isdisjoint(set(doc) - {"withheld"}), \
             f"a withheld field is present as data in {blob}"
+
+
+def test_the_cloud_scope_note_names_the_right_kind_of_resource(tmp_path):
+    # Found by the first 20-cell dry run: the validator's scope note said
+    # "22 configuration aspects of one S3 bucket" for an Azure STORAGE
+    # ACCOUNT. Cosmetic in isolation, and not in a batch report someone reads
+    # to decide what a trial actually verified — a note that misnames what was
+    # checked is worse than no note.
+    env = make_azure_workspace(tmp_path)
+    result = run_trial(env, AZURE_TRIAL)
+    assert result.returncode == 0
+    # The scope note goes to stderr, next to the validator's own output.
+    combined = result.stdout + result.stderr
+    assert "S3 bucket" not in combined, combined
+    assert "storage account" in combined.lower()
+
+
+def test_a_stub_trial_is_marked_as_one_in_both_arms(tmp_path):
+    # scoring_valid is about telemetry usability, and Arm A is legitimately
+    # valid with no telemetry — so it cannot carry "this was a dry run".
+    # Without a separate marker, a stub Arm A bundle looks scorable and a dry
+    # run could contribute rows to the matrix.
+    env = make_azure_workspace(tmp_path)
+    assert run_trial(env, AZURE_TRIAL).returncode == 0
+    for arm in ("arm-a", "arm-b"):
+        manifest = json.loads((tmp_path / "anchors" / "eiger-FIND-002-armA-n1"
+                               / "bundles" / arm / "bundle.json").read_text())
+        assert manifest["stub"] is True, f"{arm} does not record that it was a stub"

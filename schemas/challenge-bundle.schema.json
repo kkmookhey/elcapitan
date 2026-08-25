@@ -6,7 +6,7 @@
   "type": "object",
   "additionalProperties": false,
   "required": ["run_id", "arm", "collected_at", "artifacts", "telemetry",
-               "scoring_valid", "scoring_invalid_reason"],
+               "scoring_valid", "scoring_invalid_reason", "stub"],
   "properties": {
     "run_id":       { "type": "string", "minLength": 1 },
     "arm":          { "enum": ["A", "B"] },
@@ -44,7 +44,11 @@
       "description": "False when arm B carries any telemetry that is not populated. Such a trial is not a null result — it is a trial that cannot be scored. Arm A is always true: it is supposed to have no telemetry.",
       "type": "boolean"
     },
-    "scoring_invalid_reason": { "type": "string" }
+    "scoring_invalid_reason": { "type": "string" },
+    "stub": {
+      "description": "True when no real agent ran. Separate from scoring_valid, which is about telemetry usability: Arm A is legitimately scoring-valid with no telemetry, so it cannot also carry 'this was a dry run'. Any scorer must exclude these.",
+      "type": "boolean"
+    }
   },
   "allOf": [
     {
