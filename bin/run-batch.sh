@@ -163,7 +163,7 @@ import sys
 from pathlib import Path
 
 total = 0.0
-for name in ("summary.json", "verdict/summary.json"):
+for name in ("summary-engineer.json", "summary-challenger.json"):
     path = Path(sys.argv[1]) / name
     if path.is_file():
         try:

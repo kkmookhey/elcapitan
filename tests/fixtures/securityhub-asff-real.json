@@ -1,0 +1,82 @@
+{
+  "AwsAccountId": "331145994818",
+  "CompanyName": "AWS",
+  "Compliance": {
+    "AssociatedStandards": [
+      {
+        "StandardsId": "standards/aws-foundational-security-best-practices/v/1.0.0"
+      }
+    ],
+    "SecurityControlId": "Config.1",
+    "SecurityControlParameters": [
+      {
+        "Name": "includeConfigServiceLinkedRoleCheck",
+        "Value": [
+          "true"
+        ]
+      }
+    ],
+    "Status": "FAILED",
+    "StatusReasons": [
+      {
+        "Description": "AWS Config isn't recording all resource types that correspond to enabled Security Hub controls. Turn on recording for the following resources: AWS::IAM::User, AWS::IAM::Policy, AWS::IAM::Group, AWS::IAM::Role.",
+        "ReasonCode": "CONFIG_RECORDER_MISSING_REQUIRED_RESOURCE_TYPES"
+      }
+    ]
+  },
+  "CreatedAt": "2026-08-25T03:23:05.368Z",
+  "Description": "This control checks whether AWS Config is enabled in your account in the current AWS Region, records all resources that correspond to controls that are enabled in the current Region, and uses the service-linked AWS Config role.",
+  "FindingProviderFields": {
+    "Severity": {
+      "Label": "CRITICAL",
+      "Original": "CRITICAL"
+    },
+    "Types": [
+      "Software and Configuration Checks/Industry and Regulatory Standards"
+    ]
+  },
+  "FirstObservedAt": "2026-08-25T03:23:05.368Z",
+  "GeneratorId": "security-control/Config.1",
+  "Id": "arn:aws:securityhub:ap-south-1:331145994818:security-control/Config.1/finding/562f16d2-4f28-4ab0-8f7e-c35786bc165f",
+  "LastObservedAt": "2026-08-25T03:23:05.368Z",
+  "ProcessedAt": "2026-08-25T03:23:18.380Z",
+  "ProductArn": "arn:aws:securityhub:ap-south-1::product/aws/securityhub",
+  "ProductFields": {
+    "Resources:0/Id": "arn:aws:iam::331145994818:root",
+    "aws/securityhub/CompanyName": "AWS",
+    "aws/securityhub/FindingId": "arn:aws:securityhub:ap-south-1::product/aws/securityhub/arn:aws:securityhub:ap-south-1:331145994818:security-control/Config.1/finding/562f16d2-4f28-4ab0-8f7e-c35786bc165f",
+    "aws/securityhub/ProductName": "Security Hub"
+  },
+  "ProductName": "Security Hub",
+  "RecordState": "ACTIVE",
+  "Region": "ap-south-1",
+  "Remediation": {
+    "Recommendation": {
+      "Text": "For information on how to correct this issue, consult the AWS Security Hub controls documentation.",
+      "Url": "https://docs.aws.amazon.com/console/securityhub/Config.1/remediation"
+    }
+  },
+  "Resources": [
+    {
+      "Id": "AWS::::Account:331145994818",
+      "Partition": "aws",
+      "Region": "ap-south-1",
+      "Type": "AwsAccount"
+    }
+  ],
+  "SchemaVersion": "2018-10-08",
+  "Severity": {
+    "Label": "CRITICAL",
+    "Normalized": 90,
+    "Original": "CRITICAL"
+  },
+  "Title": "AWS Config should be enabled and use the service-linked role for resource recording",
+  "Types": [
+    "Software and Configuration Checks/Industry and Regulatory Standards"
+  ],
+  "UpdatedAt": "2026-08-25T03:23:05.368Z",
+  "Workflow": {
+    "Status": "NEW"
+  },
+  "WorkflowState": "NEW"
+}

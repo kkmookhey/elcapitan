@@ -107,3 +107,65 @@ def test_all_five_resolution_types_exist():
 
 def test_both_terminal_statuses_exist():
     assert set(TERMINAL_STATUSES) == {"READY_FOR_REVIEW","NEEDS_HUMAN_CONTEXT"}
+
+
+# --- a command that produced no stderr has no stderr evidence ---------------
+
+def test_a_command_with_no_stderr_may_record_null():
+    """FOUND BY THE FIRST LIVE BATCH, and it failed the trial.
+
+    The engineer ran `az storage account show`, which succeeded and wrote
+    nothing to stderr, so it recorded `stderr_evidence_id: null` — the honest
+    value. The schema required a string, and the validator failed the run ten
+    times over.
+
+    Requiring a string here forces an agent into one of two lies: invent an
+    evidence id that points at nothing, or write an empty artifact and cite
+    it. Both are worse than null. The field stays REQUIRED — the agent must
+    say something about each stream — but null is a legal thing to say.
+    """
+    record = {
+        "command_id": "CMD-001", "tool": "az",
+        "argv": ["storage", "account", "show", "-n", "acct"],
+        "exit_code": 0,
+        "started_at": "2026-08-25T03:40:00Z",
+        "completed_at": "2026-08-25T03:40:02Z",
+        "stdout_evidence_id": "EVD-002",
+        "stderr_evidence_id": None,
+    }
+    assert validate_doc("command-record", record) == []
+
+
+def test_both_streams_may_be_null_when_a_command_printed_nothing():
+    record = {
+        "command_id": "CMD-002", "tool": "terraform", "argv": ["fmt", "-check"],
+        "exit_code": 0,
+        "started_at": "2026-08-25T03:40:00Z",
+        "completed_at": "2026-08-25T03:40:01Z",
+        "stdout_evidence_id": None, "stderr_evidence_id": None,
+    }
+    assert validate_doc("command-record", record) == []
+
+
+def test_the_fields_are_still_required():
+    # Nullable is not optional. An agent that omits the field entirely has
+    # said nothing about that stream, which is different from saying "empty".
+    record = {
+        "command_id": "CMD-003", "tool": "terraform", "argv": ["plan"],
+        "exit_code": 0,
+        "started_at": "2026-08-25T03:40:00Z",
+        "completed_at": "2026-08-25T03:40:01Z",
+        "stdout_evidence_id": "EVD-004",
+    }
+    assert validate_doc("command-record", record) != []
+
+
+def test_a_non_null_evidence_id_still_has_to_look_like_one():
+    record = {
+        "command_id": "CMD-004", "tool": "terraform", "argv": ["plan"],
+        "exit_code": 0,
+        "started_at": "2026-08-25T03:40:00Z",
+        "completed_at": "2026-08-25T03:40:01Z",
+        "stdout_evidence_id": "not-an-evidence-id", "stderr_evidence_id": None,
+    }
+    assert validate_doc("command-record", record) != []

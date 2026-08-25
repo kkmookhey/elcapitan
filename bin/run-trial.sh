@@ -427,7 +427,11 @@ if [ "${ELCAP_STUB:-0}" = "1" ]; then
     "$RUN_DIR" "$FINDING_ID" "$HERMES_HOME"
 else
   ELCAP_CANONICAL_REPO="$CANONICAL_REPO" \
-    "${REPO_ROOT}/bin/agent-run.sh" "$RUN_DIR" "$RUN_DIR/prompt.md" engineer "$ARM" "$HERMES_HOME"
+    "${REPO_ROOT}/bin/agent-run.sh" "$RUN_DIR" "$RUN_DIR/prompt.md" engineer "$ARM" "$HERMES_HOME" \
+    | tee "$RUN_DIR/summary-engineer.json"
+  # PIPESTATUS, not $?: with a pipe, $? is tee's status and tee essentially
+  # always succeeds, so a failed engineer would look like a passing one.
+  [ "${PIPESTATUS[0]}" = "0" ] || exit "${PIPESTATUS[0]}"
 fi
 
 ENGINEER_FINISHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -533,7 +537,9 @@ if [ "${ELCAP_STUB:-0}" = "1" ]; then
 else
   ELCAP_BUNDLE_PATH="$BUNDLE_PATH" \
     "${REPO_ROOT}/bin/agent-run.sh" "$RUN_DIR" "${REPO_ROOT}/prompts/challenger.md" \
-    challenger "$ARM" "$CHALLENGER_HOME"
+    challenger "$ARM" "$CHALLENGER_HOME" \
+    | tee "$RUN_DIR/summary-challenger.json"
+  [ "${PIPESTATUS[0]}" = "0" ] || exit "${PIPESTATUS[0]}"
 fi
 
 # --- the verdict record -----------------------------------------------------
