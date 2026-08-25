@@ -122,12 +122,22 @@ if cloud_state_before is not None:
     # reads — not only in the cloud.py module docstring. The dominant failure
     # mode this project keeps finding is an over-trusted check; a bare "PASS"
     # invites reading "cloud mutation verified" as "the account is clean",
-    # when the check inspects only the finding's own S3 bucket, only its
-    # configuration (S3_ASPECTS in cloud.py), never its contents, and no
-    # other resource in the account.
+    # when the check inspects only the finding's own resource, only its
+    # configuration, never its contents, and no other resource in the account.
+    #
+    # The resource KIND is derived from the provider rather than hard-coded.
+    # It said "one S3 bucket" for an Azure storage account until the first
+    # 20-cell dry run printed that twenty times: a scope note that misnames
+    # what was checked is worse than no scope note, because it is read as
+    # precision.
+    _KIND = {"aws": ("S3 bucket", "bucket contents"),
+             "azure": ("storage account", "blob contents")}
+    kind, contents = _KIND.get(cloud_state_before.provider,
+                               (f"{cloud_state_before.provider} resource",
+                                "resource contents"))
     print(f"NOTE: cloud check scope — {len(cloud_state_before.config)} "
-          f"configuration aspects of one S3 bucket "
-          f"({cloud_state_before.resource_uid}); bucket contents and every "
+          f"configuration aspects of one {kind} "
+          f"({cloud_state_before.resource_uid}); {contents} and every "
           f"other resource in the account are unchecked.", file=sys.stderr)
 print("PASS" if result.passed else "FAILED")
 sys.exit(0 if result.passed else 1)

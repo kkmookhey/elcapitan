@@ -424,11 +424,23 @@ calls that a re-run would flip.
 
 **Files:** `bin/run-batch.sh`, tests
 
-- [ ] **Step 1:** `run-batch.sh` enumerates the 20 (case × arm × n) cells, **shuffles them with a recorded seed**, and runs each through engineer → collector → challenger → validate.
+- [x] **Step 1:** `run-batch.sh` enumerates the 20 (case × arm × n) cells, **shuffles them with a recorded seed**, and runs each through engineer → collector → challenger → validate.
 
-- [ ] **Step 2: Tests.** The seed is recorded and the order is reproducible from it; no cell is skipped or duplicated; a failed trial does not abort the batch but is recorded as failed; **each trial gets a fresh `HERMES_HOME`** and no run directory is reused.
+- [x] **Step 2: Tests.** The seed is recorded and the order is reproducible from it; no cell is skipped or duplicated; a failed trial does not abort the batch but is recorded as failed; **each trial gets a fresh `HERMES_HOME`** and no run directory is reused.
 
-- [ ] **Step 3:** Dry-run the whole batch in stub mode — all 20 cells, no LLM. Confirm 20 distinct run directories, 20 anchors, and a validator pass on each. **Step 4:** Commit.
+- [x] **Step 3:** Dry-run the whole batch in stub mode — all 20 cells, no LLM. Confirm 20 distinct run directories, 20 anchors, and a validator pass on each. **Step 4:** Commit.
+
+**Dry run, 2026-08-24: 20/20 completed**, 20 distinct run directories, 20 anchors, 40
+bundles, 20 verdict records, validator PASS on every one. It also found two defects that
+only a full run could surface:
+
+- The validator's scope note read **"22 configuration aspects of one S3 bucket"** for an
+  Azure storage account — and printed it twenty times. Cosmetic alone, but it is the line a
+  human reads to decide what a trial actually verified, and a note that misnames what was
+  checked is read as precision. Now derived from the provider.
+- **A stub Arm A bundle looked scorable.** `scoring_valid` is about telemetry usability,
+  and Arm A is legitimately valid with no telemetry — so it cannot also carry "no agent ran
+  here". Bundles now record `stub` separately, and any scorer must exclude them.
 
 ---
 
@@ -438,9 +450,26 @@ calls that a re-run would flip.
 
 The spec requires this **before** any scored trial: §3.3 commits to "one OCSF finding, not the Prowler JSON," and until a second producer is normalised that is an untested claim.
 
-- [ ] **Step 1:** Take one finding from AWS Security Hub's OCSF export in account `331145994818` (profile `sara-sales`), run it through `normalise_ocsf`, confirm the FindingRecord validates.
+- [ ] **Step 1: BLOCKED — the account is not subscribed to Security Hub.** Measured 2026-08-24: `get-findings` in both `ap-south-1` and `us-east-1` returns `InvalidAccessException — Account 331145994818 is not subscribed to AWS Security Hub`. Subscribing is a paid, ongoing change to the account and is the human partner's call.
 
-- [ ] **Step 2:** Record what differs from Prowler's dialect. **Expect it to be thinner** where linking needs depth — Prowler states check semantics precisely; Security Hub often gives a resource ARN and a control ID. That gap is a linking-difficulty finding and belongs in the results, not a bug list.
+  **What was done instead, and what it does and does not prove.** A Security Hub OCSF finding built to the shape the Security Lake export emits was run through `normalise_ocsf`. That proves the intake does not *structurally* depend on Prowler, and it found three real dialect gaps (below). It does **not** prove the intake survives a live export, because no live export has been through it. **The gate stays open.**
+
+- [x] **Step 2: What differs, measured.** Three gaps, each of which the intake was silently depending on:
+
+  | Prowler | Security Hub | What broke |
+  |---|---|---|
+  | `"provider": "aws"` | `"provider": "AWS"` | this string keys `SCANNER_ENV_MAPS` and the capture dispatch, so an unnormalised `"AWS"` surfaces as *"no scanner credential map for provider 'AWS'"* — a confusing way to say wrong case |
+  | `"severity": "High"` | `"severity_id": 4` | severity was dropped entirely; every Security Hub finding would reach the challenger's context looking as though the scanner had no opinion |
+  | `"time_dt": "..."` | `"time": 1787616000000` | `observed_at` was dropped — provenance, which is the part of a record that has to survive for a result to mean anything later |
+
+  All three are now handled, and a regression test pins that Prowler findings normalise
+  unchanged: widening the intake must not alter what the first producer produces, or every
+  trial run so far is bound to a manifest the code no longer reproduces.
+
+  The plan's own expectation — that Security Hub is **thinner where linking needs depth**
+  — is confirmed by inspection: it gives a resource ARN and a control id (`S3.8`) where
+  Prowler states check semantics. That is a linking-difficulty finding for the results, not
+  a bug.
 
 - [ ] **Step 3:** If the intake needs changes to accept it, make them and say so — that is the point of the gate. **Step 4:** Commit.
 
@@ -462,18 +491,18 @@ The spec requires this **before** any scored trial: §3.3 commits to "one OCSF f
 
 **Files:** `src/elcapitan/score.py`, `results/matrix.md`, tests
 
-- [ ] **Step 1: The primary matrix** — catch rate and false-reject rate per arm.
+- [x] **Step 1: The primary matrix** — catch rate and false-reject rate per arm.
 
-- [ ] **Step 2: The assertion-level matrix.** Verdict-only scoring would count "correctly rejected for entirely the wrong reason" as success. Score each trial on: finding confirmation · IaC ownership · source linking · resolution type · toolchain verification · dependency identification · final verdict · evidence use · calibration.
+- [x] **Step 2: The assertion-level matrix.** Verdict-only scoring would count "correctly rejected for entirely the wrong reason" as success. Score each trial on: finding confirmation · IaC ownership · source linking · resolution type · toolchain verification · dependency identification · final verdict · evidence use · calibration.
 
-- [ ] **Step 3: Interpret honestly.** N=5 separates "never" from "often"; it is **not** a rate estimate. Report observed outcomes, run-to-run consistency, failure patterns and evidence-use patterns. **Avoid percentage claims about production capability.**
+- [ ] **Step 3: Interpret honestly.** *(needs a real batch)* N=5 separates "never" from "often"; it is **not** a rate estimate. Report observed outcomes, run-to-run consistency, failure patterns and evidence-use patterns. **Avoid percentage claims about production capability.**
 
   The three outcomes and what each means:
   - **A catches it** → telemetry unnecessary. Cheap product, surprising result.
   - **A misses, B catches** → the required evidence surface is derived. Most likely, and it is the product spec.
   - **Both miss** → remediation needs an ephemeral staging environment. A large architectural finding, far better learned now.
 
-- [ ] **Step 4:** Write `results/matrix.md` with the failure taxonomy and a recommendation: *reasoning-only · telemetry-grounded · staging-required · stop*.
+- [x] **Step 4:** `render_matrix` writes `results/matrix.md` with the failure taxonomy and a recommendation: *reasoning-only · telemetry-grounded · staging-required · stop*.
 
 ---
 

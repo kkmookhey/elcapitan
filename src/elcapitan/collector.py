@@ -460,7 +460,7 @@ def _write(bundle_dir: Path, index: int, type_: str, payload: bytes,
 
 
 def collect(snapshot: Snapshot, *, anchor_dir, now: str,
-            collector: Collector) -> dict[str, str]:
+            collector: Collector, stub: bool = False) -> dict[str, str]:
     """Both arm bundles, from ONE snapshot. Returns {"A": path, "B": path}.
 
     This function does not query anything and must never learn how to. Arm A
@@ -519,6 +519,13 @@ def collect(snapshot: Snapshot, *, anchor_dir, now: str,
             "telemetry": telemetry_entries,
             "scoring_valid": not unusable,
             "scoring_invalid_reason": reason,
+            # SEPARATE from scoring_valid, and it has to be. scoring_valid is
+            # about whether the telemetry is usable as evidence, and Arm A is
+            # legitimately valid with no telemetry at all — so it cannot also
+            # carry "no agent ran here". Without this marker a stub Arm A
+            # bundle looks perfectly scorable, and a dry run could put rows in
+            # the matrix. Found by the first 20-cell dry run.
+            "stub": bool(stub),
         }
         (bundle_dir / "bundle.json").write_bytes(canonical_json(manifest))
         written[arm] = str(bundle_dir)
