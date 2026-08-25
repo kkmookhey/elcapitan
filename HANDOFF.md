@@ -1,6 +1,6 @@
 # El Capitan — Session Handoff
 
-**As of 2026-08-24.** Read this before touching anything.
+**As of 2026-08-25.** Read this before touching anything.
 
 ---
 
@@ -28,9 +28,20 @@ why nearly every decision here is shaped the way it is.
 |---|---|
 | **0–1** substrate, harness, validator | ✅ merged — 345 tests, 13 tasks, all reviewed |
 | **2** Eiger on Azure + the trap | ✅ merged — **the gate passed** |
-| **3–5** the scored experiment | 🔨 **Task 1 done**, Task 2 next |
+| **3–5** the scored experiment | 🔨 Tasks 1–6, 8 done · **Task 7 (the batch) deliberately not run** |
 
-`main`, 72 commits, clean tree, `372 passed, 11 skipped`.
+`main`, clean tree, `539 passed, 16 skipped` (+ 16 smoke, 2 strict-xfail).
+
+| Task | State |
+|---|---|
+| 1 provider-agnostic harness | ✅ merged, measured live |
+| 2 evidence collector | ✅ merged, measured live |
+| 3 verdict + result records | ✅ merged |
+| 4 the challenger | ✅ merged, run live |
+| 5 batch runner | ✅ 20/20 dry run |
+| 6 second OCSF producer | ⚠️ **gate OPEN** — see below |
+| 7 run the batch | ⛔ **not run, on purpose** — see below |
+| 8 scorer | ✅ built; interpreting needs a batch |
 
 ---
 
@@ -156,34 +167,101 @@ recovery map if context is lost.
 
 ---
 
-## Next steps
+## Next steps — and the one thing to read first
 
-**Task 2 of `docs/superpowers/plans/2026-08-18-stages345-scored-trials.md`** — the
-host-side evidence collector. Task 1 (provider-agnostic harness + the Azure capture)
-is done and measured against the live account; nothing is blocked on it any more.
+### Do not run the batch yet. TRAP-1 cannot answer the question.
 
-**Two decisions belong to the human partner:**
+A four-run pilot on 2026-08-24 (**$0.40**) scored 4/4 against ground truth:
 
-- **The Linux capability call.** Restoring `CAP_DAC_OVERRIDE` makes containers work on
-  Linux and meaningfully weakens the isolation boundary. Moot on macOS — but on Linux the
-  container currently exits 0 having done nothing, which is the false-green shape this
-  project keeps finding.
-- **Budget.** ~$60–110 per full 20-trial run, and re-running after a design change costs
-  again. Not a one-off.
+| Case | Arm A | Arm B | Truth |
+|---|---|---|---|
+| TRAP-1 | REJECT | REJECT | REJECT |
+| CONTROL | APPROVE | APPROVE | APPROVE |
 
-**One thing Task 1 established about how this code fails:** `bin/agent-run.sh` runs
-only in non-stub mode, so renaming a constant broke it while all 365 tests stayed
-green — the break would first have appeared in a real, money-spending trial. Any
-shell script the stub path does not execute is untested by default. `test_shim.py`
-now statically checks the names `agent-run.sh` imports; the same hole may exist
-elsewhere in `bin/`.
+The challenger **has judgement** — it approved the additive control with zero
+objections, so it is not the reject-everything reviewer the control exists to
+catch. But **Arm A rejects TRAP-1 from configuration alone**:
 
-**The most dangerous failure mode in the next plan:** telemetry ingestion lag is ~2
-minutes. A collector reading a window that has not landed makes Arm B look empty,
-silently turning the experiment into A-versus-A and producing a clean-looking null
-result. Task 2 must assert the window is populated and fail loudly otherwise.
+> *"private_endpoint_connections: [] ... disabling public_network_access_enabled
+> with no alternate network path in place will sever ..."*
 
-**The honest uncertainty:** nobody knows whether an MoA challenger given real telemetry
-reasons about it at all, versus pattern-matching on the patch. If both arms behave
-identically *and* Arm B's evidence is demonstrably well-formed, that is a real finding
-about agentic judgement — not a bug to engineer around.
+`public_network_access: Enabled` plus zero private endpoints means the public
+path IS the only path. Arm A is already at the ceiling; there is no headroom
+for telemetry to show anything. **A batch over TRAP-1 and the CONTROL will
+report "telemetry made no difference" — correctly, about a trap that is too
+legible.** That is $60–110 for a null result with a known cause.
+
+n=1 per cell, so this is not a rate. It is a structure: all four verdicts were
+confident and grounded in structural configuration facts, not marginal calls.
+
+**`environments/eiger/trap2/` is the fix, designed and unapplied.** A second
+storage account with a complete, Approved private endpoint, and a Container App
+not VNet-integrated — so configuration says "there is an alternate path" and
+runtime says otherwise. Only telemetry separates them. `terraform validate`
+passes; nothing has been applied; ~$8–12/month if it is. **Read its README
+before applying** — in particular, Eiger has one corpus dependency and both
+traps want it, so TRAP-1 is not live while `KB_BLOB_URL` points at the second
+account.
+
+### The decisions that are yours
+
+1. **Apply TRAP-2?** ~$8–12/month, and four measurements before it can be
+   trusted — of which one decides everything: flip the flag and confirm
+   `health.sh` actually goes UNHEALTHY. If it stays healthy the trap does not
+   exist.
+2. **Subscribe the AWS account to Security Hub?** Task 6's gate needs a live
+   OCSF export and account `331145994818` is not subscribed
+   (`InvalidAccessException`, measured). The intake now handles the dialect and
+   three real gaps were fixed, but no live export has been through it, so the
+   gate is open.
+3. **Budget.** $60–110 per 20-trial run, and re-running after a design change
+   costs again. Today's spend was **$0.68** total.
+4. **The Linux capability call.** Unchanged and still yours. Note the pilot
+   showed it is *not* what breaks the challenger on macOS — that was
+   `--network=none`, now fixed.
+
+### When you do run it
+
+```
+./bin/preflight.sh                       # 12 checks; refuses if any fail
+./bin/run-batch.sh --seed <seed>         # 20 cells, shuffled, reproducible
+./bin/score-batch.sh ~/.elcapitan-ground-truth/eiger/ground-truth.json
+```
+
+`preflight.sh` currently reports **9 passed, 3 failed** — the three are the
+ephemeral scanner and observer credentials plus the model key, all expected to
+be absent between runs. It also prints the TRAP-1 warning above.
+
+**Both principals must exist at once** for a real batch — scanner for the
+engineer, observer for the collector — with ~26s of role propagation before
+either works, and the `log-analytics` extension pre-installed (the collector
+refuses az's dynamic install so a batch cannot change its own tooling partway
+through).
+
+### What Stages 3–5 established about how this code fails
+
+Five defects this session, and **every one of them was a seam between two
+well-tested halves**:
+
+| Defect | Why no test caught it |
+|---|---|
+| `agent-run.sh` imported a renamed constant | it runs only in non-stub mode |
+| `run_agent` crashed on a challenger spec | `_run_dir` wanted a mount the challenger deliberately lacks |
+| the collector never ran `az login` | the fake `az` does not care about logins |
+| isolating `AZURE_CONFIG_DIR` hid the `log-analytics` extension | two correct guards, composed |
+| **the collector and challenger were never invoked at all** | `run-trial.sh` went engineer → validate, and 486 tests passed |
+
+The last one is the lesson: a component with excellent tests and no caller is
+indistinguishable, from the suite, from a component that works. Test the seam.
+
+**The most dangerous failure mode remains** telemetry ingestion lag. It is
+handled in three places now — the window is widened at both ends, the
+collector waits before asking, and a window that comes back all-zero is
+recorded `unpopulated` rather than shipped as evidence — and a trial carrying
+unpopulated Arm B telemetry is `scoring_valid: false`, excluded from the matrix
+rather than counted as a miss.
+
+**The honest uncertainty**, updated: the pilot shows an MoA-less challenger
+does reason about telemetry when telemetry is the only route to the answer
+(Arm B cited the dependency edge unprompted). What is still unknown is whether
+that changes any *verdict* — which is exactly what TRAP-2 exists to find out.
