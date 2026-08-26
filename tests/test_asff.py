@@ -32,7 +32,7 @@ import pytest
 
 from elcapitan.evidence import Collector
 from elcapitan.finding import cloud_target, normalise_ocsf
-from elcapitan.records import validate_doc
+from elcapitan.schema import validate_doc
 
 NOW = "2026-08-25T04:00:00Z"
 COLLECTOR = Collector(tool="securityhub", version="2018-10-08", identity="sara-sales")

@@ -2,8 +2,8 @@ import json
 from pathlib import Path
 import pytest
 from elcapitan.evidence import Collector, EvidenceRef, verify_evidence
-from elcapitan.finding import cloud_target, normalise_ocsf
-from elcapitan.records import validate_doc
+from elcapitan.finding import cloud_target, normalise_ocsf, source_identity
+from elcapitan.schema import validate_doc
 
 FIXTURE = Path(__file__).parent / "fixtures" / "prowler-ocsf-sample.json"
 C = Collector(tool="prowler", version="5.2.1", identity="anna-scanner")
@@ -31,6 +31,7 @@ def test_ocsf_identifiers_preserved(rec):
     assert record["ocsf"]["class_uid"] == 2004
     assert record["ocsf"]["original_uid"] == "prowler-aws-s3-123"
     assert record["ocsf"]["version"] == "1.3.0"
+    assert record["ocsf"]["rule_id"] == "s3_bucket_public_access"
 
 def test_resource_preserved(rec):
     record, _ = rec
@@ -92,3 +93,9 @@ def test_a_null_region_still_produces_a_schema_valid_finding_record(tmp_path):
                             collector=C, now=NOW)
     assert record["provenance"]["region"] == ""
     assert validate_doc("finding-record", record) == []
+
+
+def test_source_identity_is_stable_across_replays():
+    raw = json.loads(FIXTURE.read_text())
+    assert source_identity(raw) == (
+        "aws", "111122223333", "prowler-aws-s3-123")

@@ -1,6 +1,9 @@
 .DS_Store
 .env
 /workspace/
+# Local state left by the archived capability probe. The product branch does
+# not own or publish these environment artifacts.
+/environments/
 __pycache__/
 *.egg-info/
 .pytest_cache/

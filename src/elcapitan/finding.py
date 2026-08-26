@@ -98,6 +98,27 @@ def cloud_target(raw: dict) -> tuple[str, str, str]:
             primary.get("uid", ""), region)
 
 
+def source_identity(raw: dict) -> tuple[str, str, str]:
+    """Stable producer identity: ``(provider, account, original uid)``.
+
+    Product intake uses this before writing evidence so replaying the same
+    scanner event is idempotent rather than creating a second finding and a
+    second raw artifact.
+    """
+    provider, _, _ = cloud_target(raw)
+    cloud = raw.get("cloud") or {}
+    account = cloud.get("account") or {}
+    original_uid = (raw.get("finding_info") or {}).get("uid", "")
+    values = {"provider": provider, "account": account.get("uid", ""),
+              "original_uid": original_uid}
+    missing = [name for name, value in values.items()
+               if not isinstance(value, str) or not value]
+    if missing:
+        raise ValueError(
+            "OCSF finding has no stable source identity: missing " + ", ".join(missing))
+    return provider, values["account"], original_uid
+
+
 def normalise_ocsf(raw: dict, *, run_dir, finding_id: str,
                    collector: Collector, now: str) -> dict:
     if "class_uid" not in raw:
@@ -105,6 +126,8 @@ def normalise_ocsf(raw: dict, *, run_dir, finding_id: str,
 
     metadata = raw.get("metadata", {})
     product = metadata.get("product", {})
+    finding_info = raw.get("finding_info", {})
+    analytic = finding_info.get("analytic") or {}
     cloud = raw.get("cloud", {})
     resources = raw.get("resources") or [{}]
     primary = resources[0]
@@ -121,8 +144,13 @@ def normalise_ocsf(raw: dict, *, run_dir, finding_id: str,
         "ocsf": {
             "version": metadata.get("version", ""),
             "class_uid": raw["class_uid"],
-            "original_uid": raw.get("finding_info", {}).get("uid", ""),
-            "title": raw.get("finding_info", {}).get("title", ""),
+            "original_uid": finding_info.get("uid", ""),
+            "title": finding_info.get("title", ""),
+            # OCSF producers place the rule identity in different legal
+            # locations. Keep one normalized value so live validators do not
+            # have to parse titles or know which producer emitted the event.
+            "rule_id": (analytic.get("uid") or metadata.get("event_code")
+                        or (raw.get("unmapped") or {}).get("prowler_check_id", "")),
         },
         "provenance": {
             "product": product.get("name", ""),
