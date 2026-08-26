@@ -34,6 +34,7 @@ class PreApprovalOrchestrator:
                  record_store: ProductRecordStore, artifact_root,
                  runtime: AgentRuntime, runner: TerraformRunner,
                  now: Callable[[], str],
+                 minimum_distinct_agent_models: int = 1,
                  id_factory: Callable[[str], str] = numeric_id) -> None:
         common = dict(case_store=case_store, record_store=record_store,
                       artifact_root=artifact_root, runtime=runtime, now=now,
@@ -48,7 +49,8 @@ class PreApprovalOrchestrator:
         self.rollback = RollbackReviewService(**common)
         self.gate = HumanReviewGate(
             case_store=case_store, record_store=record_store,
-            now=now, id_factory=id_factory)
+            now=now, id_factory=id_factory,
+            minimum_distinct_agent_models=minimum_distinct_agent_models)
 
     def prepare(self, case_id: str, *, repository,
                 state_document: Mapping | None, service_context: Mapping,

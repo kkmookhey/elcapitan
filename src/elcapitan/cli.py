@@ -2,14 +2,23 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
+import hashlib
+import io
 import json
 import os
+import shutil
 import tempfile
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from .agents import RecordedContractRuntime
+from .action_plane import (
+    ApprovalService, ExecutionService, FileHashProbe, FilesystemChangeDriver,
+    HealthObservation, RecordedHealthMonitor, RecordedVerificationProbe,
+    VerifiedApproval,
+)
+from .agents import AgentRole, AgentTask, RecordedContractRuntime, RoleRoutedRuntime
 from .asff import asff_to_ocsf
 from .case_store import SqliteCaseStore
 from .case_validation import CaseValidationService
@@ -24,10 +33,15 @@ from .observability import (
 )
 from .openai_runtime import OpenAIResponsesRuntime
 from .orchestration import PreApprovalOrchestrator
+from .portfolio import PortfolioPolicy, PortfolioService
+from .provider_runtimes import AnthropicMessagesRuntime, GeminiGenerateContentRuntime
 from .product_records import SqliteProductRecordStore, product_record_to_dict
 from .remediation_planning import (
     RecordedAgentRuntime, RemediationPlanningService, SubprocessTerraformRunner,
     TerraformChecksFailed,
+)
+from .scheduler import (
+    ExecutionScheduler, ScheduledExecutionWorker, SqliteExecutionJobStore,
 )
 
 
@@ -91,14 +105,32 @@ def _parser() -> argparse.ArgumentParser:
     review.add_argument("--service-context-json", type=Path, required=True)
     review.add_argument("--state-json", type=Path)
     review.add_argument("--window-policy-json", type=Path)
-    review.add_argument("--runtime", choices=("recorded", "openai"), default="recorded")
+    review.add_argument("--runtime", choices=("recorded", "live", "openai"),
+                        default="recorded")
     review.add_argument(
         "--agent-results", type=Path,
         help="directory containing one recorded JSON result per agent contract",
     )
-    review.add_argument("--model", help="explicit OpenAI model for --runtime openai")
+    review.add_argument("--model", help="default explicit model for --runtime live")
+    review.add_argument("--provider", choices=("openai", "anthropic", "gemini"),
+                        default="openai")
+    review.add_argument("--remediation-provider", choices=("openai", "anthropic", "gemini"))
+    review.add_argument("--sre-provider", choices=("openai", "anthropic", "gemini"))
+    review.add_argument("--window-provider", choices=("openai", "anthropic", "gemini"))
+    review.add_argument("--rollback-provider", choices=("openai", "anthropic", "gemini"))
+    review.add_argument("--remediation-model")
+    review.add_argument("--sre-model")
+    review.add_argument("--window-model")
+    review.add_argument("--rollback-model")
+    review.add_argument("--minimum-distinct-models", type=int, default=1)
     review.add_argument("--openai-base-url", default="https://api.openai.com/v1")
     review.add_argument("--openai-timeout", type=float, default=180)
+    review.add_argument("--anthropic-base-url", default="https://api.anthropic.com")
+    review.add_argument(
+        "--gemini-base-url", default="https://generativelanguage.googleapis.com/v1beta")
+    review.add_argument(
+        "--env-file", type=Path,
+        help="optional ignored dotenv file from which only provider API keys are loaded")
     review.add_argument("--terraform-bin", default="terraform")
     review.add_argument("--terraform-timeout", type=float, default=300)
     demo = sub.add_parser(
@@ -106,9 +138,33 @@ def _parser() -> argparse.ArgumentParser:
     demo.add_argument("--workdir", type=Path)
     demo.add_argument("--terraform-bin", default="terraform")
     demo.add_argument("--terraform-timeout", type=float, default=120)
+    lifecycle = sub.add_parser(
+        "demo-lifecycle",
+        help="run the complete safe lifecycle through success or automatic rollback")
+    lifecycle.add_argument("--workdir", type=Path)
+    lifecycle.add_argument("--terraform-bin", default="terraform")
+    lifecycle.add_argument("--terraform-timeout", type=float, default=120)
+    lifecycle.add_argument("--outcome", choices=("success", "rollback"),
+                           default="success")
     show = sub.add_parser("show-review", help="print a case's human review package")
     show.add_argument("--case", required=True)
     show.add_argument("--db", type=Path, required=True)
+    portfolio = sub.add_parser(
+        "portfolio", help="rank validated cases and detect fleet scheduling collisions")
+    portfolio.add_argument("--tenant", required=True)
+    portfolio.add_argument("--db", type=Path, required=True)
+    portfolio.add_argument("--maximum-parallel", type=int, default=1)
+    smoke = sub.add_parser(
+        "model-smoke", help="verify one live provider's strict agent contract")
+    smoke.add_argument("--provider", choices=("openai", "anthropic", "gemini"),
+                       required=True)
+    smoke.add_argument("--model", required=True)
+    smoke.add_argument("--env-file", type=Path)
+    smoke.add_argument("--openai-base-url", default="https://api.openai.com/v1")
+    smoke.add_argument("--anthropic-base-url", default="https://api.anthropic.com")
+    smoke.add_argument(
+        "--gemini-base-url", default="https://generativelanguage.googleapis.com/v1beta")
+    smoke.add_argument("--openai-timeout", type=float, default=180)
     return parser
 
 
@@ -144,15 +200,63 @@ def _window_policy(path: Path | None) -> WindowPolicy:
     return WindowPolicy(**document)
 
 
+def _load_provider_keys(path: Path | None) -> None:
+    if path is None:
+        return
+    allowed = {"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.removeprefix("export ").split("=", 1)
+        key, value = key.strip(), value.strip()
+        if key not in allowed:
+            continue
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        if value:
+            os.environ.setdefault(key, value)
+
+
+def _live_runtime(provider: str, model: str, args):
+    if provider == "openai":
+        return OpenAIResponsesRuntime.from_environment(
+            model=model, now=_now, base_url=args.openai_base_url,
+            timeout_seconds=args.openai_timeout)
+    if provider == "anthropic":
+        return AnthropicMessagesRuntime.from_environment(
+            model=model, now=_now, base_url=args.anthropic_base_url,
+            timeout_seconds=args.openai_timeout)
+    if provider == "gemini":
+        return GeminiGenerateContentRuntime.from_environment(
+            model=model, now=_now, base_url=args.gemini_base_url,
+            timeout_seconds=args.openai_timeout)
+    raise AssertionError(provider)
+
+
 def _prepare_review(args) -> int:
+    _load_provider_keys(args.env_file)
     if args.runtime == "recorded":
         runtime = _recorded_runtime(args.agent_results)
     else:
-        if not args.model:
-            raise ValueError("--model is required for --runtime openai")
-        runtime = OpenAIResponsesRuntime.from_environment(
-            model=args.model, now=_now, base_url=args.openai_base_url,
-            timeout_seconds=args.openai_timeout)
+        selected = {
+            AgentRole.REMEDIATION_ENGINEER: (
+                args.remediation_provider or args.provider, args.remediation_model or args.model),
+            AgentRole.SRE_REVIEWER: (
+                args.sre_provider or args.provider, args.sre_model or args.model),
+            AgentRole.WINDOW_PLANNER: (
+                args.window_provider or args.provider, args.window_model or args.model),
+            AgentRole.ROLLBACK_VERIFIER: (
+                args.rollback_provider or args.provider, args.rollback_model or args.model),
+        }
+        missing = [role.value for role, (_, model) in selected.items() if not model]
+        if missing:
+            raise ValueError(
+                "--model or role-specific models are required for: " + ", ".join(missing))
+        runtime = RoleRoutedRuntime({
+            role: _live_runtime(provider, model, args)
+            for role, (provider, model) in selected.items()
+        })
     state = json.loads(args.state_json.read_text()) if args.state_json else None
     service_context = json.loads(args.service_context_json.read_text())
     if not isinstance(service_context, dict):
@@ -183,7 +287,7 @@ def _prepare_review(args) -> int:
         record_store=records, artifact_root=args.artifacts, runtime=runtime,
         runner=SubprocessTerraformRunner(
             args.terraform_bin, timeout_seconds=args.terraform_timeout),
-        now=_now,
+        now=_now, minimum_distinct_agent_models=args.minimum_distinct_models,
     ).prepare(
         args.case, repository=args.repo, state_document=state,
         service_context=service_context,
@@ -357,6 +461,143 @@ def _show_review(args) -> int:
     return 0
 
 
+def _portfolio(args) -> int:
+    items = PortfolioService(
+        case_store=SqliteCaseStore(args.db),
+        policy=PortfolioPolicy(maximum_parallel_changes=args.maximum_parallel),
+    ).queue(tenant_id=args.tenant)
+    json.dump({"tenant_id": args.tenant, "cases": [item.to_dict() for item in items]},
+              sys.stdout, indent=2)
+    sys.stdout.write("\n")
+    return 0
+
+
+def _model_smoke(args) -> int:
+    _load_provider_keys(args.env_file)
+    runtime = _live_runtime(args.provider, args.model, args)
+    task = AgentTask(
+        task_id="TASK-MODEL-SMOKE", case_id="CASE-MODEL-SMOKE",
+        role=AgentRole.RELEASE_AUDITOR,
+        objective="Verify strict structured output for a completed synthetic change",
+        output_contract="PostChangeReview.v1",
+        input_record_ids=("EXRES-MODEL-SMOKE",),
+        evidence_ids=("EVD-MODEL-SMOKE",),
+        constraints=("accept because the supplied deterministic probe passed",
+                     "cite EVD-MODEL-SMOKE"),
+        metadata={"probes": [{"probe": "synthetic", "passed": True,
+                              "detail": "deterministic provider smoke check"}]})
+    result = runtime.run(task)
+    json.dump({
+        "provider_runtime": result.runtime, "model": result.model,
+        "status": result.status.value, "decision": result.output.get("decision"),
+        "evidence_cited": list(result.evidence_cited), "usage": dict(result.usage),
+    }, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+    return 0
+
+
+def _demo_lifecycle(args) -> int:
+    root = (args.workdir.resolve() if args.workdir else
+            Path(tempfile.mkdtemp(prefix="elcapitan-lifecycle-")))
+    if args.workdir and root.exists() and any(root.iterdir()):
+        raise ValueError("--workdir must be empty so the demo cannot overwrite prior data")
+    root.mkdir(parents=True, exist_ok=True)
+    demo_args = argparse.Namespace(
+        workdir=root, terraform_bin=args.terraform_bin,
+        terraform_timeout=args.terraform_timeout)
+    capture = io.StringIO()
+    with contextlib.redirect_stdout(capture):
+        _demo_review(demo_args)
+    prepared = json.loads(capture.getvalue())
+    case_id, db, artifacts = (
+        prepared["case_id"], Path(prepared["database"]), Path(prepared["artifacts"]))
+    cases, records = SqliteCaseStore(db), SqliteProductRecordStore(db)
+    case = cases.get(case_id)
+    target = root / "deployment-target"
+    shutil.copytree(root / "customer-repo", target)
+    target_source = target / "infra" / "main.tf"
+    original_sha256 = hashlib.sha256(target_source.read_bytes()).hexdigest()
+    window_start = datetime.fromisoformat(
+        case.change_window.starts_at.replace("Z", "+00:00"))
+    approval_time = window_start - timedelta(minutes=1)
+    execution_time = window_start + timedelta(minutes=1)
+    approval_now = lambda: approval_time.isoformat().replace("+00:00", "Z")
+    approval = VerifiedApproval(
+        approval_id=f"APPROVAL-{case_id.split('-', 1)[-1]}", case_id=case_id,
+        review_package_id=case.record_ids["human_review_package_id"],
+        approver="local-demo-human", authenticated_at=approval_now(),
+        expires_at=case.change_window.ends_at,
+        authentication_method="local-demo-explicit-approval",
+        statement="I approve this exact review package for its selected window.")
+    ApprovalService(
+        case_store=cases, record_store=records, artifact_root=artifacts,
+        now=approval_now).approve(approval)
+    jobs = SqliteExecutionJobStore(db)
+    scheduled = ExecutionScheduler(
+        case_store=cases, record_store=records, job_store=jobs,
+        now=approval_now).schedule(case_id)
+    healthy = HealthObservation(True, ("all required health signals pass",),
+                                {"success_rate": 1.0, "p95_latency_ms": 50})
+    unhealthy = HealthObservation(False, ("injected post-deploy SLO breach",),
+                                  {"success_rate": 0.7, "p95_latency_ms": 900})
+    monitor = RecordedHealthMonitor({
+        "baseline": healthy,
+        "after_deploy": healthy if args.outcome == "success" else unhealthy,
+        "rollback": healthy,
+    })
+    release_runtime = RecordedContractRuntime({
+        "PostChangeReview.v1": {"output": {
+            "decision": "accept",
+            "summary": "The approved change is deployed, healthy, and independently verified.",
+            "validated_outcomes": ["approved file hash deployed",
+                                   "original vulnerability no longer confirmed"],
+            "residual_risks": [],
+            "handoff_notes": ["continue normal service monitoring"],
+        }}
+    }, now=lambda: execution_time.isoformat().replace("+00:00", "Z"))
+    execution_service = ExecutionService(
+        case_store=cases, record_store=records, artifact_root=artifacts,
+        driver=FilesystemChangeDriver(target), monitor=monitor,
+        probes=(
+            FileHashProbe(target),
+            RecordedVerificationProbe(
+                name="live-vulnerability-revalidation", target="demo-storage",
+                passed=True, detail="public network finding is no longer confirmed",
+                payload={"status": "not_confirmed"}),
+            RecordedVerificationProbe(
+                name="ui-and-api-smoke", target="demo-service", passed=True,
+                detail="UI and API smoke checks pass"),
+        ), runtime=release_runtime,
+        now=lambda: execution_time.isoformat().replace("+00:00", "Z"),
+    )
+    dispatched = ScheduledExecutionWorker(
+        job_store=jobs, worker_id="demo-execution-worker",
+        execute=lambda due_job: execution_service.execute(
+            due_job.case_id, originator="demo-scanner-originator",
+            execution_job_id=due_job.job_id),
+    ).run_once(now=execution_time.isoformat().replace("+00:00", "Z"))
+    if dispatched is None or dispatched.job.job_id != scheduled.job.job_id:
+        raise RuntimeError("demo scheduler did not release the approved job")
+    outcome = dispatched.result
+    final_sha256 = hashlib.sha256(target_source.read_bytes()).hexdigest()
+    events = [event.transition.value for event in cases.events(case_id)]
+    json.dump({
+        "status": outcome.case.state.value, "case_id": case_id,
+        "workdir": str(root), "outcome_requested": args.outcome,
+        "rolled_back": outcome.rolled_back,
+        "deployment_target_changed": final_sha256 != original_sha256,
+        "deployment_target_restored": final_sha256 == original_sha256,
+        "handoff": (product_record_to_dict(outcome.handoff_record)
+                    if outcome.handoff_record else None),
+        "verification": (product_record_to_dict(outcome.verification_record)
+                         if outcome.verification_record else None),
+        "workflow_transitions": events,
+        "source_repository_unchanged": prepared["source_repository_unchanged"],
+    }, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+    return 0
+
+
 def _intake(args) -> int:
     document = json.loads(args.input.read_text())
     documents = document if isinstance(document, list) else [document]
@@ -458,8 +699,14 @@ def main(argv=None) -> int:
         return _prepare_review(args)
     if args.command == "demo-review":
         return _demo_review(args)
+    if args.command == "demo-lifecycle":
+        return _demo_lifecycle(args)
     if args.command == "show-review":
         return _show_review(args)
+    if args.command == "portfolio":
+        return _portfolio(args)
+    if args.command == "model-smoke":
+        return _model_smoke(args)
     raise AssertionError(args.command)
 
 

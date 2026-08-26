@@ -61,6 +61,7 @@ class CaseTransition(StrEnum):
     REVIEW_ROLLBACK = "review_rollback"
     REQUEST_APPROVAL = "request_approval"
     APPROVE_CHANGE = "approve_change"
+    SCHEDULE_EXECUTION = "schedule_execution"
     START_EXECUTION = "start_execution"
     START_VERIFICATION = "start_verification"
     COMPLETE_REMEDIATION = "complete_remediation"
@@ -229,6 +230,7 @@ _REQUIRED_RECORDS = {
     CaseTransition.REVIEW_ROLLBACK: "rollback_review_id",
     CaseTransition.REQUEST_APPROVAL: "policy_decision_id",
     CaseTransition.APPROVE_CHANGE: "approval_id",
+    CaseTransition.SCHEDULE_EXECUTION: "schedule_id",
     CaseTransition.START_EXECUTION: "execution_id",
     CaseTransition.START_VERIFICATION: "execution_result_id",
     CaseTransition.COMPLETE_REMEDIATION: "verification_result_id",
@@ -286,6 +288,11 @@ def transition_case(case: RemediationCase, transition: CaseTransition, *,
     elif transition is CaseTransition.REPRIORITIZE:
         if priority is None:
             raise ValueError("reprioritize requires a RiskAssessment")
+        to_state = case.state
+        blocked_from = case.blocked_from
+    elif transition is CaseTransition.SCHEDULE_EXECUTION:
+        if case.state is not CaseState.APPROVED:
+            raise ValueError("only an approved case can be scheduled for execution")
         to_state = case.state
         blocked_from = case.blocked_from
     elif transition is CaseTransition.BLOCK:

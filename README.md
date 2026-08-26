@@ -25,6 +25,13 @@ The current implementation can:
 - derive bounded future change-window candidates from historical usage;
 - independently verify rollback steps and observable rollback triggers;
 - assemble a policy-checked human review package and stop for approval;
+- bind authenticated approval to the exact review-package hash;
+- durably schedule approved work with leases and missed-window protection;
+- checkpoint, deploy, monitor, verify, automatically roll back, and recover;
+- revalidate live configuration, deployed hashes, and allowlisted UI/API probes;
+- issue a remediation certificate and originator handoff after release audit;
+- rank validated cases as a fleet and flag service/window collisions;
+- route maker, checker, rollback, and release roles to different providers;
 - persist immutable workflow events and projections in SQLite/WAL;
 - prevent concurrent workers from opening two active cases for one asset;
 - require typed records at every later workflow gate, including rollback.
@@ -112,6 +119,27 @@ includes a `show-review` command for the complete review package. It also
 reports `source_repository_unchanged: true` and `execution_status:
 not_started`. No `apply` or cloud mutation code is part of this path.
 
+Run the complete safe lifecycle, including explicit demo approval, durable
+scheduling, deployment into an isolated target, monitoring, verification,
+release audit, certificate, and originator handoff:
+
+```bash
+UV_CACHE_DIR=/tmp/elcapitan-uv-cache uv run elcapitan demo-lifecycle \
+  --outcome success
+```
+
+Exercise automatic rollback by injecting a post-deployment SLO failure:
+
+```bash
+UV_CACHE_DIR=/tmp/elcapitan-uv-cache uv run elcapitan demo-lifecycle \
+  --outcome rollback
+```
+
+The successful path ends in `remediated`. The failure path restores the exact
+checkpoint, confirms service recovery, and ends in `rolled_back`. Both use a
+filesystem reference deployment target—never Eiger or a cloud account—and the
+original repository remains unchanged.
+
 To exercise an already validated customer case with recorded agent results:
 
 ```bash
@@ -142,19 +170,50 @@ a separate observer principal. Set `ELCAP_OBSERVER_AZURE_CLIENT_ID`,
 sessions are ignored. The query ends one hour behind real time to avoid the
 freshest ingestion window.
 
-The same command can execute the four bounded roles directly through the
-OpenAI Responses API:
+The same command can execute the bounded roles through OpenAI, Anthropic, or
+Gemini and assign a different provider/model to each role:
 
 ```bash
-OPENAI_API_KEY=... UV_CACHE_DIR=/tmp/elcapitan-uv-cache \
+UV_CACHE_DIR=/tmp/elcapitan-uv-cache \
   uv run elcapitan prepare-review ... \
-  --runtime openai --model YOUR_EXPLICIT_MODEL
+  --runtime live --env-file .env \
+  --remediation-provider openai --remediation-model YOUR_OPENAI_MODEL \
+  --sre-provider anthropic --sre-model YOUR_CLAUDE_MODEL \
+  --window-provider openai --window-model YOUR_FAST_MODEL \
+  --rollback-provider anthropic --rollback-model YOUR_CLAUDE_MODEL \
+  --minimum-distinct-models 2
 ```
 
-The adapter requests strict JSON-schema output, disables response storage, and
-records runtime/model/usage provenance. Workflow transitions, candidate
-generation, Terraform verification, policy, and approval remain deterministic
-product code; the model never receives an apply capability.
+Only `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, and
+`GOOGLE_API_KEY` are eligible for loading from `--env-file`; all other dotenv
+values are ignored. Each adapter requests structured JSON output, validates it
+again locally, bounds response size and time, and records runtime/model/usage
+provenance. Workflow transitions, candidate generation, Terraform
+verification, approval, scheduling, execution, and rollback remain
+deterministic product code; models never receive deployment credentials.
+
+Verify one live provider without running a customer case:
+
+```bash
+uv run elcapitan model-smoke --provider openai \
+  --model YOUR_MODEL --env-file .env
+```
+
+View the fleet queue after validation:
+
+```bash
+uv run elcapitan portfolio --tenant TENANT --db /path/to/product.db
+```
+
+## Current deployment boundary
+
+The action plane is complete as a provider-neutral, checkpointed vertical
+slice and is executable through the filesystem reference driver. Real cloud
+deployment is intentionally not enabled merely because credentials are
+present. A production connector must implement the same `ChangeDriver`,
+`HealthMonitor`, and `VerificationProbe` contracts with short-lived,
+case-scoped credentials in an isolated worker. The included live cloud reader
+remains read-only.
 
 See [the product architecture](docs/product-architecture.md) for the system
 boundary and first PR-only vertical slice. The retired capability probe is

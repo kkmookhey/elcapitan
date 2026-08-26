@@ -1,5 +1,6 @@
 from elcapitan.agents import (
-    AgentResult, AgentResultStatus, AgentRole, AgentTask, validate_result,
+    AgentResult, AgentResultStatus, AgentRole, AgentTask, RoleRoutedRuntime,
+    validate_result,
 )
 
 NOW = "2026-08-25T12:00:00Z"
@@ -50,3 +51,22 @@ def test_runtime_output_and_usage_are_immutable_copies():
     assert produced.usage["input"] == 10
     output["checks"][1]["slo"] = "bad"
     assert produced.output["checks"][1]["slo"] == "ok"
+
+
+def test_role_router_keeps_maker_and_checker_on_independent_runtimes():
+    class Runtime:
+        def __init__(self, name):
+            self.name, self.tasks = name, []
+
+        def run(self, dispatched):
+            self.tasks.append(dispatched)
+            return result(runtime=self.name)
+
+    maker, checker = Runtime("maker-model"), Runtime("checker-model")
+    router = RoleRoutedRuntime({
+        AgentRole.REMEDIATION_ENGINEER: maker,
+        AgentRole.SRE_REVIEWER: checker,
+    })
+    assert router.run(task()).runtime == "checker-model"
+    assert maker.tasks == []
+    assert checker.tasks == [task()]

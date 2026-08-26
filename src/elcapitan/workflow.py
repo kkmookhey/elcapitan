@@ -25,6 +25,8 @@ class CaseStore(Protocol):
     def events(self, case_id: str) -> tuple[CaseEvent, ...]: ...
     def find_active_by_asset(self, tenant_id: str, asset_id: str
                              ) -> RemediationCase | None: ...
+    def list_cases(self, *, tenant_id: str | None = None
+                   ) -> tuple[RemediationCase, ...]: ...
 
 
 class InMemoryCaseStore:
@@ -84,6 +86,13 @@ class InMemoryCaseStore:
         if not matches:
             return None
         return max(matches, key=lambda case: (case.updated_at, case.case_id))
+
+    def list_cases(self, *, tenant_id: str | None = None
+                   ) -> tuple[RemediationCase, ...]:
+        cases = tuple(self._cases.values())
+        if tenant_id is not None:
+            cases = tuple(case for case in cases if case.tenant_id == tenant_id)
+        return tuple(sorted(cases, key=lambda case: (case.created_at, case.case_id)))
 
 
 @dataclass(frozen=True)

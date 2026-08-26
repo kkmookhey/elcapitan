@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 
 import fake_az
+import pytest
 
 from elcapitan.cli import main
 
@@ -155,3 +156,39 @@ def test_cli_demo_stops_at_human_review_without_changing_source(
     assert package["body"]["policy_decision"]["body"]["decision"] == (
         "allow_human_review")
     assert package["body"]["execution_status"] == "not_started"
+
+
+@pytest.mark.parametrize("requested, expected_state, rolled_back", [
+    ("success", "remediated", False),
+    ("rollback", "rolled_back", True),
+])
+def test_cli_complete_lifecycle_success_and_automatic_rollback(
+        tmp_path, capsys, requested, expected_state, rolled_back):
+    terraform = tmp_path / "terraform"
+    terraform.write_text(
+        "#!/bin/sh\n"
+        "if [ \"$1\" = \"plan\" ]; then touch .elcapitan-plan.tfplan; fi\n"
+        "exit 0\n"
+    )
+    terraform.chmod(0o755)
+    workdir = tmp_path / requested
+    assert main([
+        "demo-lifecycle", "--workdir", str(workdir),
+        "--outcome", requested, "--terraform-bin", str(terraform),
+    ]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == expected_state
+    assert result["rolled_back"] is rolled_back
+    assert result["source_repository_unchanged"] is True
+    if rolled_back:
+        assert result["deployment_target_restored"] is True
+        assert result["handoff"] is None
+        assert result["workflow_transitions"][-2:] == [
+            "start_rollback", "complete_rollback",
+        ]
+    else:
+        assert result["deployment_target_changed"] is True
+        assert result["handoff"]["body"]["status"] == "done"
+        assert result["workflow_transitions"][-2:] == [
+            "start_verification", "complete_remediation",
+        ]

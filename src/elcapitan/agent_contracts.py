@@ -97,12 +97,32 @@ ROLLBACK_REVIEW = {
     ],
 }
 
+POST_CHANGE_REVIEW = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "decision": {
+            "type": "string",
+            "enum": ["accept", "rollback", "needs_human_context"],
+        },
+        "summary": {"type": "string", "minLength": 1},
+        "validated_outcomes": _STRING_ARRAY,
+        "residual_risks": _STRING_ARRAY,
+        "handoff_notes": _STRING_ARRAY,
+    },
+    "required": [
+        "decision", "summary", "validated_outcomes", "residual_risks",
+        "handoff_notes",
+    ],
+}
+
 
 OUTPUT_CONTRACTS = {
     "TerraformRemediationProposal.v1": TERRAFORM_REMEDIATION_PROPOSAL,
     "SREReview.v1": SRE_REVIEW,
     "ChangeWindowSelection.v1": CHANGE_WINDOW_SELECTION,
     "RollbackReview.v1": ROLLBACK_REVIEW,
+    "PostChangeReview.v1": POST_CHANGE_REVIEW,
 }
 
 

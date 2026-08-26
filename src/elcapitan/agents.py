@@ -30,6 +30,7 @@ class AgentRole(StrEnum):
     SRE_REVIEWER = "sre_reviewer"
     WINDOW_PLANNER = "window_planner"
     ROLLBACK_VERIFIER = "rollback_verifier"
+    RELEASE_AUDITOR = "release_auditor"
 
 
 class AgentResultStatus(StrEnum):
@@ -150,3 +151,24 @@ class RecordedContractRuntime:
             completed_at=str(document.get("completed_at") or timestamp),
             usage=document.get("usage", {}),
         )
+
+
+class RoleRoutedRuntime:
+    """Route maker/checker/reviewer roles to independently configured runtimes."""
+
+    def __init__(self, routes: Mapping[AgentRole, AgentRuntime], *,
+                 default: AgentRuntime | None = None) -> None:
+        self.routes = dict(routes)
+        self.default = default
+        if not self.routes and default is None:
+            raise ValueError("role-routed runtime requires at least one route")
+
+    @property
+    def name(self) -> str:
+        return "role-routed-runtime"
+
+    def run(self, task: AgentTask) -> AgentResult:
+        runtime = self.routes.get(task.role, self.default)
+        if runtime is None:
+            raise ValueError(f"no agent runtime is configured for role {task.role.value}")
+        return runtime.run(task)

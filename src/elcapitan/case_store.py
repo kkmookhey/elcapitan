@@ -179,3 +179,15 @@ class SqliteCaseStore:
                 (tenant_id, asset_id),
             ).fetchone()
         return case_from_dict(json.loads(row[0])) if row else None
+
+    def list_cases(self, *, tenant_id: str | None = None
+                   ) -> tuple[RemediationCase, ...]:
+        query = "SELECT projection FROM remediation_cases"
+        params: tuple = ()
+        if tenant_id is not None:
+            query += " WHERE tenant_id = ?"
+            params = (tenant_id,)
+        query += " ORDER BY tenant_id, case_id"
+        with closing(self._connect()) as connection:
+            rows = connection.execute(query, params).fetchall()
+        return tuple(case_from_dict(json.loads(row[0])) for row in rows)

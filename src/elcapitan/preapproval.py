@@ -374,11 +374,15 @@ class HumanReviewGate:
 
     def __init__(self, *, case_store: CaseStore, record_store: ProductRecordStore,
                  now: Callable[[], str],
+                 minimum_distinct_agent_models: int = 1,
                  id_factory: Callable[[str], str] = numeric_id) -> None:
         self.case_store = case_store
         self.record_store = record_store
         self.now = now
         self.id_factory = id_factory
+        if not 1 <= minimum_distinct_agent_models <= 4:
+            raise ValueError("minimum distinct agent models must be between 1 and 4")
+        self.minimum_distinct_agent_models = minimum_distinct_agent_models
         self.workflow = WorkflowCoordinator(case_store)
 
     def prepare(self, case_id: str) -> HumanReviewOutcome:
@@ -419,6 +423,20 @@ class HumanReviewGate:
                            records["rollback_review_id"].body.get("decision") == "approve")
         checks.append({"check": "rollback_approval", "passed": rollback_ok,
                        "detail": "independent rollback decision must be approve"})
+        agent_records = [records.get(name) for name in (
+            "change_plan_id", "sre_review_id", "change_window_id", "rollback_review_id")]
+        model_identities = {
+            (record.body.get("task") or {}).get("runtime", "") + ":" +
+            (record.body.get("task") or {}).get("model", "")
+            for record in agent_records if record is not None
+        }
+        model_identities.discard(":")
+        diversity_ok = len(model_identities) >= self.minimum_distinct_agent_models
+        checks.append({
+            "check": "agent_model_diversity", "passed": diversity_ok,
+            "detail": (f"{len(model_identities)} distinct runtime/model identities; "
+                       f"policy requires {self.minimum_distinct_agent_models}"),
+        })
         window_ok = bool(case.change_window and
                          parse_timestamp(case.change_window.starts_at) > parse_timestamp(self.now()))
         checks.append({"check": "future_change_window", "passed": window_ok,

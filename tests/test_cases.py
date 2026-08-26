@@ -59,16 +59,18 @@ def test_happy_path_is_explicit_through_execution_and_verification():
                       record_ids={"policy_decision_id": "POLICY-001"})
     current = advance(current, CaseTransition.APPROVE_CHANGE, 8,
                       record_ids={"approval_id": "APR-001"})
-    current = advance(current, CaseTransition.START_EXECUTION, 9,
+    current = advance(current, CaseTransition.SCHEDULE_EXECUTION, 9,
+                      record_ids={"schedule_id": "SCHEDULE-001"})
+    current = advance(current, CaseTransition.START_EXECUTION, 10,
                       record_ids={"execution_id": "EXEC-001"})
-    current = advance(current, CaseTransition.START_VERIFICATION, 10,
+    current = advance(current, CaseTransition.START_VERIFICATION, 11,
                       record_ids={"execution_result_id": "EXECRES-001"})
-    current = advance(current, CaseTransition.COMPLETE_REMEDIATION, 11,
+    current = advance(current, CaseTransition.COMPLETE_REMEDIATION, 12,
                       record_ids={"verification_result_id": "VERIFY-001"})
 
     assert current.state is CaseState.REMEDIATED
     assert current.terminal
-    assert current.version == 11
+    assert current.version == 12
     assert current.change_plan.rollback_steps == ("restore previous revision",)
 
 

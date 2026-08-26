@@ -90,6 +90,16 @@ Execution is progressive: preflight, checkpoint, canary, verification, wider
 rollout. A rollback path must exist and be validated before production
 execution becomes eligible.
 
+The provider-neutral action plane is implemented through a reference driver:
+package-bound approval, durable scheduling and worker leases, change-window
+enforcement, preflight, checkpoint, deployment, health policy,
+configuration/code/UI verification probes, automatic rollback, independent
+release audit, remediation certificate, and originator handoff. Driver,
+monitor, probe, approval-authority, and model-provider boundaries are
+replaceable. The repository does not yet ship a production cloud mutation
+driver; enabling one requires a separately reviewed connector with
+short-lived credentials and a tested rollback implementation.
+
 ## Initial vertical slice
 
 The first customer-facing slice remains deliberately narrow:
@@ -104,23 +114,27 @@ The first customer-facing slice remains deliberately narrow:
    rollback procedure, and rollback triggers.
 7. Independently verify rollback readiness.
 8. Assemble a policy-checked human review package.
-9. Stop for human approval; do not deploy automatically in this slice.
+9. Stop for human approval before any deployment becomes eligible.
+10. Execute the approved package through a checkpointed driver, continuously
+    evaluate health, automatically roll back on failure, and hand a verified
+    completion certificate to the originator.
 
-Implemented through the human-review boundary: durable cases and events, deterministic priority,
+Implemented through safe reference execution and handoff: durable cases and events, deterministic priority,
 idempotent OCSF/ASFF intake, exact-asset correlation, one-active-case
 concurrency enforcement, provider-neutral agent contracts, read-only live
 validation for the first Azure/AWS rule set, conservative literal or
 state-backed Terraform linking, isolated complete-file remediation proposals,
 Terraform verification gates, immutable typed product records, and a local
-CLI. The platform also has a direct OpenAI Responses adapter with strict output
-schemas, independent SRE and rollback roles, deterministic telemetry-based
-window candidates, and a non-agent approval policy gate. GitHub PR creation and
-any post-approval execution are intentionally beyond the current human-review
-boundary.
+CLI. The platform has strict OpenAI, Anthropic, and Gemini adapters with
+role-based routing, independent SRE/rollback/release roles, deterministic
+telemetry-based windows, fleet collision detection, a non-agent approval gate,
+durable execution jobs, health-gated execution, automatic rollback, and
+originator handoff. Production GitHub/CI and cloud mutation drivers are now the
+remaining integration boundary rather than missing workflow semantics.
 
-The next slice adds staging/canary execution. Production execution is enabled
-only after the connector, health contract, rollback, identity, and audit gates
-are independently exercised.
+Production execution is enabled only after a concrete connector, health
+contract, rollback, identity, and audit gate are independently exercised in a
+non-production account.
 
 ## Archived prototype
 

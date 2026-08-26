@@ -14,6 +14,7 @@ from typing import Callable, Mapping, Protocol
 from jsonschema import Draft202012Validator
 
 from .agent_contracts import agent_result_schema
+from .agent_prompt import instructions, task_document
 from .agents import AgentResult, AgentResultStatus, AgentTask
 from .hashing import canonical_json
 
@@ -64,37 +65,6 @@ class UrlLibResponsesTransport:
         if not isinstance(document, Mapping):
             raise OpenAIRuntimeError("OpenAI Responses API returned a non-object response")
         return document
-
-
-_ROLE_INSTRUCTIONS = {
-    "remediation_engineer": (
-        "Act as a security remediation engineer. Produce the smallest reversible "
-        "Terraform change supported by the supplied finding, live validation, and "
-        "source. Never claim a command ran or a dependency is safe without evidence."
-    ),
-    "sre_reviewer": (
-        "Act as an independent SRE reviewer. Evaluate availability, dependencies, "
-        "blast radius, health signals, rollout controls, and verification. Reject or "
-        "request context when the supplied evidence cannot establish safety."
-    ),
-    "window_planner": (
-        "Act as a change-window reviewer. Select only one supplied candidate using "
-        "the usage summary and policy. Do not invent a window or telemetry."
-    ),
-    "rollback_verifier": (
-        "Act as an independent rollback reviewer. Verify that every material failure "
-        "mode has an observable trigger and executable reversal. Do not approve vague "
-        "or circular rollback instructions."
-    ),
-}
-
-
-def _thaw(value):
-    if isinstance(value, Mapping):
-        return {key: _thaw(item) for key, item in value.items()}
-    if isinstance(value, tuple):
-        return [_thaw(item) for item in value]
-    return value
 
 
 def _output_text(response: Mapping) -> str:
@@ -160,33 +130,15 @@ class OpenAIResponsesRuntime:
 
     def run(self, task: AgentTask) -> AgentResult:
         schema = agent_result_schema(task.output_contract)
-        role = task.role.value
-        instructions = _ROLE_INSTRUCTIONS.get(role)
-        if instructions is None:
-            raise OpenAIRuntimeError(f"OpenAI runtime has no prompt for role {role}")
         format_name = re.sub(r"[^A-Za-z0-9_-]", "_", task.output_contract)[:64]
-        task_document = {
-            "task_id": task.task_id,
-            "case_id": task.case_id,
-            "role": role,
-            "objective": task.objective,
-            "input_record_ids": list(task.input_record_ids),
-            "available_evidence_ids": list(task.evidence_ids),
-            "constraints": list(task.constraints),
-            "context": _thaw(task.metadata),
-        }
         payload = {
             "model": self.model,
-            "instructions": (
-                instructions
-                + " Return only the strict structured result. Cite only evidence IDs "
-                  "listed in available_evidence_ids."
-            ),
+            "instructions": instructions(task),
             "input": [{
                 "role": "user",
                 "content": [{
                     "type": "input_text",
-                    "text": canonical_json(task_document).decode("utf-8"),
+                    "text": canonical_json(task_document(task)).decode("utf-8"),
                 }],
             }],
             "text": {
