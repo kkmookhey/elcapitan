@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 from types import MappingProxyType
-from typing import Any, Mapping, Protocol
+from typing import Any, Callable, Mapping, Protocol
 
 
 def _freeze(value: Any) -> Any:
@@ -115,3 +115,38 @@ def validate_result(task: AgentTask, result: AgentResult) -> list[str]:
     if result.status is AgentResultStatus.NEEDS_MORE_EVIDENCE and not result.missing_evidence:
         failures.append("needs_more_evidence must name the missing evidence")
     return failures
+
+
+class RecordedContractRuntime:
+    """Replay one recorded result per output contract for local review runs."""
+
+    def __init__(self, documents: Mapping[str, Mapping], *, now: Callable[[], str]) -> None:
+        self.documents = {name: dict(value) for name, value in documents.items()}
+        self.now = now
+
+    @property
+    def name(self) -> str:
+        return "recorded-contract-results"
+
+    def run(self, task: AgentTask) -> AgentResult:
+        try:
+            document = self.documents[task.output_contract]
+        except KeyError:
+            raise ValueError(
+                f"no recorded result supplied for {task.output_contract}") from None
+        output = document.get("output", document)
+        if not isinstance(output, Mapping):
+            raise ValueError(f"recorded {task.output_contract} output must be an object")
+        timestamp = self.now()
+        return AgentResult(
+            task_id=task.task_id, case_id=task.case_id, role=task.role,
+            status=AgentResultStatus(document.get("status", "succeeded")),
+            output=output,
+            evidence_cited=tuple(document.get("evidence_cited", task.evidence_ids)),
+            missing_evidence=tuple(document.get("missing_evidence", ())),
+            runtime=str(document.get("runtime") or self.name),
+            model=str(document.get("model") or "recorded"),
+            started_at=str(document.get("started_at") or timestamp),
+            completed_at=str(document.get("completed_at") or timestamp),
+            usage=document.get("usage", {}),
+        )

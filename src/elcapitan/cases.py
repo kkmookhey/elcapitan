@@ -29,6 +29,7 @@ class CaseState(StrEnum):
     PLAN_READY = "plan_ready"
     SRE_APPROVED = "sre_approved"
     WINDOW_SELECTED = "window_selected"
+    ROLLBACK_READY = "rollback_ready"
     AWAITING_APPROVAL = "awaiting_approval"
     APPROVED = "approved"
     EXECUTING = "executing"
@@ -57,6 +58,7 @@ class CaseTransition(StrEnum):
     PREPARE_PLAN = "prepare_plan"
     APPROVE_SRE = "approve_sre"
     SELECT_WINDOW = "select_window"
+    REVIEW_ROLLBACK = "review_rollback"
     REQUEST_APPROVAL = "request_approval"
     APPROVE_CHANGE = "approve_change"
     START_EXECUTION = "start_execution"
@@ -205,7 +207,8 @@ _LINEAR_TRANSITIONS = {
     (CaseState.VALIDATED, CaseTransition.PREPARE_PLAN): CaseState.PLAN_READY,
     (CaseState.PLAN_READY, CaseTransition.APPROVE_SRE): CaseState.SRE_APPROVED,
     (CaseState.SRE_APPROVED, CaseTransition.SELECT_WINDOW): CaseState.WINDOW_SELECTED,
-    (CaseState.WINDOW_SELECTED, CaseTransition.REQUEST_APPROVAL): CaseState.AWAITING_APPROVAL,
+    (CaseState.WINDOW_SELECTED, CaseTransition.REVIEW_ROLLBACK): CaseState.ROLLBACK_READY,
+    (CaseState.ROLLBACK_READY, CaseTransition.REQUEST_APPROVAL): CaseState.AWAITING_APPROVAL,
     (CaseState.AWAITING_APPROVAL, CaseTransition.APPROVE_CHANGE): CaseState.APPROVED,
     (CaseState.APPROVED, CaseTransition.START_EXECUTION): CaseState.EXECUTING,
     (CaseState.EXECUTING, CaseTransition.START_VERIFICATION): CaseState.VERIFYING,
@@ -223,6 +226,7 @@ _REQUIRED_RECORDS = {
     CaseTransition.PREPARE_PLAN: "change_plan_id",
     CaseTransition.APPROVE_SRE: "sre_review_id",
     CaseTransition.SELECT_WINDOW: "change_window_id",
+    CaseTransition.REVIEW_ROLLBACK: "rollback_review_id",
     CaseTransition.REQUEST_APPROVAL: "policy_decision_id",
     CaseTransition.APPROVE_CHANGE: "approval_id",
     CaseTransition.START_EXECUTION: "execution_id",
@@ -306,7 +310,7 @@ def transition_case(case: RemediationCase, transition: CaseTransition, *,
     elif transition is CaseTransition.REJECT:
         if case.state not in {
             CaseState.PLAN_READY, CaseState.SRE_APPROVED, CaseState.WINDOW_SELECTED,
-            CaseState.AWAITING_APPROVAL,
+            CaseState.ROLLBACK_READY, CaseState.AWAITING_APPROVAL,
         }:
             raise ValueError(f"a case cannot be rejected from {case.state}")
         if not detail:

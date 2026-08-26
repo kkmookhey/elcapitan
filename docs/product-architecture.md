@@ -27,6 +27,7 @@ finding intake
   -> link to source and prepare change
   -> SRE availability review
   -> select a change window
+  -> independently verify rollback readiness
   -> policy and human approval
   -> execute progressively
   -> verify
@@ -101,17 +102,21 @@ The first customer-facing slice remains deliberately narrow:
 5. Link the resource to Terraform and prepare a patch.
 6. Produce an SRE review, change window, deployment steps, verification steps,
    rollback procedure, and rollback triggers.
-7. Require human approval and create a GitHub PR.
-8. Do not deploy automatically in this slice.
+7. Independently verify rollback readiness.
+8. Assemble a policy-checked human review package.
+9. Stop for human approval; do not deploy automatically in this slice.
 
-Implemented so far: durable cases and events, deterministic priority,
+Implemented through the human-review boundary: durable cases and events, deterministic priority,
 idempotent OCSF/ASFF intake, exact-asset correlation, one-active-case
 concurrency enforcement, provider-neutral agent contracts, read-only live
 validation for the first Azure/AWS rule set, conservative literal or
 state-backed Terraform linking, isolated complete-file remediation proposals,
 Terraform verification gates, immutable typed product records, and a local
-CLI. Model runtime adapters, SRE/window workers, and GitHub PR creation are the
-remaining parts of this slice.
+CLI. The platform also has a direct OpenAI Responses adapter with strict output
+schemas, independent SRE and rollback roles, deterministic telemetry-based
+window candidates, and a non-agent approval policy gate. GitHub PR creation and
+any post-approval execution are intentionally beyond the current human-review
+boundary.
 
 The next slice adds staging/canary execution. Production execution is enabled
 only after the connector, health contract, rollback, identity, and audit gates

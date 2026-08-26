@@ -120,3 +120,38 @@ resource "azurerm_storage_account" "corpus" {
         "fmt", "init", "validate", "plan",
     ]
     assert source.read_text().endswith("public_network_access_enabled = true\n}\n")
+
+
+def test_cli_demo_stops_at_human_review_without_changing_source(
+        tmp_path, capsys):
+    terraform = tmp_path / "terraform"
+    terraform.write_text(
+        "#!/bin/sh\n"
+        "if [ \"$1\" = \"plan\" ]; then touch .elcapitan-plan.tfplan; fi\n"
+        "exit 0\n"
+    )
+    terraform.chmod(0o755)
+    workdir = tmp_path / "demo"
+    assert main([
+        "demo-review", "--workdir", str(workdir),
+        "--terraform-bin", str(terraform),
+    ]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "awaiting_approval"
+    assert result["execution_status"] == "not_started"
+    assert result["source_repository_unchanged"] is True
+    assert [check["passed"] for check in result["terraform_checks"]] == [
+        True, True, True, True,
+    ]
+    assert "public_network_access = true" in (
+        workdir / "customer-repo" / "infra" / "main.tf").read_text()
+
+    assert main([
+        "show-review", "--case", result["case_id"],
+        "--db", result["database"],
+    ]) == 0
+    package = json.loads(capsys.readouterr().out)
+    assert package["record_type"] == "HumanReviewPackage.v1"
+    assert package["body"]["policy_decision"]["body"]["decision"] == (
+        "allow_human_review")
+    assert package["body"]["execution_status"] == "not_started"

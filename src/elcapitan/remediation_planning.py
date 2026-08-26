@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, Protocol
 
+from .agent_contracts import validate_output
 from .agents import (
     AgentResult, AgentResultStatus, AgentRole, AgentRuntime, AgentTask,
     validate_result,
@@ -399,6 +400,14 @@ class RemediationPlanningService:
         )
         result = self.runtime.run(task)
         failures = validate_result(task, result)
+        contract_output = _jsonable(result.output)
+        if isinstance(contract_output, dict) and isinstance(
+                contract_output.get("files"), dict):
+            contract_output["files"] = [
+                {"path": path, "content": content}
+                for path, content in contract_output["files"].items()
+            ]
+        failures.extend(validate_output(task.output_contract, contract_output))
         if failures:
             raise RemediationPlanningError("; ".join(failures))
         if result.status is not AgentResultStatus.SUCCEEDED:
@@ -409,8 +418,25 @@ class RemediationPlanningService:
                 "successful remediation agent did not cite the linked Terraform source"
             )
 
-        files = result.output.get("files")
-        if not isinstance(files, Mapping) or set(files) != {link.source_path}:
+        supplied_files = result.output.get("files")
+        if isinstance(supplied_files, Mapping):
+            files = dict(supplied_files)
+        elif isinstance(supplied_files, (list, tuple)):
+            files = {}
+            for item in supplied_files:
+                if not isinstance(item, Mapping):
+                    raise RemediationPlanningError(
+                        "agent output files must contain path/content objects"
+                    )
+                path, content = item.get("path"), item.get("content")
+                if not isinstance(path, str) or path in files:
+                    raise RemediationPlanningError(
+                        "agent output files contain an invalid or duplicate path"
+                    )
+                files[path] = content
+        else:
+            files = {}
+        if set(files) != {link.source_path}:
             raise RemediationPlanningError(
                 f"agent must replace exactly the linked file {link.source_path!r}"
             )

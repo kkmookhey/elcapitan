@@ -1,0 +1,71 @@
+"""One-way orchestration from a validated case to human review."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Callable, Mapping
+
+from .agents import AgentRuntime
+from .cases import CaseState
+from .finding_store import FindingStore
+from .intake import numeric_id
+from .observability import UsageSample, WindowPolicy
+from .preapproval import (
+    ChangeWindowService, HumanReviewGate, HumanReviewOutcome, ReviewOutcome,
+    RollbackReviewService, SREReviewService, WindowOutcome,
+)
+from .product_records import ProductRecordStore
+from .remediation_planning import (
+    RemediationPlanOutcome, RemediationPlanningService, TerraformRunner,
+)
+from .workflow import CaseStore
+
+
+@dataclass(frozen=True)
+class PreApprovalOutcome:
+    planning: RemediationPlanOutcome
+    sre_review: ReviewOutcome
+    change_window: WindowOutcome
+    rollback_review: ReviewOutcome
+    human_review: HumanReviewOutcome
+
+
+class PreApprovalOrchestrator:
+    def __init__(self, *, case_store: CaseStore, finding_store: FindingStore,
+                 record_store: ProductRecordStore, artifact_root,
+                 runtime: AgentRuntime, runner: TerraformRunner,
+                 now: Callable[[], str],
+                 id_factory: Callable[[str], str] = numeric_id) -> None:
+        common = dict(case_store=case_store, record_store=record_store,
+                      artifact_root=artifact_root, runtime=runtime, now=now,
+                      id_factory=id_factory)
+        self.case_store = case_store
+        self.planning = RemediationPlanningService(
+            case_store=case_store, finding_store=finding_store,
+            record_store=record_store, artifact_root=artifact_root,
+            runtime=runtime, runner=runner, now=now, id_factory=id_factory)
+        self.sre = SREReviewService(**common)
+        self.window = ChangeWindowService(**common)
+        self.rollback = RollbackReviewService(**common)
+        self.gate = HumanReviewGate(
+            case_store=case_store, record_store=record_store,
+            now=now, id_factory=id_factory)
+
+    def prepare(self, case_id: str, *, repository,
+                state_document: Mapping | None, service_context: Mapping,
+                usage_samples: tuple[UsageSample, ...],
+                window_policy: WindowPolicy) -> PreApprovalOutcome:
+        planning = self.planning.prepare(
+            case_id, repository=repository, state_document=state_document)
+        sre = self.sre.review(case_id, service_context=service_context)
+        if sre.case.state is not CaseState.SRE_APPROVED:
+            raise RuntimeError(f"SRE review stopped workflow in {sre.case.state}")
+        window = self.window.select(
+            case_id, samples=usage_samples, policy=window_policy)
+        rollback = self.rollback.review(case_id)
+        if rollback.case.state is not CaseState.ROLLBACK_READY:
+            raise RuntimeError(
+                f"rollback review stopped workflow in {rollback.case.state}")
+        human = self.gate.prepare(case_id)
+        return PreApprovalOutcome(
+            planning=planning, sre_review=sre, change_window=window,
+            rollback_review=rollback, human_review=human)
