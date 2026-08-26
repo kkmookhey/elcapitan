@@ -20,7 +20,11 @@ probe. Start with `README.md` and `docs/product-architecture.md`.
 
 The product currently supports OCSF and ASFF intake, exact-asset correlation,
 transparent priority scoring, SQLite-backed cases/findings/records, explicit
-workflow gates, and read-only validation for its first Azure and AWS rules.
+workflow gates, read-only validation for its first Azure and AWS rules, and an
+isolated Terraform planning path. Planning links one resource owner using
+literal configuration or Terraform state, allows replacement of only that
+file, runs format/validate/no-refresh plan checks, and never applies
+infrastructure changes.
 
 Run the complete suite with:
 

@@ -138,13 +138,11 @@ class CaseValidationService:
         results: list[FindingValidation] = []
         evidence_refs: list[dict] = []
         captured: dict[tuple[str, str], tuple[CloudState | None, tuple[str, ...], str]] = {}
-        evidence_counter = 0
-
         for finding in findings:
             key = (finding.provider, finding.resource_uid)
             if key not in captured:
-                evidence_counter += 1
-                evidence_id = f"EVD-{evidence_counter:03d}"
+                evidence_id = self.id_factory("EVD")
+                command_id = self.id_factory("CMD")
                 try:
                     state = self.reader(finding, host_env)
                     if (state.provider != finding.provider
@@ -156,7 +154,7 @@ class CaseValidationService:
                     ref = write_evidence(
                         run_dir, evidence_id, "live_cloud_configuration",
                         canonical_json(to_dict(state)), self.collector,
-                        command_id=f"CMD-{evidence_counter:03d}", now=now)
+                        command_id=command_id, now=now)
                     evidence_refs.append(ref.to_dict())
                     captured[key] = state, (ref.evidence_id,), ""
                 except (OSError, ValueError) as exc:
@@ -164,7 +162,7 @@ class CaseValidationService:
                         run_dir, evidence_id, "live_validation_error",
                         str(exc).encode("utf-8"), self.collector,
                         sensitivity="restricted",
-                        command_id=f"CMD-{evidence_counter:03d}", now=now)
+                        command_id=command_id, now=now)
                     evidence_refs.append(ref.to_dict())
                     captured[key] = None, (ref.evidence_id,), str(exc)
 

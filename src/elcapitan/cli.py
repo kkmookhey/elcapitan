@@ -16,6 +16,10 @@ from .evidence import Collector
 from .finding_store import SqliteFindingStore
 from .intake import IntakeContext, RemediationIntake
 from .product_records import SqliteProductRecordStore, product_record_to_dict
+from .remediation_planning import (
+    RecordedAgentRuntime, RemediationPlanningService, SubprocessTerraformRunner,
+    TerraformChecksFailed,
+)
 
 
 def _now() -> str:
@@ -44,6 +48,21 @@ def _parser() -> argparse.ArgumentParser:
     validate.add_argument("--case", required=True)
     validate.add_argument("--db", type=Path, required=True)
     validate.add_argument("--artifacts", type=Path, required=True)
+    plan = sub.add_parser("plan", help="prepare and verify a Terraform remediation")
+    plan.add_argument("--case", required=True)
+    plan.add_argument("--db", type=Path, required=True)
+    plan.add_argument("--artifacts", type=Path, required=True)
+    plan.add_argument("--repo", type=Path, required=True)
+    plan.add_argument(
+        "--agent-result", type=Path, required=True,
+        help="recorded TerraformRemediationProposal.v1 agent result",
+    )
+    plan.add_argument(
+        "--state-json", type=Path,
+        help="optional terraform show -json output for computed resource names",
+    )
+    plan.add_argument("--terraform-bin", default="terraform")
+    plan.add_argument("--terraform-timeout", type=float, default=300)
     return parser
 
 
@@ -102,6 +121,45 @@ def main(argv=None) -> int:
             "case": case_to_dict(outcome.case),
             "record": product_record_to_dict(outcome.record),
             "findings": [finding.to_dict() for finding in outcome.findings],
+        }, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 0
+    if args.command == "plan":
+        document = json.loads(args.agent_result.read_text())
+        now = _now
+        service = RemediationPlanningService(
+            case_store=SqliteCaseStore(args.db),
+            finding_store=SqliteFindingStore(args.db),
+            record_store=SqliteProductRecordStore(args.db),
+            artifact_root=args.artifacts,
+            runtime=RecordedAgentRuntime(document, now=now),
+            runner=SubprocessTerraformRunner(
+                args.terraform_bin, timeout_seconds=args.terraform_timeout,
+            ),
+            now=now,
+        )
+        try:
+            state_document = (
+                json.loads(args.state_json.read_text()) if args.state_json else None
+            )
+            outcome = service.prepare(
+                args.case, repository=args.repo, state_document=state_document,
+            )
+        except TerraformChecksFailed as exc:
+            json.dump({
+                "status": "rejected",
+                "record": product_record_to_dict(exc.record),
+                "checks": [check.to_dict() for check in exc.checks],
+            }, sys.stdout, indent=2)
+            sys.stdout.write("\n")
+            return 2
+        json.dump({
+            "status": "plan_ready",
+            "case": case_to_dict(outcome.case),
+            "link": outcome.link.to_dict(),
+            "link_record": product_record_to_dict(outcome.link_record),
+            "plan_record": product_record_to_dict(outcome.plan_record),
+            "checks": [check.to_dict() for check in outcome.checks],
         }, sys.stdout, indent=2)
         sys.stdout.write("\n")
         return 0

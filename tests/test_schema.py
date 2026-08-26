@@ -1,6 +1,6 @@
 from copy import deepcopy
 
-from elcapitan.schema import load_schema, validate_doc
+from elcapitan.schema import SCHEMA_DIR, load_schema, validate_doc
 
 
 EVIDENCE_REF = {
@@ -17,6 +17,11 @@ EVIDENCE_REF = {
 
 def test_schema_loader_reads_product_schema():
     assert load_schema("evidence-ref")["title"] == "EvidenceRef"
+
+
+def test_schema_assets_are_inside_the_installable_package():
+    assert SCHEMA_DIR.parent.name == "elcapitan"
+    assert (SCHEMA_DIR / "finding-record.schema.json").is_file()
 
 
 def test_valid_evidence_ref_passes():

@@ -52,3 +52,71 @@ def test_cli_validates_case_with_scoped_read_only_cloud_identity(
     assert validated["findings"][0]["status"] == "confirmed"
     assert validated["record"]["body"]["evidence"][0]["collector"]["identity"] == (
         "read-only-scanner")
+
+
+def test_cli_prepares_a_verified_terraform_plan(tmp_path, capsys, monkeypatch):
+    db = tmp_path / "product.db"
+    artifacts = tmp_path / "artifacts"
+    assert main([
+        "intake", str(FIXTURE), "--tenant", "TEN-001",
+        "--db", str(db), "--artifacts", str(artifacts),
+    ]) == 0
+    case_id = json.loads(capsys.readouterr().out)[0]["case_id"]
+
+    az_bin = fake_az.install(tmp_path / "az-bin")
+    monkeypatch.setenv("PATH", f"{az_bin}{os.pathsep}{os.environ['PATH']}")
+    for name, value in fake_az.scanner_credentials().items():
+        monkeypatch.setenv(name, value)
+    assert main([
+        "validate", "--case", case_id, "--db", str(db),
+        "--artifacts", str(artifacts),
+    ]) == 0
+    capsys.readouterr()
+
+    repository = tmp_path / "customer-repo"
+    source = repository / "infra" / "storage.tf"
+    source.parent.mkdir(parents=True)
+    source.write_text('''
+resource "azurerm_storage_account" "corpus" {
+  name                          = "eigercorpus8dlub3zy"
+  resource_group_name           = "eiger-rg"
+  public_network_access_enabled = true
+}
+''')
+    replacement = source.read_text().replace("= true", "= false")
+    result_file = tmp_path / "agent-result.json"
+    result_file.write_text(json.dumps({
+        "runtime": "test-recording",
+        "model": "test-model",
+        "output": {
+            "objective": "disable public network access",
+            "files": {"infra/storage.tf": replacement},
+            "prerequisites": ["confirm private connectivity"],
+            "steps": ["change the Terraform argument"],
+            "rollout_steps": ["deploy to canary"],
+            "verification_steps": ["rerun the scanner"],
+            "rollback_steps": ["restore the previous value"],
+            "rollback_triggers": ["private requests fail"],
+            "blast_radius": ["storage clients"],
+        },
+    }))
+    terraform = tmp_path / "terraform"
+    terraform.write_text(
+        "#!/bin/sh\n"
+        "if [ \"$1\" = \"plan\" ]; then touch .elcapitan-plan.tfplan; fi\n"
+        "exit 0\n"
+    )
+    terraform.chmod(0o755)
+
+    assert main([
+        "plan", "--case", case_id, "--db", str(db),
+        "--artifacts", str(artifacts), "--repo", str(repository),
+        "--agent-result", str(result_file), "--terraform-bin", str(terraform),
+    ]) == 0
+    planned = json.loads(capsys.readouterr().out)
+    assert planned["status"] == "plan_ready"
+    assert planned["case"]["state"] == "plan_ready"
+    assert [check["name"] for check in planned["checks"]] == [
+        "fmt", "init", "validate", "plan",
+    ]
+    assert source.read_text().endswith("public_network_access_enabled = true\n}\n")

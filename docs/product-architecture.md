@@ -1,6 +1,6 @@
 # El Capitan product architecture
 
-**Status:** initial product direction, 2026-08-25
+**Status:** initial product direction, updated 2026-08-26
 
 ## Decision
 
@@ -107,9 +107,11 @@ The first customer-facing slice remains deliberately narrow:
 Implemented so far: durable cases and events, deterministic priority,
 idempotent OCSF/ASFF intake, exact-asset correlation, one-active-case
 concurrency enforcement, provider-neutral agent contracts, read-only live
-validation for the first Azure/AWS rule set, immutable typed product records,
-and a local CLI. Terraform linking, model runtime adapters, SRE/window workers,
-and GitHub PR creation are the remaining parts of this slice.
+validation for the first Azure/AWS rule set, conservative literal or
+state-backed Terraform linking, isolated complete-file remediation proposals,
+Terraform verification gates, immutable typed product records, and a local
+CLI. Model runtime adapters, SRE/window workers, and GitHub PR creation are the
+remaining parts of this slice.
 
 The next slice adds staging/canary execution. Production execution is enabled
 only after the connector, health contract, rollback, identity, and audit gates

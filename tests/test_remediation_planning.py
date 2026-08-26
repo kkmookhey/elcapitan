@@ -1,0 +1,214 @@
+import json
+from pathlib import Path
+
+import pytest
+
+from elcapitan.agents import AgentResult, AgentResultStatus
+from elcapitan.case_store import SqliteCaseStore
+from elcapitan.case_validation import CaseValidationService
+from elcapitan.cases import CaseState
+from elcapitan.cloud import CloudState
+from elcapitan.evidence import Collector
+from elcapitan.finding_store import SqliteFindingStore
+from elcapitan.intake import RemediationIntake
+from elcapitan.product_records import SqliteProductRecordStore
+from elcapitan.remediation_planning import (
+    RemediationPlanningError, RemediationPlanningService, TerraformCheck,
+    TerraformChecksFailed,
+)
+
+
+FIXTURE = Path(__file__).parent / "fixtures" / "prowler-ocsf-azure-sample.json"
+NOW = "2026-08-26T12:00:00Z"
+
+
+class Ids:
+    def __init__(self):
+        self.counts = {}
+
+    def __call__(self, prefix):
+        self.counts[prefix] = self.counts.get(prefix, 0) + 1
+        return f"{prefix}-{self.counts[prefix]:03d}"
+
+
+class Runtime:
+    name = "test-runtime"
+
+    def __init__(self, replacement, *, citations=None, files=None):
+        self.replacement = replacement
+        self.citations = citations
+        self.files = files
+        self.tasks = []
+
+    def run(self, task):
+        self.tasks.append(task)
+        return AgentResult(
+            task_id=task.task_id,
+            case_id=task.case_id,
+            role=task.role,
+            status=AgentResultStatus.SUCCEEDED,
+            output={
+                "objective": "disable public network access",
+                "files": self.files or {"infra/storage.tf": self.replacement},
+                "prerequisites": ["confirm private endpoint connectivity"],
+                "steps": ["set public_network_access_enabled to false"],
+                "rollout_steps": ["apply to a canary environment first"],
+                "verification_steps": ["verify the scanner check clears"],
+                "rollback_steps": ["restore public_network_access_enabled to true"],
+                "rollback_triggers": ["private endpoint requests fail"],
+                "blast_radius": ["storage clients"],
+            },
+            evidence_cited=(tuple(task.evidence_ids) if self.citations is None
+                            else tuple(self.citations)),
+            missing_evidence=(),
+            runtime=self.name,
+            model="test-model",
+            started_at=NOW,
+            completed_at=NOW,
+            usage={"input": 100, "output": 50},
+        )
+
+
+class Runner:
+    def __init__(self, exit_codes=(0, 0, 0)):
+        self.exit_codes = exit_codes
+        self.calls = []
+
+    def check(self, workspace, link):
+        self.calls.append((workspace, link))
+        names = ("fmt", "validate", "plan")
+        return tuple(
+            TerraformCheck(name, ("terraform", name), code, stdout=f"{name} output")
+            for name, code in zip(names, self.exit_codes)
+        )
+
+
+@pytest.fixture
+def prepared(tmp_path):
+    db = tmp_path / "product.db"
+    cases = SqliteCaseStore(db)
+    findings = SqliteFindingStore(db)
+    records = SqliteProductRecordStore(db)
+    ids = Ids()
+    intake = RemediationIntake(
+        case_store=cases,
+        finding_store=findings,
+        artifact_root=tmp_path / "artifacts",
+        collector=Collector("prowler", "5.37.1", "scanner"),
+        now=lambda: NOW,
+        id_factory=ids,
+    )
+    raw = json.loads(FIXTURE.read_text())
+    opened = intake.ingest(raw, tenant_id="TEN-001")
+    state = CloudState(
+        provider="azure",
+        resource_uid=findings.get(opened.finding.finding_id).resource_uid,
+        config=(("public_network_access", '"Enabled"'),),
+    )
+    validated = CaseValidationService(
+        case_store=cases,
+        finding_store=findings,
+        record_store=records,
+        artifact_root=tmp_path / "artifacts",
+        now=lambda: NOW,
+        id_factory=ids,
+        reader=lambda finding, env: state,
+    ).validate(opened.case.case_id, host_env={}).case
+    repository = tmp_path / "customer-repo"
+    source = repository / "infra" / "storage.tf"
+    source.parent.mkdir(parents=True)
+    source.write_text('''
+resource "azurerm_storage_account" "corpus" {
+  name                          = "eigercorpus8dlub3zy"
+  resource_group_name           = "eiger-rg"
+  location                      = "centralindia"
+  public_network_access_enabled = true
+}
+''')
+    replacement = source.read_text().replace("= true", "= false")
+    return tmp_path, cases, findings, records, ids, validated, repository, source, replacement
+
+
+def service(prepared, runtime, runner):
+    tmp_path, cases, findings, records, ids, *_ = prepared
+    return RemediationPlanningService(
+        case_store=cases,
+        finding_store=findings,
+        record_store=records,
+        artifact_root=tmp_path / "artifacts",
+        runtime=runtime,
+        runner=runner,
+        now=lambda: NOW,
+        id_factory=ids,
+    )
+
+
+def test_verified_agent_change_advances_case_without_mutating_source(prepared):
+    _, cases, _, records, _, validated, repository, source, replacement = prepared
+    (repository / ".env").write_text("ARM_CLIENT_SECRET=do-not-copy\n")
+    (repository / "terraform.tfstate").write_text('{"sensitive": true}\n')
+    original = source.read_text()
+    runtime = Runtime(replacement)
+    runner = Runner()
+    outcome = service(prepared, runtime, runner).prepare(
+        validated.case_id, repository=source.parents[1]
+    )
+
+    assert outcome.case.state is CaseState.PLAN_READY
+    assert outcome.case.change_plan.plan_id == outcome.plan_record.record_id
+    assert outcome.plan_record.record_type == "RemediationPlan.v1"
+    assert outcome.plan_record.body["status"] == "verified"
+    assert records.get(outcome.link_record.record_id).record_type == "IaCLink.v1"
+    assert source.read_text() == original
+    workspace = runner.calls[0][0]
+    assert (workspace / "infra" / "storage.tf").read_text() == replacement
+    assert not (workspace / ".env").exists()
+    assert not (workspace / "terraform.tfstate").exists()
+    assert cases.events(validated.case_id)[-1].transition.value == "prepare_plan"
+
+    task = runtime.tasks[0]
+    assert task.output_contract == "TerraformRemediationProposal.v1"
+    assert task.metadata["link"]["source_path"] == "infra/storage.tf"
+    assert validated.record_ids["validation_result_id"] in task.input_record_ids
+
+
+def test_failed_terraform_check_is_persisted_but_does_not_advance(prepared):
+    _, cases, _, records, _, validated, repository, _, replacement = prepared
+    runner = Runner((0, 1, 0))
+    with pytest.raises(TerraformChecksFailed) as failure:
+        service(prepared, Runtime(replacement), runner).prepare(
+            validated.case_id, repository=repository
+        )
+    assert failure.value.record.record_type == "RemediationPlanAttempt.v1"
+    assert failure.value.record.body["status"] == "rejected"
+    assert records.get(failure.value.record.record_id) == failure.value.record
+    assert cases.get(validated.case_id).state is CaseState.VALIDATED
+
+
+def test_agent_cannot_modify_a_file_other_than_the_linked_source(prepared):
+    *_, validated, repository, _, replacement = prepared
+    runtime = Runtime(replacement, files={"../escape.tf": replacement})
+    with pytest.raises(RemediationPlanningError, match="replace exactly"):
+        service(prepared, runtime, Runner()).prepare(
+            validated.case_id, repository=repository
+        )
+
+
+def test_agent_must_cite_the_linked_source(prepared):
+    *_, validated, repository, _, replacement = prepared
+    runtime = Runtime(replacement, citations=())
+    with pytest.raises(RemediationPlanningError, match="did not cite"):
+        service(prepared, runtime, Runner()).prepare(
+            validated.case_id, repository=repository
+        )
+
+
+def test_repository_symlinks_are_rejected_before_terraform_runs(prepared):
+    *_, validated, repository, _, replacement = prepared
+    (repository / "untrusted.tf").symlink_to(repository / "infra" / "storage.tf")
+    runner = Runner()
+    with pytest.raises(RemediationPlanningError, match="unsupported symlink"):
+        service(prepared, Runtime(replacement), runner).prepare(
+            validated.case_id, repository=repository
+        )
+    assert runner.calls == []
