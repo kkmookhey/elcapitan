@@ -1,9 +1,24 @@
 # El Capitan
 
-El Capitan is becoming a durable vulnerability-remediation platform. It turns
-scanner findings into auditable remediation cases that move through priority,
-validation, change planning, SRE review, scheduling, approval, execution,
-verification, and rollback.
+El Capitan is an evidence-bound vulnerability remediation control plane. It
+coordinates specialist agents and deterministic gates from finding intake
+through live validation, risk prioritization, remediation planning, SRE review,
+change-window selection, rollback review, human approval, deployment,
+monitoring, verification, certificate issuance, and originator handoff.
+
+## Browser demo
+
+Run the complete staged product demonstration:
+
+```bash
+UV_CACHE_DIR=/private/tmp/elcapitan-uv-cache \
+  uv run elcapitan serve-demo --prepare
+```
+
+Then open `http://127.0.0.1:8765`. The success scenario produces a remediation
+certificate and handoff; the failure scenario proves automatic checkpoint
+rollback and service recovery. See [the demo guide](docs/demo-guide.md) for the
+five-minute script, safety boundaries, and Azure packaging notes.
 
 Hermes is not required. Model-backed workers use a provider-neutral runtime
 contract; deterministic workflow and policy code owns state and side effects.

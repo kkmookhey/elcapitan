@@ -35,6 +35,7 @@ from .cloud import CloudState
 from .evidence import Collector
 from .finding_store import SqliteFindingStore
 from .intake import IntakeContext, RemediationIntake
+from .model_egress import ModelEgressRuntime
 from .observability import (
     UsageSample, WindowPolicy, capture_azure_monitor_usage, load_usage_samples,
     utc_text,
@@ -156,6 +157,16 @@ def _parser() -> argparse.ArgumentParser:
     lifecycle.add_argument("--terraform-timeout", type=float, default=120)
     lifecycle.add_argument("--outcome", choices=("success", "rollback"),
                            default="success")
+    serve = sub.add_parser(
+        "serve-demo", help="serve the staged browser demonstration")
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=8765)
+    serve.add_argument("--workdir", type=Path, default=Path(".elcapitan-demo"))
+    serve.add_argument("--terraform-bin", default="terraform")
+    serve.add_argument("--terraform-timeout", type=float, default=120)
+    serve.add_argument(
+        "--prepare", action="store_true",
+        help="prepare the review package before accepting browser requests")
     show = sub.add_parser("show-review", help="print a case's human review package")
     show.add_argument("--case", required=True)
     show.add_argument("--db", type=Path, required=True)
@@ -298,10 +309,10 @@ def _prepare_review(args) -> int:
         if missing:
             raise ValueError(
                 "--model or role-specific models are required for: " + ", ".join(missing))
-        runtime = RoleRoutedRuntime({
+        runtime = ModelEgressRuntime(RoleRoutedRuntime({
             role: _live_runtime(provider, model, args)
             for role, (provider, model) in selected.items()
-        })
+        }))
     state = json.loads(args.state_json.read_text()) if args.state_json else None
     service_context = json.loads(args.service_context_json.read_text())
     if not isinstance(service_context, dict):
@@ -907,6 +918,19 @@ def main(argv=None) -> int:
         return _demo_review(args)
     if args.command == "demo-lifecycle":
         return _demo_lifecycle(args)
+    if args.command == "serve-demo":
+        if not 0 <= args.port <= 65535:
+            raise ValueError("--port must be between 0 and 65535")
+        from .demo_web import run_demo_server
+        run_demo_server(
+            host=args.host,
+            port=args.port,
+            workdir=args.workdir,
+            terraform_bin=args.terraform_bin,
+            terraform_timeout=args.terraform_timeout,
+            prepare=args.prepare,
+        )
+        return 0
     if args.command == "show-review":
         return _show_review(args)
     if args.command == "portfolio":

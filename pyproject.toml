@@ -18,7 +18,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-elcapitan = ["schemas/*.json"]
+elcapitan = ["schemas/*.json", "web/*.html", "web/*.css", "web/*.js"]
 
 [tool.pytest.ini_options]
 # Without this, `pytest` imports whatever `elcapitan` the ambient venv happens

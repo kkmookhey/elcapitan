@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="El Capitan autonomous vulnerability remediation control plane demo">
+  <title>El Capitan · Remediation Control Plane</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="El Capitan home">
+      <span class="brand-mark" aria-hidden="true">EC</span>
+      <span><strong>El Capitan</strong><small>Remediation control plane</small></span>
+    </a>
+    <div class="top-meta">
+      <span class="environment"><i></i> Non-production demo</span>
+      <button class="ghost" id="reset-button">Reset run</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Autonomous remediation fleet</p>
+        <h1>From a reported vulnerability<br>to a verified handoff.</h1>
+        <p class="lede">Evidence-bound agents validate, prioritize, plan, review, schedule, deploy, monitor, and prove every remediation—with a human holding the final gate.</p>
+      </div>
+      <div class="hero-status">
+        <span class="status-orb" id="status-orb"></span>
+        <div><small>Fleet status</small><strong id="fleet-status">Ready</strong></div>
+      </div>
+    </section>
+
+    <section class="control-panel" aria-labelledby="mission-title">
+      <div>
+        <p class="section-label">Current mission</p>
+        <h2 id="mission-title">Prepare the remediation fleet</h2>
+        <p id="mission-message">Create a realistic, isolated Azure Storage finding and run it through every pre-approval control.</p>
+      </div>
+      <div class="actions" id="actions"></div>
+    </section>
+
+    <section class="metrics" aria-label="Case metrics">
+      <article><small>Risk score</small><strong id="risk-score">—</strong><span id="urgency">Not assessed</span></article>
+      <article><small>Evidence objects</small><strong id="evidence-count">0</strong><span>Immutable references</span></article>
+      <article><small>Independent checks</small><strong id="check-count">0</strong><span id="check-status">Waiting</span></article>
+      <article><small>Blast radius</small><strong id="blast-radius">—</strong><span>Bounded services</span></article>
+    </section>
+
+    <section class="fleet-section">
+      <div class="section-heading">
+        <div><p class="section-label">Agent fleet</p><h2>One accountable workflow</h2></div>
+        <p>Each specialist produces a typed record. Deterministic gates decide whether the case may advance.</p>
+      </div>
+      <div class="pipeline" id="pipeline" aria-label="Remediation lifecycle"></div>
+    </section>
+
+    <div class="workspace-grid">
+      <section class="card case-card">
+        <div class="card-heading">
+          <div><p class="section-label">Decision brief</p><h2>Human review package</h2></div>
+          <span class="pill" id="case-state">No case</span>
+        </div>
+        <div id="review-empty" class="empty-state">The fleet will assemble the exact change, operational review, timing evidence, and rollback contract here.</div>
+        <div id="review-content" hidden>
+          <div class="finding-title"><span class="severity">HIGH</span><h3>Storage public network access is enabled</h3></div>
+          <dl class="facts" id="facts"></dl>
+          <div class="review-columns">
+            <div><h4>Implementation</h4><ol id="implementation-steps"></ol></div>
+            <div><h4>Rollback triggers</h4><ul id="rollback-triggers"></ul></div>
+          </div>
+          <h4>Verified infrastructure change</h4>
+          <pre class="diff"><code id="change-diff"></code></pre>
+        </div>
+      </section>
+
+      <section class="card activity-card">
+        <div class="card-heading">
+          <div><p class="section-label">Audit stream</p><h2>Live case timeline</h2></div>
+          <span class="record-count" id="record-count">0 records</span>
+        </div>
+        <div class="timeline" id="timeline"><div class="empty-state">No workflow events yet.</div></div>
+      </section>
+    </div>
+
+    <section class="card proof-card" id="proof-card" hidden>
+      <div class="card-heading">
+        <div><p class="section-label">Completion proof</p><h2 id="proof-title">Remediation certificate</h2></div>
+        <span class="seal">Verified</span>
+      </div>
+      <div class="proof-grid" id="proof-grid"></div>
+    </section>
+
+    <section class="trust-strip">
+      <div><strong>Evidence bound</strong><span>No uncited agent decision advances</span></div>
+      <div><strong>Human gated</strong><span>Approval binds the exact package and window</span></div>
+      <div><strong>Fail closed</strong><span>Health or verification failure triggers rollback</span></div>
+      <div><strong>Originator handoff</strong><span>Certificate closes the operational loop</span></div>
+    </section>
+  </main>
+
+  <dialog id="approval-dialog">
+    <form method="dialog" id="approval-form">
+      <button class="dialog-close" value="cancel" aria-label="Close">×</button>
+      <p class="section-label">Human control point</p>
+      <h2>Approve the exact remediation package?</h2>
+      <p>This records an explicit approval bound to the plan hashes, selected maintenance window, rollback contract, and case identity.</p>
+      <label>Approver identity<input id="approver" value="Demo Change Manager" required maxlength="80"></label>
+      <label class="attestation"><input id="attestation" type="checkbox" required> I reviewed the implementation, impact, verification, and rollback plan.</label>
+      <div class="dialog-actions"><button class="ghost" value="cancel">Cancel</button><button class="primary" id="confirm-approval" value="default">Approve & schedule</button></div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>
