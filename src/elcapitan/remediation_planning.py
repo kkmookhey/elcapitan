@@ -112,11 +112,18 @@ def _container_apps_identity_proxy(endpoint: str, identity_header: str,
             }
             client_allowed = requested_client == client_id
             if not audience_allowed or not client_allowed:
+                reported_resource = (
+                    resource if resource.startswith("https://")
+                    and len(resource) <= 256
+                    and not any(character in resource for character in "\r\n")
+                    else "[invalid]"
+                )
                 body = json.dumps({"error": {
                     "code": "IdentityRequestDenied",
                     "audience_allowed": audience_allowed,
                     "client_allowed": client_allowed,
                     "query_keys": sorted(query),
+                    "resource": reported_resource,
                 }}, sort_keys=True, separators=(",", ":")).encode()
                 self._send(403, body)
                 return

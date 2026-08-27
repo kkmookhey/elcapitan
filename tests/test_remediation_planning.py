@@ -338,6 +338,7 @@ def test_container_apps_identity_proxy_injects_header_and_bounds_request():
                 "client_allowed": True,
                 "code": "IdentityRequestDenied",
                 "query_keys": ["client_id", "resource"],
+                "resource": "https://vault.azure.net/",
             }
     finally:
         platform.shutdown()
