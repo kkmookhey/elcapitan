@@ -48,8 +48,15 @@ def instructions(task: AgentTask) -> str:
         role = ROLE_INSTRUCTIONS[task.role.value]
     except KeyError:
         raise ValueError(f"no prompt is registered for role {task.role.value}") from None
-    return (role + " Return only the strict structured result. Cite only evidence IDs "
-            "listed in available_evidence_ids.")
+    return (
+        role
+        + " Return only the strict structured result. Cite only evidence IDs listed in "
+        "available_evidence_ids. Status semantics are mandatory: succeeded requires an "
+        "empty missing_evidence list; when evidence needed to complete the task is absent, "
+        "use needs_more_evidence or needs_human_context and name it. Implementation "
+        "prerequisites that can be verified before rollout belong in the output's "
+        "prerequisites or controls and are not, by themselves, missing planning evidence."
+    )
 
 
 def task_document(task: AgentTask) -> dict:

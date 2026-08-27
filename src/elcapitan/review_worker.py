@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Mapping
 
-from .agents import AgentRole, RoleRoutedRuntime
+from .agents import AgentRole, RoleRoutedRuntime, validate_result
 from .cases import CaseState, case_to_dict
 from .model_egress import ModelEgressRuntime
 from .observability import WindowPolicy, load_usage_samples
@@ -25,6 +26,29 @@ from .remediation_planning import SubprocessTerraformRunner
 
 class ReviewWorkerError(RuntimeError):
     pass
+
+
+class _SemanticRetryRuntime:
+    """Retry once when a provider satisfies JSON schema but violates semantics."""
+
+    def __init__(self, runtime) -> None:
+        self.runtime = runtime
+
+    @property
+    def name(self) -> str:
+        return f"semantic-retry:{self.runtime.name}"
+
+    def run(self, task):
+        result = self.runtime.run(task)
+        failures = validate_result(task, result)
+        if not failures:
+            return result
+        retry = replace(task, constraints=tuple((*task.constraints,
+            "Correct these semantic contract failures from the previous response: "
+            + "; ".join(failures),
+            "If status is succeeded, missing_evidence must be empty.",
+        )))
+        return self.runtime.run(retry)
 
 
 def _now() -> str:
@@ -50,14 +74,18 @@ def _required_env(name: str) -> str:
 
 def _runtime(now=_now):
     routes = {
-        AgentRole.REMEDIATION_ENGINEER: OpenAIResponsesRuntime.from_environment(
-            model=_required_env("ELCAP_REMEDIATION_MODEL"), now=now),
-        AgentRole.SRE_REVIEWER: AnthropicMessagesRuntime.from_environment(
-            model=_required_env("ELCAP_SRE_MODEL"), now=now),
-        AgentRole.WINDOW_PLANNER: OpenAIResponsesRuntime.from_environment(
-            model=_required_env("ELCAP_WINDOW_MODEL"), now=now),
-        AgentRole.ROLLBACK_VERIFIER: AnthropicMessagesRuntime.from_environment(
-            model=_required_env("ELCAP_ROLLBACK_MODEL"), now=now),
+        AgentRole.REMEDIATION_ENGINEER: _SemanticRetryRuntime(
+            OpenAIResponsesRuntime.from_environment(
+                model=_required_env("ELCAP_REMEDIATION_MODEL"), now=now)),
+        AgentRole.SRE_REVIEWER: _SemanticRetryRuntime(
+            AnthropicMessagesRuntime.from_environment(
+                model=_required_env("ELCAP_SRE_MODEL"), now=now)),
+        AgentRole.WINDOW_PLANNER: _SemanticRetryRuntime(
+            OpenAIResponsesRuntime.from_environment(
+                model=_required_env("ELCAP_WINDOW_MODEL"), now=now)),
+        AgentRole.ROLLBACK_VERIFIER: _SemanticRetryRuntime(
+            AnthropicMessagesRuntime.from_environment(
+                model=_required_env("ELCAP_ROLLBACK_MODEL"), now=now)),
     }
     return ModelEgressRuntime(RoleRoutedRuntime(routes))
 
