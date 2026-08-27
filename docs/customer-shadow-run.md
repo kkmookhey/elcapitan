@@ -114,6 +114,20 @@ a confirmed case. It works in an isolated copy, never runs `terraform apply`,
 and stops at `awaiting_approval` after Terraform checks, SRE review, window
 selection, and independent rollback review all pass.
 
+Export the current evidence-minimized handoff first:
+
+```bash
+uv run elcapitan promotion-manifest \
+  --tenant TENANT --case CASE-... --db /path/to/product.db
+```
+
+Pass its `promotion_token` to `prepare-review --promotion-token`. The token is
+derived from the exact case, confirmed finding set, target resource,
+validation record, and validation evidence references. It is not a bearer
+credential and grants no cloud access; it is a tamper/TOCTOU guard. A changed
+or incomplete validation boundary is rejected before model dispatch or
+Terraform work.
+
 Do not give the shadow web service those repository, model, observer, or
 execution credentials. That separation is an intentional product control, not
 a temporary UI omission.

@@ -134,6 +134,7 @@ class ShadowRequestHandler(DemoRequestHandler):
                         "GET /api/fleet?tenant=...",
                         "GET /api/connectors",
                         "GET /api/cases/{case_id}?tenant=...",
+                        "GET /api/promotions/{case_id}?tenant=...",
                         "POST /api/intake",
                         "POST /api/validate",
                         "POST /api/validate-batch",
@@ -149,6 +150,12 @@ class ShadowRequestHandler(DemoRequestHandler):
                 if not case_id or "/" in case_id:
                     raise ShadowControlError("one case id is required")
                 self._json(self.server.control.case_detail(
+                    tenant_id=self._tenant(query), case_id=case_id))
+            elif parsed.path.startswith("/api/promotions/"):
+                case_id = parsed.path.removeprefix("/api/promotions/")
+                if not case_id or "/" in case_id:
+                    raise ShadowControlError("one case id is required")
+                self._json(self.server.control.promotion_manifest(
                     tenant_id=self._tenant(query), case_id=case_id))
             else:
                 self.send_error(HTTPStatus.NOT_FOUND)

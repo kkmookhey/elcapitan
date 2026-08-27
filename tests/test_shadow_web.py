@@ -70,6 +70,13 @@ def test_shadow_api_intake_fleet_and_case_detail_are_authenticated(tmp_path):
         detail = json.loads(content)
         assert detail["safety_boundary"]["execution"] is False
         assert detail["findings"][0]["record"]["raw_event"]["sensitivity"] == "internal"
+        assert detail["promotion"]["status"] == "blocked"
+
+        status, _, content = request(
+            server, "GET", f"/api/promotions/{case_id}?tenant=TEN-API",
+            headers={"Cookie": cookie})
+        assert status == 200
+        assert json.loads(content)["safety_boundary"]["execution"] is False
     finally:
         server.shutdown()
         server.server_close()

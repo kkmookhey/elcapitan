@@ -214,7 +214,7 @@ def test_cli_reports_capabilities_connector_preflight_and_full_fleet(
         "intake", str(FIXTURE), "--tenant", "TEN-FLEET",
         "--db", str(db), "--artifacts", str(artifacts),
     ]) == 0
-    capsys.readouterr()
+    case_id = json.loads(capsys.readouterr().out)[0]["case_id"]
 
     assert main(["capabilities", "--provider", "azure"]) == 0
     capabilities = json.loads(capsys.readouterr().out)
@@ -238,3 +238,11 @@ def test_cli_reports_capabilities_connector_preflight_and_full_fleet(
     assert fleet["summary"]["total_findings"] == 1
     assert fleet["summary"]["supported_findings"] == 1
     assert fleet["shadow_policy"]["allow_execution"] is False
+
+    assert main([
+        "promotion-manifest", "--tenant", "TEN-FLEET", "--case", case_id,
+        "--db", str(db),
+    ]) == 0
+    promotion = json.loads(capsys.readouterr().out)
+    assert promotion["status"] == "blocked"
+    assert promotion["safety_boundary"]["execution"] is False

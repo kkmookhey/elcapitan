@@ -185,8 +185,12 @@ original repository remains unchanged.
 To exercise an already validated customer case with recorded agent results:
 
 ```bash
+uv run elcapitan promotion-manifest \
+  --tenant TENANT --case CASE-... --db /tmp/elcapitan/product.db
+
 UV_CACHE_DIR=/tmp/elcapitan-uv-cache uv run elcapitan prepare-review \
   --case CASE-... \
+  --promotion-token TOKEN-FROM-THE-CURRENT-MANIFEST \
   --db /tmp/elcapitan/product.db \
   --artifacts /tmp/elcapitan/artifacts \
   --repo /path/to/customer/terraform \
@@ -203,6 +207,11 @@ contract. Usage input is `{ "samples": [...] }`; every sample has an RFC3339
 `timestamp`, `requests`, and optional `errors` and `p95_latency_ms`. Service
 context must name the `service`, `environment`, `owner`, `health_signals`, and
 `dependencies`.
+
+The promotion token binds planning admission to the current case, confirmed
+finding set, resource, validation record, and validation evidence IDs. If that
+boundary changes or is incomplete, preparation fails before a model or
+Terraform worker runs.
 
 For an Azure case, `--azure-monitor` can replace `--usage-json`. It queries the
 case resource's historical `Transactions` metric (or `--azure-metric`) through

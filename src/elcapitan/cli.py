@@ -44,6 +44,7 @@ from .observability import (
 from .openai_runtime import OpenAIResponsesRuntime
 from .orchestration import PreApprovalOrchestrator
 from .portfolio import PortfolioPolicy, PortfolioService
+from .promotion import PromotionReadinessService
 from .provider_runtimes import AnthropicMessagesRuntime, GeminiGenerateContentRuntime
 from .product_records import (
     ProductRecord, SqliteProductRecordStore, product_record_to_dict,
@@ -103,6 +104,9 @@ def _parser() -> argparse.ArgumentParser:
         help="run a validated case through planning and stop at human approval",
     )
     review.add_argument("--case", required=True)
+    review.add_argument(
+        "--promotion-token", required=True,
+        help="exact token from promotion-manifest for the current validation boundary")
     review.add_argument("--db", type=Path, required=True)
     review.add_argument("--artifacts", type=Path, required=True)
     review.add_argument("--repo", type=Path, required=True)
@@ -193,6 +197,12 @@ def _parser() -> argparse.ArgumentParser:
         "connector-preflight",
         help="check a read-only scanner connector without making a cloud request")
     preflight.add_argument("--provider", choices=("aws", "azure"), required=True)
+    promotion = sub.add_parser(
+        "promotion-manifest",
+        help="export an evidence-minimized handoff from shadow to preapproval")
+    promotion.add_argument("--tenant", required=True)
+    promotion.add_argument("--case", required=True)
+    promotion.add_argument("--db", type=Path, required=True)
     smoke = sub.add_parser(
         "model-smoke", help="verify one live provider's strict agent contract")
     smoke.add_argument("--provider", choices=("openai", "anthropic", "gemini"),
@@ -309,6 +319,15 @@ def _live_runtime(provider: str, model: str, args):
 
 
 def _prepare_review(args) -> int:
+    cases, records = SqliteCaseStore(args.db), SqliteProductRecordStore(args.db)
+    findings = SqliteFindingStore(args.db)
+    promotion = PromotionReadinessService(
+        case_store=cases, finding_store=findings, record_store=records,
+    ).require(
+        tenant_id=cases.get(args.case).tenant_id,
+        case_id=args.case,
+        promotion_token=args.promotion_token,
+    )
     _load_provider_keys(args.env_file)
     if args.runtime == "recorded":
         runtime = _recorded_runtime(args.agent_results)
@@ -335,8 +354,6 @@ def _prepare_review(args) -> int:
     service_context = json.loads(args.service_context_json.read_text())
     if not isinstance(service_context, dict):
         raise ValueError("service context JSON must be an object")
-    cases, records = SqliteCaseStore(args.db), SqliteProductRecordStore(args.db)
-    findings = SqliteFindingStore(args.db)
     if args.usage_json:
         usage_samples = load_usage_samples(args.usage_json)
     else:
@@ -372,6 +389,7 @@ def _prepare_review(args) -> int:
         "status": outcome.human_review.case.state.value,
         "case": case_to_dict(outcome.human_review.case),
         "review_package": product_record_to_dict(outcome.human_review.review_package),
+        "promotion_token": promotion.promotion_token,
         "safety_boundary": "No infrastructure change has been applied.",
     }, sys.stdout, indent=2)
     sys.stdout.write("\n")
@@ -980,6 +998,15 @@ def main(argv=None) -> int:
         json.dump(
             connector_readiness(args.provider, host_env=os.environ).to_dict(),
             sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 0
+    if args.command == "promotion-manifest":
+        manifest = PromotionReadinessService(
+            case_store=SqliteCaseStore(args.db),
+            finding_store=SqliteFindingStore(args.db),
+            record_store=SqliteProductRecordStore(args.db),
+        ).inspect(tenant_id=args.tenant, case_id=args.case)
+        json.dump(manifest.to_dict(), sys.stdout, indent=2)
         sys.stdout.write("\n")
         return 0
     if args.command == "model-smoke":

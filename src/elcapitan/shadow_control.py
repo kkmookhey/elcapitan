@@ -18,6 +18,7 @@ from .finding_store import SqliteFindingStore
 from .fleet import CapabilityRegistry, FleetSnapshotService, connector_readiness
 from .intake import IntakeContext, RemediationIntake, priority_signals
 from .product_records import SqliteProductRecordStore, product_record_to_dict
+from .promotion import PromotionReadinessService
 from .schema import validate_doc
 
 
@@ -75,6 +76,14 @@ class ShadowFleetControlPlane:
             case_store=self.cases,
             finding_store=self.findings,
             record_store=self.records,
+        )
+
+    def _promotions(self) -> PromotionReadinessService:
+        return PromotionReadinessService(
+            case_store=self.cases,
+            finding_store=self.findings,
+            record_store=self.records,
+            registry=self.registry,
         )
 
     @staticmethod
@@ -179,7 +188,23 @@ class ShadowFleetControlPlane:
         )
 
     def snapshot(self, *, tenant_id: str) -> dict:
-        return self._fleet().snapshot(tenant_id=self._tenant(tenant_id)).to_dict()
+        tenant_id = self._tenant(tenant_id)
+        document = self._fleet().snapshot(tenant_id=tenant_id).to_dict()
+        promotions = {
+            item.case_id: item for item in self._promotions().list(tenant_id=tenant_id)
+        }
+        document["summary"]["review_ready_cases"] = sum(
+            item.eligible for item in promotions.values())
+        for case in document["cases"]:
+            readiness = promotions[case["case_id"]]
+            case["promotion_status"] = readiness.status
+            case["promotion_blockers"] = list(readiness.blockers)
+        return document
+
+    def promotion_manifest(self, *, tenant_id: str, case_id: str) -> dict:
+        tenant_id = self._tenant(tenant_id)
+        return self._promotions().inspect(
+            tenant_id=tenant_id, case_id=case_id).to_dict()
 
     def connector_status(self) -> dict:
         return {
@@ -288,6 +313,8 @@ class ShadowFleetControlPlane:
                 product_record_to_dict(item)
                 for item in self.records.list_for_case(case_id)
             ],
+            "promotion": self.promotion_manifest(
+                tenant_id=tenant_id, case_id=case_id),
             "safety_boundary": {
                 "mode": "shadow",
                 "approval": False,

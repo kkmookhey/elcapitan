@@ -158,6 +158,7 @@ async function openCase(caseId) {
   const ocsf = finding.record?.ocsf || {};
   const [tone, validation] = validationSummary(item || {validation_counts:{}, unsupported_findings:0});
   const safety = detail.safety_boundary;
+  const promotion = detail.promotion || {};
   $("#detail-content").innerHTML = `
     <div class="detail-hero"><div><span class="status ${tone}"><i></i>${escapeHtml(validation)}</span><h2>${escapeHtml(ocsf.title || item?.finding_titles?.[0] || "Remediation case")}</h2></div><div class="detail-meta"><strong>${escapeHtml(Math.round(caseDoc.priority?.score || 0))}</strong><span>${escapeHtml(humanize(caseDoc.priority?.urgency || "unassessed"))} risk</span></div></div>
     <div class="detail-actions">${item && canValidate(item) ? `<button class="primary" data-validate="${escapeHtml(caseId)}">Validate against live ${escapeHtml(item.provider.toUpperCase())}</button>` : ""}<span class="pill">${escapeHtml(humanize(caseDoc.state))}</span></div>
@@ -166,6 +167,7 @@ async function openCase(caseId) {
       <section class="detail-section"><h3>Control & target</h3>${fact("Rule", ocsf.rule_id)}${fact("Resource", finding.resource_uid)}${fact("Severity", ocsf.severity)}${fact("Findings", caseDoc.finding_ids.length)}</section>
       <section class="detail-section"><h3>Risk rationale</h3>${(caseDoc.priority?.factors || []).map(value => `<div class="record"><p>${escapeHtml(value)}</p></div>`).join("") || '<p class="empty compact">Not assessed.</p>'}</section>
       <section class="detail-section"><h3>Shadow safety boundary</h3>${fact("Live validation", safety.mode === "shadow" ? "Allowed" : "Unknown")}${fact("External models", safety.external_models ? "Allowed" : "Disabled")}${fact("Approval", safety.approval ? "Allowed" : "Unavailable")}${fact("Scheduling", safety.scheduling ? "Allowed" : "Unavailable")}${fact("Execution", safety.execution ? "Allowed" : "Unavailable")}</section>
+      <section class="detail-section full"><h3>Pre-approval promotion</h3>${fact("Status", humanize(promotion.status))}${fact("Promotion token", shortId(promotion.promotion_token, 48))}${fact("Confirmed controls", (promotion.confirmed_rule_ids || []).join(", ") || "None")}${(promotion.blockers || []).map(value => `<div class="record"><p>${escapeHtml(value)}</p></div>`).join("")}${promotion.eligible ? (promotion.required_inputs || []).map(value => `<div class="record"><p>${escapeHtml(value)}</p></div>`).join("") : ""}</section>
       <section class="detail-section full"><h3>Evidence & decision records</h3>${renderRecords(detail.records)}</section>
       <section class="detail-section full"><h3>Immutable case timeline</h3>${detail.events.map(event => `<div class="record"><strong>${escapeHtml(humanize(event.transition))}</strong><p>${escapeHtml(humanize(event.from_state))} → ${escapeHtml(humanize(event.to_state))} · ${escapeHtml(event.actor)}</p><code>${escapeHtml(event.occurred_at)} · ${escapeHtml(shortId(event.event_id))}</code></div>`).join("")}</section>
     </div>`;
