@@ -207,8 +207,9 @@ uv run elcapitan portfolio --tenant TENANT --db /path/to/product.db
 
 ## Azure execution connector
 
-The first live connector implements a deliberately narrow remediation:
-disabling public network access on one Azure Storage account. It binds the
+The first live connector implements two deliberately narrow remediations on
+one Azure Storage account: disabling public network access and preventing
+containers or blobs from opting into anonymous access. It binds each
 mutation to the exact ARM ID and verified Terraform resource, pins the Azure
 subscription, requires explicit `elcapitan_scope=lab` and
 `environment=nonproduction` tags, fingerprints the relevant configuration at
@@ -225,12 +226,23 @@ uv run elcapitan azure-storage-lifecycle \
   --confirm-resource-id "$AZURE_LAB_STORAGE_ID" \
   --subscription "$AZURE_LAB_SUBSCRIPTION" \
   --confirm-subscription "$AZURE_LAB_SUBSCRIPTION" \
+  --control public-network-access \
   --outcome rollback
 ```
 
-Add `--outcome success` to leave the lab account remediated. An optional live
-release auditor can be selected with `--provider`, `--model`, and `--env-file`.
-The filesystem driver remains available for cloud-free lifecycle tests.
+Select `--control blob-public-access` for the anonymous-blob control. Add
+`--outcome success` to leave the lab account remediated. An optional live
+release auditor can be selected with `--provider`, `--model`, and `--env-file`
+only when policy permits the execution evidence to leave the environment. The
+filesystem driver remains available for cloud-free lifecycle tests.
+
+Azure-hosted workers can use `--managed-identity-client-id`. This creates an
+isolated Azure CLI session and performs `az login --identity`; it never falls
+back to an operator login. The lab role definition is in
+`deploy/azure/lab-storage-remediator-role.json`. Its assignable scope is the
+El Capitan lab resource group, its live assignment is scoped to the one lab
+storage account, and it grants only `storageAccounts/read` and
+`storageAccounts/write` with no data actions or key-list permissions.
 
 This connector does not make arbitrary Azure changes and cannot target Eiger
 unless its resource were deliberately retagged into the lab scope. Additional

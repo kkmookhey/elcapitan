@@ -5,9 +5,12 @@ import pytest
 
 from elcapitan.action_plane import ExecutionContext
 from elcapitan.azure_action import (
-    AzureCommandResult, AzureStorageAccountClient, AzureStorageHealthMonitor,
-    AzureStoragePublicNetworkDriver, AzureStoragePublicNetworkProbe,
-    SubprocessAzureCommandRunner, parse_storage_account_id,
+    AzureActionError, AzureCommandResult, AzureStorageAccountClient,
+    AzureStorageBlobPublicAccessDriver, AzureStorageBlobPublicAccessProbe,
+    AzureStorageHealthMonitor, AzureStoragePublicNetworkDriver,
+    AzureStoragePublicNetworkProbe,
+    ManagedIdentityAzureCommandRunner, SubprocessAzureCommandRunner,
+    parse_storage_account_id,
 )
 from elcapitan.cases import CaseState, RemediationCase
 from elcapitan.hashing import sha256_file
@@ -27,6 +30,7 @@ class FakeAzureRunner:
             "id": RESOURCE_ID,
             "etag": "etag-1",
             "publicNetworkAccess": "Enabled",
+            "allowBlobPublicAccess": True,
             "provisioningState": "Succeeded",
             "statusOfPrimary": "available",
             "tags": tags or {"elcapitan_scope": "lab", "environment": "nonproduction"},
@@ -38,8 +42,12 @@ class FakeAzureRunner:
         if argv[:3] == ("storage", "account", "show"):
             return AzureCommandResult(0, json.dumps(self.document))
         if argv[:3] == ("storage", "account", "update"):
-            value = argv[argv.index("--public-network-access") + 1]
-            self.document["publicNetworkAccess"] = value
+            if "--public-network-access" in argv:
+                value = argv[argv.index("--public-network-access") + 1]
+                self.document["publicNetworkAccess"] = value
+            elif "--allow-blob-public-access" in argv:
+                value = argv[argv.index("--allow-blob-public-access") + 1]
+                self.document["allowBlobPublicAccess"] = value == "true"
             self.document["etag"] = f"etag-{len(self.commands)}"
             return AzureCommandResult(0, json.dumps(self.document))
         return AzureCommandResult(2, stderr="unexpected fake command")
@@ -111,6 +119,29 @@ def test_azure_driver_refuses_resource_drift_after_checkpoint(tmp_path):
                    for command in runner.commands)
 
 
+def test_blob_public_access_driver_deploys_probes_and_rolls_back(tmp_path):
+    runner = FakeAzureRunner()
+    ctx, client = context(tmp_path, runner)
+    replacement = tmp_path / ctx.plan.body["artifact_namespace"] / "workspace" / "main.tf"
+    replacement.write_text(replacement.read_text().replace(
+        "public_network_access_enabled = false",
+        "allow_nested_items_to_be_public = false"))
+    plan = ProductRecord(
+        "PLAN-1", "CASE-1", "RemediationPlan.v1", 1, "2026-08-26T00:00:00Z",
+        {"status": "verified", "artifact_namespace": ctx.plan.body["artifact_namespace"],
+         "change": {"source_path": "main.tf", "before_sha256": "before",
+                    "after_sha256": sha256_file(replacement)}})
+    changed = ExecutionContext(ctx.case, plan, ctx.link, ctx.approval, ctx.window,
+                               ctx.artifact_root)
+    driver = AzureStorageBlobPublicAccessDriver(client)
+    assert driver.preflight(changed).passed
+    checkpoint = driver.checkpoint(changed)
+    assert driver.deploy(changed, checkpoint).passed
+    assert AzureStorageBlobPublicAccessProbe(client).run(changed).passed
+    assert driver.rollback(changed, checkpoint).passed
+    assert runner.document["allowBlobPublicAccess"] is True
+
+
 def test_azure_driver_refuses_untagged_target(tmp_path):
     runner = FakeAzureRunner(tags={"project": "some-production-service"})
     ctx, client = context(tmp_path, runner)
@@ -147,3 +178,39 @@ def test_azure_runner_strips_model_and_unrelated_cloud_credentials(monkeypatch):
     runner = SubprocessAzureCommandRunner()
     assert "OPENAI_API_KEY" not in runner.environment
     assert "AWS_SECRET_ACCESS_KEY" not in runner.environment
+
+
+class FakeManagedIdentityRunner:
+    def __init__(self, subscription=SUBSCRIPTION):
+        self.subscription = subscription
+        self.commands = []
+
+    def run(self, argv):
+        self.commands.append(argv)
+        if argv[0] == "login":
+            return AzureCommandResult(0)
+        if argv[:2] == ("account", "show"):
+            return AzureCommandResult(0, json.dumps({
+                "id": self.subscription, "user": {"type": "servicePrincipal"}}))
+        return AzureCommandResult(0, "{}")
+
+
+def test_managed_identity_runner_authenticates_once_and_pins_subscription():
+    backend = FakeManagedIdentityRunner()
+    runner = ManagedIdentityAzureCommandRunner(
+        identity_client_id="client-id", expected_subscription=SUBSCRIPTION,
+        runner=backend)
+    runner.run(("storage", "account", "show"))
+    runner.run(("storage", "account", "show"))
+    assert [command[0] for command in backend.commands].count("login") == 1
+    assert backend.commands[0] == (
+        "login", "--identity", "--client-id", "client-id",
+        "--output", "none", "--only-show-errors")
+
+
+def test_managed_identity_runner_refuses_wrong_subscription():
+    runner = ManagedIdentityAzureCommandRunner(
+        identity_client_id="client-id", expected_subscription=SUBSCRIPTION,
+        runner=FakeManagedIdentityRunner(subscription="wrong"))
+    with pytest.raises(AzureActionError, match="pinned subscription"):
+        runner.run(("storage", "account", "show"))

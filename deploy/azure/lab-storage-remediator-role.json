@@ -1,0 +1,15 @@
+{
+  "Name": "El Capitan Storage Security Remediator - Lab",
+  "IsCustom": true,
+  "Description": "Read and update Azure Storage account control-plane properties; no data-plane or key permissions.",
+  "Actions": [
+    "Microsoft.Storage/storageAccounts/read",
+    "Microsoft.Storage/storageAccounts/write"
+  ],
+  "NotActions": [],
+  "DataActions": [],
+  "NotDataActions": [],
+  "AssignableScopes": [
+    "/subscriptions/8cd2b4cc-c789-466d-a8f7-8f51fb20985d/resourceGroups/elcapitan-remediation-lab-rg"
+  ]
+}

@@ -21,9 +21,10 @@ from .action_plane import (
 from .agents import AgentRole, AgentTask, RecordedContractRuntime, RoleRoutedRuntime
 from .asff import asff_to_ocsf
 from .azure_action import (
-    AzureStorageAccountClient, AzureStorageHealthMonitor,
+    AzureStorageAccountClient, AzureStorageBlobPublicAccessDriver,
+    AzureStorageBlobPublicAccessProbe, AzureStorageHealthMonitor,
     AzureStoragePublicNetworkDriver, AzureStoragePublicNetworkProbe,
-    SubprocessAzureCommandRunner,
+    ManagedIdentityAzureCommandRunner, SubprocessAzureCommandRunner,
 )
 from .case_store import SqliteCaseStore
 from .case_validation import CaseValidationService
@@ -192,8 +193,15 @@ def _parser() -> argparse.ArgumentParser:
     azure_lab.add_argument("--workdir", type=Path)
     azure_lab.add_argument("--az-bin", default="az")
     azure_lab.add_argument("--azure-timeout", type=float, default=180)
+    azure_lab.add_argument(
+        "--managed-identity-client-id",
+        help="use an attached Azure user-assigned managed identity in an isolated CLI session",
+    )
     azure_lab.add_argument("--outcome", choices=("success", "rollback"),
                            default="rollback")
+    azure_lab.add_argument(
+        "--control", choices=("public-network-access", "blob-public-access"),
+        default="public-network-access")
     azure_lab.add_argument("--provider", choices=("openai", "anthropic", "gemini"))
     azure_lab.add_argument("--model")
     azure_lab.add_argument("--env-file", type=Path)
@@ -649,10 +657,18 @@ def _azure_storage_lifecycle(args) -> int:
     db, artifacts = root / "product.db", root / "artifacts"
     namespace = "cases/CASE-AZURE-LAB/planning/PLAN-AZURE-LAB"
     source_path = "main.tf"
+    if args.control == "public-network-access":
+        terraform_attribute = "public_network_access_enabled"
+        live_property = "publicNetworkAccess"
+        objective = "disable Azure Storage public network access"
+    else:
+        terraform_attribute = "allow_nested_items_to_be_public"
+        live_property = "allowBlobPublicAccess"
+        objective = "disable Azure Storage blob public access"
     original = f'''resource "azurerm_storage_account" "lab" {{
   name                          = "{args.resource_id.rsplit('/', 1)[-1]}"
   resource_group_name           = "{args.resource_id.split('/')[4]}"
-  public_network_access_enabled = true
+  {terraform_attribute} = true
 }}
 '''
     replacement = original.replace("= true", "= false")
@@ -670,10 +686,10 @@ def _azure_storage_lifecycle(args) -> int:
     plan_id, link_id, approval_id, window_id = (
         "PLAN-AZURE-LAB", "LINK-AZURE-LAB", "APPROVAL-AZURE-LAB", "WIN-AZURE-LAB")
     change_plan = ChangePlan(
-        plan_id=plan_id, objective="disable Azure Storage public network access",
+        plan_id=plan_id, objective=objective,
         change_ref=f"{namespace}/workspace/{source_path}",
         prerequisites=("target is explicitly tagged as an El Capitan nonproduction lab",),
-        steps=("disable public network access on the pinned storage account",),
+        steps=(objective + " on the pinned storage account",),
         rollout_steps=("apply one Azure control-plane property update",),
         verification_steps=("read the live Azure property and control-plane health",),
         rollback_steps=("restore the exact checkpointed public network access value",),
@@ -712,12 +728,19 @@ def _azure_storage_lifecycle(args) -> int:
         {"window_id": window_id, "selected": {"starts_at": starts, "ends_at": ends}}, ())
     for record in (plan, link, approval, window_record):
         records.put(record)
+    azure_runner = (
+        ManagedIdentityAzureCommandRunner(
+            identity_client_id=args.managed_identity_client_id,
+            expected_subscription=args.subscription, executable=args.az_bin,
+            timeout_seconds=args.azure_timeout)
+        if args.managed_identity_client_id else
+        SubprocessAzureCommandRunner(args.az_bin, timeout_seconds=args.azure_timeout)
+    )
     client = AzureStorageAccountClient(
         args.resource_id, expected_subscription=args.subscription,
         required_tags={"elcapitan_scope": "lab", "environment": "nonproduction"},
-        runner=SubprocessAzureCommandRunner(
-            args.az_bin, timeout_seconds=args.azure_timeout))
-    before = client.read().get("publicNetworkAccess")
+        runner=azure_runner)
+    before = client.read().get(live_property)
     if args.provider or args.model:
         if not args.provider or not args.model:
             raise ValueError("--provider and --model must be supplied together")
@@ -727,22 +750,30 @@ def _azure_storage_lifecycle(args) -> int:
         release_runtime = RecordedContractRuntime({
             "PostChangeReview.v1": {"output": {
                 "decision": "accept",
-                "summary": "The pinned Azure lab resource is healthy and remediated.",
-                "validated_outcomes": ["Azure public network access is disabled"],
+                "summary": (
+                    "The pinned Azure lab resource is healthy and the selected "
+                    f"{args.control} control is remediated."),
+                "validated_outcomes": [
+                    f"Azure {args.control} control matches the approved secure state"],
                 "residual_risks": [],
                 "handoff_notes": ["retain the immutable execution evidence"],
             }}}, now=now)
     jobs = SqliteExecutionJobStore(db)
     scheduled = ExecutionScheduler(
         case_store=cases, record_store=records, job_store=jobs, now=now).schedule(case_id)
-    probes = [AzureStoragePublicNetworkProbe(client)]
+    if args.control == "public-network-access":
+        driver = AzureStoragePublicNetworkDriver(client)
+        probes = [AzureStoragePublicNetworkProbe(client)]
+    else:
+        driver = AzureStorageBlobPublicAccessDriver(client)
+        probes = [AzureStorageBlobPublicAccessProbe(client)]
     if args.outcome == "rollback":
         probes.append(RecordedVerificationProbe(
             name="injected-lab-rollback-trigger", target=args.resource_id,
             passed=False, detail="operator requested automatic rollback-path validation"))
     service = ExecutionService(
         case_store=cases, record_store=records, artifact_root=artifacts,
-        driver=AzureStoragePublicNetworkDriver(client),
+        driver=driver,
         monitor=AzureStorageHealthMonitor(client), probes=tuple(probes),
         runtime=release_runtime, now=now)
     dispatched = ScheduledExecutionWorker(
@@ -753,11 +784,14 @@ def _azure_storage_lifecycle(args) -> int:
     if dispatched is None or dispatched.job.job_id != scheduled.job.job_id:
         raise RuntimeError("Azure lab scheduler did not release the pinned job")
     outcome = dispatched.result
-    after = client.read().get("publicNetworkAccess")
+    after = client.read().get(live_property)
+    if isinstance(azure_runner, ManagedIdentityAzureCommandRunner):
+        azure_runner.close()
     json.dump({
         "status": outcome.case.state.value, "case_id": case_id,
         "resource_id": args.resource_id, "subscription": args.subscription,
         "requested_outcome": args.outcome, "before": before, "after": after,
+        "control": args.control,
         "rolled_back": outcome.rolled_back,
         "job_state": dispatched.job.state.value,
         "verification": (product_record_to_dict(outcome.verification_record)

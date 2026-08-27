@@ -91,18 +91,20 @@ rollout. A rollback path must exist and be validated before production
 execution becomes eligible.
 
 The provider-neutral action plane is implemented through a reference driver
-and a narrow Azure Storage public-network connector:
+and narrow Azure Storage public-network and anonymous-blob connectors:
 package-bound approval, durable scheduling and worker leases, change-window
 enforcement, preflight, checkpoint, deployment, health policy,
 configuration/code/UI verification probes, automatic rollback, independent
 release audit, remediation certificate, and originator handoff. Driver,
 monitor, probe, approval-authority, and model-provider boundaries are
-replaceable. The Azure connector pins the subscription and ARM identity,
+replaceable. The Azure connectors pin the subscription and ARM identity,
 requires nonproduction lab tags, binds execution to verified Terraform intent,
 fingerprints relevant configuration for drift, and has been exercised through
-both live success and automatic rollback. It remains intentionally limited to
-one Storage property; each additional mutation requires the same review,
-least-privilege identity, health contract, and rollback proof.
+live success and automatic rollback for both controls. Azure-hosted workers
+authenticate through an isolated user-assigned managed-identity session; the
+lab identity has only Storage account read/write control-plane permissions at
+one resource and cannot list account keys. Each additional mutation requires
+the same review, least-privilege identity, health contract, and rollback proof.
 
 ## Initial vertical slice
 

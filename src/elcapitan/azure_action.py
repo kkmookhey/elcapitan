@@ -11,6 +11,7 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Protocol
@@ -88,6 +89,86 @@ class SubprocessAzureCommandRunner:
             completed.returncode, self._bounded(completed.stdout),
             self._bounded(completed.stderr),
         )
+
+
+class ManagedIdentityAzureCommandRunner:
+    """Authenticate once with a user-assigned identity in an isolated CLI home.
+
+    This runner is intended for an Azure-hosted worker with the supplied
+    identity attached.  It never falls back to an ambient user login.
+    """
+
+    def __init__(self, *, identity_client_id: str, expected_subscription: str,
+                 executable: str = "az", timeout_seconds: float = 120,
+                 runner: AzureCommandRunner | None = None) -> None:
+        if not identity_client_id or not expected_subscription:
+            raise ValueError("managed identity client id and subscription are required")
+        self.identity_client_id = identity_client_id
+        self.expected_subscription = expected_subscription
+        self._authenticated = False
+        self._temporary_directory = None
+        if runner is None:
+            self._temporary_directory = tempfile.TemporaryDirectory(
+                prefix="elcapitan-azure-identity-")
+            environment = dict(os.environ)
+            environment["AZURE_CONFIG_DIR"] = self._temporary_directory.name
+            self.runner = SubprocessAzureCommandRunner(
+                executable, timeout_seconds=timeout_seconds, environment=environment)
+        else:
+            self.runner = runner
+
+    @staticmethod
+    def _failure(result: AzureCommandResult, operation: str) -> AzureActionError:
+        detail = (result.stderr or result.stdout).strip()
+        return AzureActionError(
+            f"managed identity could not {operation} (exit {result.exit_code}): "
+            f"{detail or 'no diagnostic output'}")
+
+    def _authenticate(self) -> None:
+        login = self.runner.run((
+            "login", "--identity", "--client-id", self.identity_client_id,
+            "--output", "none", "--only-show-errors",
+        ))
+        if login.exit_code != 0:
+            raise self._failure(login, "sign in")
+        account = self.runner.run((
+            "account", "show", "--subscription", self.expected_subscription,
+            "--output", "json", "--only-show-errors",
+        ))
+        if account.exit_code != 0:
+            raise self._failure(account, "resolve the pinned subscription")
+        try:
+            document = json.loads(account.stdout)
+        except (json.JSONDecodeError, RecursionError) as exc:
+            raise AzureActionError(
+                f"managed identity account verification returned invalid JSON: {exc}"
+            ) from exc
+        if (not isinstance(document, Mapping)
+                or str(document.get("id", "")).lower() !=
+                self.expected_subscription.lower()):
+            raise AzureActionError(
+                "managed identity account verification did not return the pinned subscription")
+        user = document.get("user")
+        if not isinstance(user, Mapping) or user.get("type") != "servicePrincipal":
+            raise AzureActionError("managed identity login did not resolve to a service principal")
+        self._authenticated = True
+
+    def run(self, argv: tuple[str, ...]) -> AzureCommandResult:
+        if not self._authenticated:
+            self._authenticate()
+        return self.runner.run(argv)
+
+    def close(self) -> None:
+        if self._temporary_directory is not None:
+            self._temporary_directory.cleanup()
+            self._temporary_directory = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        self.close()
+        return False
 
 
 _STORAGE_ID = re.compile(
@@ -201,6 +282,15 @@ class AzureStorageAccountClient:
             "--output", "json", "--only-show-errors",
         ))
         return self._document(result, operation="update public network access")
+
+    def set_blob_public_access(self, value: bool) -> dict:
+        result = self.runner.run((
+            "storage", "account", "update", "--ids", self.resource_id,
+            "--subscription", self.identity.subscription_id,
+            "--allow-blob-public-access", "true" if value else "false",
+            "--output", "json", "--only-show-errors",
+        ))
+        return self._document(result, operation="update blob public access")
 
 
 class AzureStoragePublicNetworkDriver:
@@ -360,6 +450,93 @@ class AzureStorageHealthMonitor:
         )
 
 
+class AzureStorageBlobPublicAccessDriver(AzureStoragePublicNetworkDriver):
+    """Prevent containers and blobs from opting into anonymous public access."""
+
+    @property
+    def name(self) -> str:
+        return "azure-storage-blob-public-access-driver"
+
+    def preflight(self, context: ExecutionContext) -> ActionStep:
+        try:
+            block = self._replacement_block(context)
+            values = re.findall(
+                r"(?m)^\s*allow_nested_items_to_be_public\s*=\s*"
+                r"(true|false)\s*(?:#.*)?$", block)
+            if values != ["false"]:
+                raise AzureActionError(
+                    "approved Terraform block must set exactly one literal "
+                    "allow_nested_items_to_be_public = false")
+            account = self.client.read()
+            current = account.get("allowBlobPublicAccess")
+            if current is not True:
+                raise AzureActionError(
+                    f"expected vulnerable pre-change value true; observed {current!r}")
+        except (AzureActionError, OSError, ValueError) as exc:
+            return ActionStep("preflight", False, str(exc))
+        return ActionStep(
+            "preflight", True,
+            "approved Terraform intent, pinned Azure identity, scope tags, and live value match",
+            {"resource_id": self.client.resource_id,
+             "allow_blob_public_access": current,
+             "configuration_sha256": _configuration_sha256(account)},
+        )
+
+    def checkpoint(self, context: ExecutionContext) -> DeploymentCheckpoint:
+        account = self.client.read()
+        current = account.get("allowBlobPublicAccess")
+        if not isinstance(current, bool):
+            raise AzureActionError("Azure checkpoint has no explicit blob public access value")
+        return DeploymentCheckpoint(
+            checkpoint_id=self.id_factory("AZCHK"),
+            detail="captured exact Azure Storage blob public access state",
+            payload={"resource_id": self.client.resource_id,
+                     "allow_blob_public_access": current,
+                     "configuration_sha256": _configuration_sha256(account)},
+        )
+
+    def deploy(self, context: ExecutionContext,
+               checkpoint: DeploymentCheckpoint) -> ActionStep:
+        current = self.client.read()
+        if (_configuration_sha256(current) !=
+                checkpoint.payload.get("configuration_sha256")
+                or current.get("allowBlobPublicAccess") !=
+                checkpoint.payload.get("allow_blob_public_access")):
+            return ActionStep(
+                "deploy", False,
+                "Azure resource drifted after checkpoint; refusing mutation",
+                {"resource_id": self.client.resource_id})
+        updated = self.client.set_blob_public_access(False)
+        passed = updated.get("allowBlobPublicAccess") is False
+        return ActionStep(
+            "deploy", passed,
+            "Azure Storage blob public access disabled" if passed
+            else "Azure update returned without the approved state",
+            {"resource_id": self.client.resource_id,
+             "allow_blob_public_access": updated.get("allowBlobPublicAccess"),
+             "configuration_sha256": _configuration_sha256(updated)},
+        )
+
+    def rollback(self, context: ExecutionContext,
+                 checkpoint: DeploymentCheckpoint) -> ActionStep:
+        if str(checkpoint.payload.get("resource_id", "")).lower() != \
+                self.client.resource_id.lower():
+            return ActionStep("rollback", False, "checkpoint belongs to another resource")
+        prior = checkpoint.payload.get("allow_blob_public_access")
+        if not isinstance(prior, bool):
+            return ActionStep("rollback", False, "checkpoint has no restorable Azure value")
+        restored = self.client.set_blob_public_access(prior)
+        passed = restored.get("allowBlobPublicAccess") is prior
+        return ActionStep(
+            "rollback", passed,
+            "Azure Storage checkpoint restored" if passed
+            else "Azure Storage rollback verification failed",
+            {"resource_id": self.client.resource_id,
+             "allow_blob_public_access": restored.get("allowBlobPublicAccess"),
+             "configuration_sha256": _configuration_sha256(restored)},
+        )
+
+
 class AzureStoragePublicNetworkProbe:
     def __init__(self, client: AzureStorageAccountClient) -> None:
         self.client = client
@@ -377,5 +554,26 @@ class AzureStoragePublicNetworkProbe:
             detail=("public network access is disabled" if passed else
                     "public network access is not disabled"),
             payload={"expected": "Disabled", "actual": actual,
+                     "configuration_sha256": _configuration_sha256(account)},
+        )
+
+
+class AzureStorageBlobPublicAccessProbe:
+    def __init__(self, client: AzureStorageAccountClient) -> None:
+        self.client = client
+
+    @property
+    def name(self) -> str:
+        return "azure-storage-blob-public-access-disabled"
+
+    def run(self, context: ExecutionContext) -> ProbeResult:
+        account = self.client.read()
+        actual = account.get("allowBlobPublicAccess")
+        passed = actual is False
+        return ProbeResult(
+            probe=self.name, target=self.client.resource_id, passed=passed,
+            detail=("blob public access is disabled" if passed else
+                    "blob public access is not explicitly disabled"),
+            payload={"expected": False, "actual": actual,
                      "configuration_sha256": _configuration_sha256(account)},
         )
