@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from pathlib import Path
 
 import psycopg
@@ -16,6 +17,8 @@ from .finding_store import (
 from .hashing import canonical_json, sha256_bytes
 from .paths import safe_resolve
 from .priority import signals_from_dict, signals_to_dict
+from .observability import parse_timestamp, utc_text
+from .scheduler import ExecutionJob, JobState
 from .product_records import (
     DuplicateProductRecord, ProductRecord, ProductRecordNotFound, _thaw,
 )
@@ -365,6 +368,112 @@ class PostgresProductRecordStore(_PostgresStore):
         with self._connect() as connection:
             rows = connection.execute(query, params).fetchall()
         return tuple(self._from_row(row) for row in rows)
+
+
+class PostgresExecutionJobStore(_PostgresStore):
+    """Concurrent durable execution queue with PostgreSQL row leases."""
+
+    _SELECT = (
+        "SELECT job_id, case_id, execute_at, deadline, state, attempts, "
+        "lease_owner, lease_until, detail FROM execution_jobs")
+
+    def __init__(self, dsn: str) -> None:
+        super().__init__(dsn)
+        with self._connect() as connection:
+            connection.execute("""CREATE TABLE IF NOT EXISTS execution_jobs (
+                job_id TEXT PRIMARY KEY,
+                case_id TEXT NOT NULL UNIQUE,
+                execute_at TEXT NOT NULL,
+                deadline TEXT NOT NULL,
+                state TEXT NOT NULL,
+                attempts INTEGER NOT NULL,
+                lease_owner TEXT NOT NULL,
+                lease_until TEXT NOT NULL,
+                detail TEXT NOT NULL
+            )""")
+            connection.execute("""CREATE INDEX IF NOT EXISTS execution_jobs_due
+                ON execution_jobs(state, execute_at, deadline)""")
+
+    @staticmethod
+    def _job(row) -> ExecutionJob:
+        if row is None:
+            raise KeyError
+        return ExecutionJob(
+            row[0], row[1], row[2], row[3], JobState(row[4]),
+            row[5], row[6], row[7], row[8])
+
+    def put(self, job: ExecutionJob) -> None:
+        try:
+            with self._connect() as connection:
+                connection.execute(
+                    "INSERT INTO execution_jobs"
+                    "(job_id, case_id, execute_at, deadline, state, attempts, "
+                    "lease_owner, lease_until, detail) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                    (job.job_id, job.case_id, job.execute_at, job.deadline,
+                     job.state.value, job.attempts, job.lease_owner,
+                     job.lease_until, job.detail))
+        except psycopg.IntegrityError as exc:
+            raise ValueError(
+                f"case {job.case_id} already has a scheduled job") from exc
+
+    def get(self, job_id: str) -> ExecutionJob:
+        with self._connect() as connection:
+            row = connection.execute(
+                self._SELECT + " WHERE job_id = %s", (job_id,)).fetchone()
+        if row is None:
+            raise KeyError(job_id)
+        return self._job(row)
+
+    def claim_due(self, *, now: str, worker_id: str,
+                  lease_seconds: int = 300) -> ExecutionJob | None:
+        if not worker_id or lease_seconds <= 0:
+            raise ValueError("worker id and positive lease are required")
+        lease_until = utc_text(
+            parse_timestamp(now) + timedelta(seconds=lease_seconds))
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE execution_jobs SET state = %s, detail = %s "
+                "WHERE state = %s AND deadline <= %s",
+                (JobState.MISSED.value,
+                 "approved window elapsed before execution",
+                 JobState.SCHEDULED.value, now))
+            row = connection.execute(
+                self._SELECT +
+                " WHERE execute_at <= %s AND deadline > %s "
+                "AND (state = %s OR (state = %s AND lease_until <= %s)) "
+                "ORDER BY execute_at, job_id LIMIT 1 FOR UPDATE SKIP LOCKED",
+                (now, now, JobState.SCHEDULED.value,
+                 JobState.RUNNING.value, now)).fetchone()
+            if row is None:
+                return None
+            job = self._job(row)
+            updated = connection.execute(
+                "UPDATE execution_jobs SET state = %s, attempts = attempts + 1, "
+                "lease_owner = %s, lease_until = %s WHERE job_id = %s "
+                "RETURNING job_id, case_id, execute_at, deadline, state, attempts, "
+                "lease_owner, lease_until, detail",
+                (JobState.RUNNING.value, worker_id, lease_until,
+                 job.job_id)).fetchone()
+            return self._job(updated)
+
+    def complete(self, job_id: str, *, worker_id: str, state: JobState,
+                 detail: str = "") -> ExecutionJob:
+        if state not in {
+                JobState.SUCCEEDED, JobState.ROLLED_BACK, JobState.FAILED}:
+            raise ValueError("job completion state must be terminal")
+        with self._connect() as connection:
+            row = connection.execute(
+                "UPDATE execution_jobs SET state = %s, detail = %s, "
+                "lease_owner = '', lease_until = '' "
+                "WHERE job_id = %s AND state = %s AND lease_owner = %s "
+                "RETURNING job_id, case_id, execute_at, deadline, state, attempts, "
+                "lease_owner, lease_until, detail",
+                (state.value, detail, job_id, JobState.RUNNING.value,
+                 worker_id)).fetchone()
+        if row is None:
+            raise ValueError("job is not leased by this worker")
+        return self._job(row)
 
 
 class PostgresArtifactStore(_PostgresStore):

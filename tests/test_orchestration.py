@@ -61,6 +61,45 @@ def test_durable_preapproval_resumes_after_completed_planning_stage():
     assert calls == ["sre", "window", "rollback", "gate"]
 
 
+def test_durable_preapproval_allows_one_checker_to_maker_rework():
+    cases, calls = Cases(CaseState.VALIDATED), []
+    orchestrator = object.__new__(PreApprovalOrchestrator)
+    orchestrator.case_store = cases
+    orchestrator.planning = Stage(cases, CaseState.PLAN_READY, calls, "planning")
+    orchestrator.sre = Stage(cases, CaseState.SRE_APPROVED, calls, "sre")
+    orchestrator.window = Stage(cases, CaseState.WINDOW_SELECTED, calls, "window")
+
+    class Rollback:
+        calls_count = 0
+
+        @classmethod
+        def review(cls, case_id):
+            calls.append("rollback")
+            cls.calls_count += 1
+            cases.state = (CaseState.VALIDATED if cls.calls_count == 1
+                           else CaseState.ROLLBACK_READY)
+            return SimpleNamespace(case=SimpleNamespace(state=cases.state))
+
+    orchestrator.rollback = Rollback()
+    expected = object()
+
+    class Gate:
+        @staticmethod
+        def prepare(case_id):
+            calls.append("gate")
+            return expected
+
+    orchestrator.gate = Gate()
+    outcome = orchestrator.advance_to_human_review(
+        "CASE-1", repository="repo", state_document={}, service_context={},
+        usage_samples=(), window_policy=object())
+
+    assert outcome is expected
+    assert calls == [
+        "planning", "sre", "window", "rollback",
+        "planning", "sre", "window", "rollback", "gate"]
+
+
 def test_agent_stage_retries_once_when_mandatory_citations_are_omitted(tmp_path):
     task = AgentTask(
         task_id="TASK-1", case_id="CASE-1", role=AgentRole.WINDOW_PLANNER,

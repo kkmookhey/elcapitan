@@ -60,7 +60,9 @@ class PreApprovalOrchestrator:
                                 usage_samples: tuple[UsageSample, ...],
                                 window_policy: WindowPolicy) -> HumanReviewOutcome:
         """Resume the durable case from its last completed preapproval stage."""
-        for _ in range(5):
+        # Five stage advances reach the gate normally. One bounded checker-to-maker
+        # rework adds four more; a second rejection is terminal.
+        for _ in range(9):
             state = self.case_store.get(case_id).state
             if state is CaseState.VALIDATED:
                 self.planning.prepare(
@@ -75,6 +77,8 @@ class PreApprovalOrchestrator:
                     case_id, samples=usage_samples, policy=window_policy)
             elif state is CaseState.WINDOW_SELECTED:
                 outcome = self.rollback.review(case_id)
+                if outcome.case.state is CaseState.VALIDATED:
+                    continue
                 if outcome.case.state is not CaseState.ROLLBACK_READY:
                     raise PreApprovalError(
                         f"rollback review stopped workflow in {outcome.case.state}")

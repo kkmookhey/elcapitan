@@ -106,6 +106,37 @@ def test_terminal_case_cannot_be_reopened_by_transition():
         advance(closed, CaseTransition.BLOCK, 3, detail="late concern")
 
 
+def test_checker_rework_returns_to_validated_and_clears_superseded_projection():
+    current = case()
+    current = advance(current, CaseTransition.PRIORITIZE, 1,
+                      record_ids={"risk_assessment_id": "RISK-001"}, priority=risk())
+    current = advance(current, CaseTransition.VALIDATE, 2,
+                      record_ids={"validation_result_id": "VAL-001"})
+    current = advance(current, CaseTransition.PREPARE_PLAN, 3,
+                      record_ids={"change_plan_id": "PLAN-001",
+                                  "iac_link_id": "LINK-001"}, change_plan=plan())
+    current = advance(current, CaseTransition.APPROVE_SRE, 4,
+                      record_ids={"sre_review_id": "SRE-001"})
+    current = advance(current, CaseTransition.SELECT_WINDOW, 5,
+                      record_ids={"change_window_id": "WIN-001"},
+                      change_window=window())
+
+    reworked, event = transition_case(
+        current, CaseTransition.REQUEST_REWORK, event_id="EVT-006",
+        occurred_at=NOW, actor="rollback-reviewer",
+        record_ids={"review_feedback_id": "RBK-001"},
+        detail="map failed verification to automatic rollback")
+
+    assert reworked.state is CaseState.VALIDATED
+    assert reworked.change_plan is None
+    assert reworked.change_window is None
+    assert reworked.record_ids["validation_result_id"] == "VAL-001"
+    assert reworked.record_ids["review_feedback_id"] == "RBK-001"
+    assert "change_plan_id" not in reworked.record_ids
+    assert event.from_state is CaseState.WINDOW_SELECTED
+    assert event.to_state is CaseState.VALIDATED
+
+
 def test_records_are_copied_into_immutable_mappings():
     records = {"risk_assessment_id": "RISK-001"}
     updated, event = transition_case(

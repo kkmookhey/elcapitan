@@ -407,8 +407,22 @@ class RollbackReviewService(_AgentStage):
         if decision == "approve":
             case = self.workflow.advance(case_id, CaseTransition.REVIEW_ROLLBACK, **common)
         elif decision == "reject":
-            case = self.workflow.advance(
-                case_id, CaseTransition.REJECT, detail=output["summary"], **common)
+            required_changes = _strings(output, "required_changes")
+            already_reworked = any(
+                event.transition is CaseTransition.REQUEST_REWORK
+                for event in self.case_store.events(case_id))
+            if required_changes and not already_reworked:
+                case = self.workflow.advance(
+                    case_id, CaseTransition.REQUEST_REWORK,
+                    event_id=common["event_id"], occurred_at=common["occurred_at"],
+                    actor=common["actor"],
+                    record_ids={"review_feedback_id": review_id},
+                    evidence_ids=common["evidence_ids"],
+                    detail=output["summary"])
+            else:
+                case = self.workflow.advance(
+                    case_id, CaseTransition.REJECT,
+                    detail=output["summary"], **common)
         else:
             case = self.workflow.advance(
                 case_id, CaseTransition.BLOCK, detail=output["summary"], **common)

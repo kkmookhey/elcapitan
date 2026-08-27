@@ -651,6 +651,22 @@ class RemediationPlanningService:
         if validation.case_id != case_id or validation.record_type != "ValidationResult.v1":
             raise RemediationPlanningError("case validation record has the wrong owner or type")
 
+        feedback = None
+        feedback_id = case.record_ids.get("review_feedback_id")
+        if feedback_id:
+            feedback = self.record_store.get(feedback_id)
+            if (feedback.case_id != case_id
+                    or feedback.record_type != "RollbackReview.v1"):
+                raise RemediationPlanningError(
+                    "review feedback record has the wrong owner or type")
+            required_changes = feedback.body.get("required_changes")
+            if (not isinstance(required_changes, (list, tuple))
+                    or not required_changes
+                    or any(not isinstance(item, str) or not item.strip()
+                           for item in required_changes)):
+                raise RemediationPlanningError(
+                    "review feedback has no concrete required changes")
+
         plan_id = self.id_factory("PLAN")
         link_id = self.id_factory("LINK")
         task_id = self.id_factory("TASK")
@@ -684,14 +700,25 @@ class RemediationPlanningService:
 
         input_evidence = tuple(dict.fromkeys((
             *validation.evidence_ids, source_ref.evidence_id, link_ref.evidence_id,
+            *(feedback.evidence_ids if feedback else ()),
         )))
+        input_records = tuple(filter(None, (
+            validation_id, link_id, feedback.record_id if feedback else None)))
+        feedback_constraints = (() if feedback is None else (
+            "This is a bounded checker rework. Address every item in "
+            "review_feedback.required_changes explicitly in prerequisites, rollout, "
+            "verification, rollback steps, or rollback triggers as appropriate.",
+            "Classify pre-mutation guard failures as abort-without-change and map "
+            "every post-mutation health, verification, or security-validation "
+            "failure to the executable rollback path.",
+        ))
         task = AgentTask(
             task_id=task_id,
             case_id=case_id,
             role=AgentRole.REMEDIATION_ENGINEER,
             objective="Prepare a minimal Terraform remediation and reversible rollout plan",
             output_contract="TerraformRemediationProposal.v1",
-            input_record_ids=(validation_id, link_id),
+            input_record_ids=input_records,
             evidence_ids=input_evidence,
             constraints=(
                 "modify only the linked Terraform source file",
@@ -700,6 +727,7 @@ class RemediationPlanningService:
                 "return the complete linked file and preserve all unrelated content",
                 "do not request post-change state as planning input; express it as a "
                 "verification step",
+                *feedback_constraints,
             ),
             metadata={
                 "provider": provider,
@@ -710,6 +738,7 @@ class RemediationPlanningService:
                 "link_evidence_id": link_ref.evidence_id,
                 "findings": [finding.record for finding in findings],
                 "validation": validation.body,
+                "review_feedback": feedback.body if feedback else None,
             },
         )
         result = self.runtime.run(task)
@@ -840,6 +869,7 @@ class RemediationPlanningService:
             },
             "checks": [check.to_dict() for check in checks],
             "artifact_namespace": namespace,
+            "review_feedback_record_id": feedback.record_id if feedback else None,
         }
         record = ProductRecord(
             record_id=plan_id, case_id=case_id,

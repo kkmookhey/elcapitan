@@ -11,12 +11,14 @@ import pytest
 from elcapitan.agents import AgentResult, AgentResultStatus
 from elcapitan.case_store import SqliteCaseStore
 from elcapitan.case_validation import CaseValidationService
-from elcapitan.cases import CaseState
+from elcapitan.cases import (
+    CaseState, CaseTransition, ChangePlan, ChangeWindow, transition_case,
+)
 from elcapitan.cloud import CloudState
 from elcapitan.evidence import Collector
 from elcapitan.finding_store import SqliteFindingStore
 from elcapitan.intake import RemediationIntake
-from elcapitan.product_records import SqliteProductRecordStore
+from elcapitan.product_records import ProductRecord, SqliteProductRecordStore
 from elcapitan.remediation_planning import (
     RemediationPlanningError, RemediationPlanningService,
     SubprocessTerraformRunner, TerraformCheck, TerraformChecksFailed,
@@ -179,6 +181,62 @@ def test_verified_agent_change_advances_case_without_mutating_source(prepared):
     assert task.metadata["source_evidence_id"] in task.evidence_ids
     assert task.metadata["link_evidence_id"] in task.evidence_ids
     assert validated.record_ids["validation_result_id"] in task.input_record_ids
+
+
+def test_checker_rework_is_bound_into_the_next_maker_task(prepared):
+    _, cases, _, records, _, validated, repository, _, replacement = prepared
+    prior_plan = ChangePlan(
+        plan_id="PLAN-OLD", objective="disable public access",
+        change_ref="old", prerequisites=("confirm scope",),
+        steps=("change flag",), rollout_steps=("apply",),
+        verification_steps=("verify state",), rollback_steps=("restore flag",),
+        rollback_triggers=("connectivity failure",), blast_radius=("account",),
+        evidence_ids=("EVD-OLD",))
+    selected = ChangeWindow(
+        "WIN-OLD", "2026-08-27T02:00:00Z", "2026-08-27T03:00:00Z",
+        "UTC", ("lab window",), ("EVD-WIN",), 1.0)
+
+    def apply(current, transition, **kwargs):
+        projection, event = transition_case(
+            current, transition, event_id=f"EVT-RWK-{current.version + 1:03d}",
+            occurred_at=NOW, actor="test", **kwargs)
+        cases.append(projection, event, expected_version=current.version)
+        return projection
+
+    current = apply(
+        validated, CaseTransition.PREPARE_PLAN,
+        record_ids={"change_plan_id": "PLAN-OLD", "iac_link_id": "LINK-OLD"},
+        change_plan=prior_plan)
+    current = apply(
+        current, CaseTransition.APPROVE_SRE,
+        record_ids={"sre_review_id": "SRE-OLD"})
+    current = apply(
+        current, CaseTransition.SELECT_WINDOW,
+        record_ids={"change_window_id": "WIN-OLD"}, change_window=selected)
+    feedback = ProductRecord(
+        record_id="RBK-REWORK", case_id=current.case_id,
+        record_type="RollbackReview.v1", schema_version=1, created_at=NOW,
+        body={"decision": "reject", "required_changes": [
+            "Map failed post-change validation to automatic rollback",
+        ]}, evidence_ids=("EVD-FEEDBACK",))
+    records.put(feedback)
+    current = apply(
+        current, CaseTransition.REQUEST_REWORK,
+        record_ids={"review_feedback_id": feedback.record_id},
+        evidence_ids=feedback.evidence_ids,
+        detail="rollback coverage is incomplete")
+
+    runtime = Runtime(replacement)
+    outcome = service(prepared, runtime, Runner()).prepare(
+        current.case_id, repository=repository)
+
+    assert outcome.case.state is CaseState.PLAN_READY
+    task = runtime.tasks[0]
+    assert task.metadata["review_feedback"]["required_changes"] == (
+        "Map failed post-change validation to automatic rollback",)
+    assert feedback.record_id in task.input_record_ids
+    assert feedback.evidence_ids[0] in task.evidence_ids
+    assert any("bounded checker rework" in item for item in task.constraints)
 
 
 def test_failed_terraform_check_is_persisted_but_does_not_advance(prepared):

@@ -16,7 +16,7 @@ must not be committed, supplied as container arguments, or printed in deployment
 logs. The non-secret configuration is:
 
 ```text
-image: ca7b25e7d425acr.azurecr.io/elcapitan-demo:20260827-review.21
+image: ca7b25e7d425acr.azurecr.io/elcapitan-demo:20260827-review.22
 trigger: Manual
 retry limit: 0
 timeout: 1800 seconds
@@ -35,6 +35,11 @@ The plan is accepted only if JSON inspection proves exactly one in-place change:
 `false`. The binary plan and state are deleted before the container exits. The
 worker is resumable from any completed preapproval stage and stops before approval
 or execution.
+
+If the rollback checker rejects with concrete `required_changes`, the durable case
+records an immutable feedback decision, clears only the superseded plan projection,
+and allows one checker-to-maker rework. The revised maker task is evidence-bound to
+that feedback. A second rejection is terminal, preventing unbounded agent loops.
 
 The service-context document may include a strict `window_policy` object for a
 customer or laboratory maintenance policy. Unknown fields and invalid timezone,

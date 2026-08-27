@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from enum import StrEnum
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Protocol
 
 from .cases import CaseState, CaseTransition, RemediationCase
 from .intake import numeric_id
@@ -36,6 +36,15 @@ class ExecutionJob:
     lease_owner: str = ""
     lease_until: str = ""
     detail: str = ""
+
+
+class ExecutionJobStore(Protocol):
+    def put(self, job: ExecutionJob) -> None: ...
+    def get(self, job_id: str) -> ExecutionJob: ...
+    def claim_due(self, *, now: str, worker_id: str,
+                  lease_seconds: int = 300) -> ExecutionJob | None: ...
+    def complete(self, job_id: str, *, worker_id: str, state: JobState,
+                 detail: str = "") -> ExecutionJob: ...
 
 
 class SqliteExecutionJobStore:
@@ -151,7 +160,7 @@ class SchedulingOutcome:
 
 class ExecutionScheduler:
     def __init__(self, *, case_store: CaseStore, record_store: ProductRecordStore,
-                 job_store: SqliteExecutionJobStore, now: Callable[[], str],
+                 job_store: ExecutionJobStore, now: Callable[[], str],
                  id_factory: Callable[[str], str] = numeric_id) -> None:
         self.case_store, self.record_store, self.job_store = case_store, record_store, job_store
         self.now, self.id_factory = now, id_factory
@@ -194,7 +203,7 @@ class DispatchOutcome:
 class ScheduledExecutionWorker:
     """Claim exactly one due job and always release its durable lease."""
 
-    def __init__(self, *, job_store: SqliteExecutionJobStore, worker_id: str,
+    def __init__(self, *, job_store: ExecutionJobStore, worker_id: str,
                  execute: Callable[[ExecutionJob], object]) -> None:
         if not worker_id:
             raise ValueError("worker_id is required")

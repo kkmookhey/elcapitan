@@ -59,6 +59,7 @@ class CaseTransition(StrEnum):
     APPROVE_SRE = "approve_sre"
     SELECT_WINDOW = "select_window"
     REVIEW_ROLLBACK = "review_rollback"
+    REQUEST_REWORK = "request_rework"
     REQUEST_APPROVAL = "request_approval"
     APPROVE_CHANGE = "approve_change"
     SCHEDULE_EXECUTION = "schedule_execution"
@@ -228,6 +229,7 @@ _REQUIRED_RECORDS = {
     CaseTransition.APPROVE_SRE: "sre_review_id",
     CaseTransition.SELECT_WINDOW: "change_window_id",
     CaseTransition.REVIEW_ROLLBACK: "rollback_review_id",
+    CaseTransition.REQUEST_REWORK: "review_feedback_id",
     CaseTransition.REQUEST_APPROVAL: "policy_decision_id",
     CaseTransition.APPROVE_CHANGE: "approval_id",
     CaseTransition.SCHEDULE_EXECUTION: "schedule_id",
@@ -295,6 +297,14 @@ def transition_case(case: RemediationCase, transition: CaseTransition, *,
             raise ValueError("only an approved case can be scheduled for execution")
         to_state = case.state
         blocked_from = case.blocked_from
+    elif transition is CaseTransition.REQUEST_REWORK:
+        if case.state is not CaseState.WINDOW_SELECTED:
+            raise ValueError(
+                "review rework is allowed only after change-window selection")
+        if not detail:
+            raise ValueError("review rework requires concrete reviewer feedback")
+        to_state = CaseState.VALIDATED
+        blocked_from = None
     elif transition is CaseTransition.BLOCK:
         if case.state is CaseState.BLOCKED:
             raise ValueError("an already blocked case cannot be blocked again")
@@ -358,6 +368,13 @@ def transition_case(case: RemediationCase, transition: CaseTransition, *,
         raise ValueError("new_finding_ids may be attached only during add_finding")
 
     merged_records = dict(case.record_ids)
+    if transition is CaseTransition.REQUEST_REWORK:
+        for name in (
+            "iac_link_id", "change_plan_id", "sre_review_id",
+            "change_window_id", "rollback_review_id",
+            "policy_decision_id", "human_review_package_id",
+        ):
+            merged_records.pop(name, None)
     merged_records.update(records)
     event = CaseEvent(
         event_id=event_id,
@@ -379,8 +396,10 @@ def transition_case(case: RemediationCase, transition: CaseTransition, *,
         version=event.sequence,
         updated_at=occurred_at,
         priority=priority or case.priority,
-        change_plan=change_plan or case.change_plan,
-        change_window=change_window or case.change_window,
+        change_plan=(None if transition is CaseTransition.REQUEST_REWORK
+                     else change_plan or case.change_plan),
+        change_window=(None if transition is CaseTransition.REQUEST_REWORK
+                       else change_window or case.change_window),
         record_ids=merged_records,
         blocked_from=blocked_from,
     )
