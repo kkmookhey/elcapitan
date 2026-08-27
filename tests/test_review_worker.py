@@ -1,7 +1,9 @@
 from elcapitan.agents import (
     AgentResult, AgentResultStatus, AgentRole, AgentTask,
 )
-from elcapitan.review_worker import _SemanticRetryRuntime
+from elcapitan.cases import CaseState, RemediationCase
+from elcapitan.product_records import ProductRecord
+from elcapitan.review_worker import _policy_stop_payload, _SemanticRetryRuntime
 from elcapitan.provider_runtimes import ProviderRuntimeError
 
 
@@ -74,3 +76,34 @@ def test_review_runtime_retries_a_provider_structured_output_violation_once():
     assert result.status is AgentResultStatus.SUCCEEDED
     assert len(provider.tasks) == 2
     assert "structured-output contract failure" in provider.tasks[1].constraints[-2]
+
+
+def test_policy_rejection_is_a_structured_successful_worker_outcome(monkeypatch):
+    case = RemediationCase(
+        case_id="CASE-1", tenant_id="TENANT-1", finding_ids=("FIND-1",),
+        asset_ids=(), service_ids=(), state=CaseState.REJECTED, version=4,
+        created_at=NOW, updated_at=NOW,
+        record_ids={"sre_review_id": "SRE-1"},
+    )
+    record = ProductRecord(
+        record_id="SRE-1", case_id="CASE-1", record_type="SREReview.v1",
+        schema_version=1, created_at=NOW,
+        body={"decision": "reject", "summary": "Unsafe dependency path."},
+    )
+
+    class Records:
+        def get(self, record_id):
+            assert record_id == "SRE-1"
+            return record
+
+    monkeypatch.setenv("ELCAP_REMEDIATION_MODEL", "maker")
+    monkeypatch.setenv("ELCAP_SRE_MODEL", "checker")
+    monkeypatch.setenv("ELCAP_WINDOW_MODEL", "window")
+    monkeypatch.setenv("ELCAP_ROLLBACK_MODEL", "rollback")
+    result = _policy_stop_payload(case, Records())
+
+    assert result["status"] == "policy_stopped"
+    assert result["case"]["state"] == "rejected"
+    assert result["decision_record"]["record_id"] == "SRE-1"
+    assert result["review_package"] is None
+    assert result["safety_boundary"] == "No infrastructure change has been applied."

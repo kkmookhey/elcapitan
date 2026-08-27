@@ -14,6 +14,7 @@ from .model_egress import ModelEgressRuntime
 from .observability import WindowPolicy, load_usage_samples
 from .openai_runtime import OpenAIRuntimeError, OpenAIResponsesRuntime
 from .orchestration import PreApprovalOrchestrator
+from .preapproval import PreApprovalError
 from .postgres_store import (
     PostgresArtifactStore, PostgresCaseStore, PostgresFindingStore,
     PostgresProductRecordStore,
@@ -102,6 +103,36 @@ def _runtime(now=_now):
     return ModelEgressRuntime(RoleRoutedRuntime(routes))
 
 
+def _agent_routes() -> dict[str, str]:
+    return {
+        "maker": "openai:" + _required_env("ELCAP_REMEDIATION_MODEL"),
+        "sre_checker": "anthropic:" + _required_env("ELCAP_SRE_MODEL"),
+        "window_reviewer": "openai:" + _required_env("ELCAP_WINDOW_MODEL"),
+        "rollback_reviewer": "anthropic:" + _required_env(
+            "ELCAP_ROLLBACK_MODEL"),
+    }
+
+
+def _policy_stop_payload(case, records) -> Mapping | None:
+    """Represent an evidence-backed reviewer rejection as a normal job result."""
+    if case.state is not CaseState.REJECTED:
+        return None
+    record_id = (
+        case.record_ids.get("rollback_review_id")
+        or case.record_ids.get("sre_review_id")
+    )
+    if not record_id:
+        return None
+    return {
+        "status": "policy_stopped",
+        "case": case_to_dict(case),
+        "decision_record": product_record_to_dict(records.get(record_id)),
+        "review_package": None,
+        "agent_routes": _agent_routes(),
+        "safety_boundary": "No infrastructure change has been applied.",
+    }
+
+
 def prepare_review(*, tenant_id: str, case_id: str, promotion_token: str,
                    repository, state_json, service_context_json, usage_json,
                    artifact_root, terraform_bin: str = "terraform",
@@ -140,22 +171,28 @@ def prepare_review(*, tenant_id: str, case_id: str, promotion_token: str,
         service_context_json, label="service context JSON")
     usage_samples = load_usage_samples(usage_json)
     try:
-        outcome = PreApprovalOrchestrator(
-            case_store=cases, finding_store=findings, record_store=records,
-            artifact_root=artifacts, runtime=_runtime(),
-            runner=SubprocessTerraformRunner(
-                terraform_bin, timeout_seconds=terraform_timeout),
-            now=_now, minimum_distinct_agent_models=minimum_distinct_models,
-            require_state_grounded_plan=True,
-        ).advance_to_human_review(
-            case_id, repository=repository, state_document=state,
-            service_context=service_context, usage_samples=usage_samples,
-            window_policy=WindowPolicy(
-                timezone="America/Los_Angeles", duration_minutes=60,
-                notice_hours=24, allowed_weekdays=(0, 1, 2, 3, 4),
-                allowed_start_hours=(0, 1, 2, 3, 4, 5),
-                candidate_count=3, minimum_profile_samples=2),
-        )
+        try:
+            outcome = PreApprovalOrchestrator(
+                case_store=cases, finding_store=findings, record_store=records,
+                artifact_root=artifacts, runtime=_runtime(),
+                runner=SubprocessTerraformRunner(
+                    terraform_bin, timeout_seconds=terraform_timeout),
+                now=_now, minimum_distinct_agent_models=minimum_distinct_models,
+                require_state_grounded_plan=True,
+            ).advance_to_human_review(
+                case_id, repository=repository, state_document=state,
+                service_context=service_context, usage_samples=usage_samples,
+                window_policy=WindowPolicy(
+                    timezone="America/Los_Angeles", duration_minutes=60,
+                    notice_hours=24, allowed_weekdays=(0, 1, 2, 3, 4),
+                    allowed_start_hours=(0, 1, 2, 3, 4, 5),
+                    candidate_count=3, minimum_profile_samples=2),
+            )
+        except PreApprovalError:
+            stopped = _policy_stop_payload(cases.get(case_id), records)
+            if stopped is None:
+                raise
+            return stopped
     finally:
         artifact_store.sync(artifacts)
     return {
@@ -163,12 +200,6 @@ def prepare_review(*, tenant_id: str, case_id: str, promotion_token: str,
         "case": case_to_dict(outcome.case),
         "review_package": product_record_to_dict(
             outcome.review_package),
-        "agent_routes": {
-            "maker": "openai:" + _required_env("ELCAP_REMEDIATION_MODEL"),
-            "sre_checker": "anthropic:" + _required_env("ELCAP_SRE_MODEL"),
-            "window_reviewer": "openai:" + _required_env("ELCAP_WINDOW_MODEL"),
-            "rollback_reviewer": "anthropic:" + _required_env(
-                "ELCAP_ROLLBACK_MODEL"),
-        },
+        "agent_routes": _agent_routes(),
         "safety_boundary": "No infrastructure change has been applied.",
     }
