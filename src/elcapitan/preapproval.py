@@ -62,12 +62,17 @@ def _prechange_claim_failures(summary: str) -> tuple[str, ...]:
 
 def _required_array_failures(output: Mapping, names: tuple[str, ...]
                              ) -> tuple[str, ...]:
-    return tuple(
-        f"{name} must be a non-empty array"
-        for name in names
-        if (not isinstance(output.get(name), (list, tuple))
-            or not output.get(name))
-    )
+    placeholders = {"placeholder", "tbd", "todo", "n/a", "none", "unknown"}
+    failures = []
+    for name in names:
+        value = output.get(name)
+        if not isinstance(value, (list, tuple)) or not value:
+            failures.append(f"{name} must be a non-empty array")
+        elif any(
+                not isinstance(item, str)
+                or item.strip().lower() in placeholders for item in value):
+            failures.append(f"{name} contains an empty or placeholder item")
+    return tuple(failures)
 
 
 def _sre_semantic_failures(output: Mapping) -> tuple[str, ...]:
@@ -286,6 +291,28 @@ class SREReviewService(_AgentStage):
             case = self.workflow.advance(
                 case_id, CaseTransition.BLOCK, detail=output["summary"], **common)
         return ReviewOutcome(case=case, record=record, agent_result=result)
+
+    def retry_invalid_approval(self, case_id: str) -> bool:
+        """Reopen a persisted legacy approval that fails current semantics."""
+        case = self.case_store.get(case_id)
+        if case.state is not CaseState.SRE_APPROVED:
+            return False
+        review_id = case.record_ids.get("sre_review_id", "")
+        review = self.record_store.get(review_id)
+        if review.case_id != case_id or review.record_type != "SREReview.v1":
+            raise PreApprovalError(
+                "case SRE review has the wrong owner or record type")
+        failures = _sre_semantic_failures(review.body)
+        if not failures:
+            return False
+        self.workflow.advance(
+            case_id, CaseTransition.RETRY_SRE,
+            event_id=self.id_factory("EVT"), occurred_at=self.now(),
+            actor="operational-review-policy",
+            record_ids={"review_feedback_id": review.record_id},
+            evidence_ids=review.evidence_ids,
+            detail="; ".join(failures))
+        return True
 
 
 class ChangeWindowService(_AgentStage):
@@ -543,12 +570,17 @@ class HumanReviewGate:
                     "ephemeral plan must contain only the allowed in-place attribute "
                     "update to the state-linked resource"),
             })
-        sre_ok = bool(records.get("sre_review_id") and
-                      records["sre_review_id"].body.get("decision") == "approve")
+        sre_ok = bool(
+            records.get("sre_review_id")
+            and records["sre_review_id"].body.get("decision") == "approve"
+            and not _sre_semantic_failures(records["sre_review_id"].body))
         checks.append({"check": "sre_approval", "passed": sre_ok,
                        "detail": "independent SRE decision must be approve"})
-        rollback_ok = bool(records.get("rollback_review_id") and
-                           records["rollback_review_id"].body.get("decision") == "approve")
+        rollback_ok = bool(
+            records.get("rollback_review_id")
+            and records["rollback_review_id"].body.get("decision") == "approve"
+            and not _rollback_semantic_failures(
+                records["rollback_review_id"].body))
         checks.append({"check": "rollback_approval", "passed": rollback_ok,
                        "detail": "independent rollback decision must be approve"})
         agent_records = [records.get(name) for name in (

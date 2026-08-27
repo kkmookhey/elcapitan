@@ -137,6 +137,31 @@ def test_checker_rework_returns_to_validated_and_clears_superseded_projection():
     assert event.to_state is CaseState.VALIDATED
 
 
+def test_invalid_sre_approval_can_retry_without_replanning():
+    current = case()
+    current = advance(current, CaseTransition.PRIORITIZE, 1,
+                      record_ids={"risk_assessment_id": "RISK-001"}, priority=risk())
+    current = advance(current, CaseTransition.VALIDATE, 2,
+                      record_ids={"validation_result_id": "VAL-001"})
+    current = advance(current, CaseTransition.PREPARE_PLAN, 3,
+                      record_ids={"change_plan_id": "PLAN-001",
+                                  "iac_link_id": "LINK-001"}, change_plan=plan())
+    current = advance(current, CaseTransition.APPROVE_SRE, 4,
+                      record_ids={"sre_review_id": "SRE-BAD"})
+
+    retried, event = transition_case(
+        current, CaseTransition.RETRY_SRE, event_id="EVT-005",
+        occurred_at=NOW, actor="policy",
+        record_ids={"review_feedback_id": "SRE-BAD"},
+        detail="verification_requirements contains a placeholder")
+
+    assert retried.state is CaseState.PLAN_READY
+    assert retried.change_plan == current.change_plan
+    assert retried.record_ids["review_feedback_id"] == "SRE-BAD"
+    assert "sre_review_id" not in retried.record_ids
+    assert event.to_state is CaseState.PLAN_READY
+
+
 def test_records_are_copied_into_immutable_mappings():
     records = {"risk_assessment_id": "RISK-001"}
     updated, event = transition_case(

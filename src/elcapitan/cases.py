@@ -57,6 +57,7 @@ class CaseTransition(StrEnum):
     VALIDATE = "validate"
     PREPARE_PLAN = "prepare_plan"
     APPROVE_SRE = "approve_sre"
+    RETRY_SRE = "retry_sre"
     SELECT_WINDOW = "select_window"
     REVIEW_ROLLBACK = "review_rollback"
     REQUEST_REWORK = "request_rework"
@@ -227,6 +228,7 @@ _REQUIRED_RECORDS = {
     CaseTransition.VALIDATE: "validation_result_id",
     CaseTransition.PREPARE_PLAN: "change_plan_id",
     CaseTransition.APPROVE_SRE: "sre_review_id",
+    CaseTransition.RETRY_SRE: "review_feedback_id",
     CaseTransition.SELECT_WINDOW: "change_window_id",
     CaseTransition.REVIEW_ROLLBACK: "rollback_review_id",
     CaseTransition.REQUEST_REWORK: "review_feedback_id",
@@ -297,6 +299,13 @@ def transition_case(case: RemediationCase, transition: CaseTransition, *,
             raise ValueError("only an approved case can be scheduled for execution")
         to_state = case.state
         blocked_from = case.blocked_from
+    elif transition is CaseTransition.RETRY_SRE:
+        if case.state is not CaseState.SRE_APPROVED:
+            raise ValueError("SRE retry is allowed only after SRE approval")
+        if not detail:
+            raise ValueError("SRE retry requires a concrete semantic failure")
+        to_state = CaseState.PLAN_READY
+        blocked_from = None
     elif transition is CaseTransition.REQUEST_REWORK:
         if case.state is not CaseState.WINDOW_SELECTED:
             raise ValueError(
@@ -368,6 +377,8 @@ def transition_case(case: RemediationCase, transition: CaseTransition, *,
         raise ValueError("new_finding_ids may be attached only during add_finding")
 
     merged_records = dict(case.record_ids)
+    if transition is CaseTransition.RETRY_SRE:
+        merged_records.pop("sre_review_id", None)
     if transition is CaseTransition.REQUEST_REWORK:
         for name in (
             "iac_link_id", "change_plan_id", "sre_review_id",

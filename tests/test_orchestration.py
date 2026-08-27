@@ -37,6 +37,9 @@ class Stage:
         self.calls.append(self.name)
         self.cases.state = self.next_state
 
+    def retry_invalid_approval(self, case_id):
+        return False
+
 
 def test_durable_preapproval_resumes_after_completed_planning_stage():
     cases, calls = Cases(CaseState.PLAN_READY), []
@@ -224,3 +227,12 @@ def test_prechange_guard_rejects_explicit_future_state_claims():
     assert _prechange_claim_failures(
         "The post-change success criteria are not already satisfied and must be "
         "verified after deployment.") == ()
+
+
+def test_sre_semantics_reject_placeholders():
+    assert _sre_semantic_failures({
+        "decision": "approve",
+        "failure_modes": ["access loss"],
+        "required_controls": ["checkpoint"],
+        "verification_requirements": ["placeholder"],
+    }) == ("verification_requirements contains an empty or placeholder item",)

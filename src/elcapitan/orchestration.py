@@ -62,7 +62,7 @@ class PreApprovalOrchestrator:
         """Resume the durable case from its last completed preapproval stage."""
         # Five stage advances reach the gate normally. One bounded checker-to-maker
         # rework adds four more; a second rejection is terminal.
-        for _ in range(9):
+        for _ in range(10):
             state = self.case_store.get(case_id).state
             if state is CaseState.VALIDATED:
                 self.planning.prepare(
@@ -73,6 +73,8 @@ class PreApprovalOrchestrator:
                     raise PreApprovalError(
                         f"SRE review stopped workflow in {outcome.case.state}")
             elif state is CaseState.SRE_APPROVED:
+                if self.sre.retry_invalid_approval(case_id):
+                    continue
                 self.window.select(
                     case_id, samples=usage_samples, policy=window_policy)
             elif state is CaseState.WINDOW_SELECTED:
