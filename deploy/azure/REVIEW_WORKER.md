@@ -16,7 +16,7 @@ must not be committed, supplied as container arguments, or printed in deployment
 logs. The non-secret configuration is:
 
 ```text
-image: ca7b25e7d425acr.azurecr.io/elcapitan-demo:20260827-review.2
+image: ca7b25e7d425acr.azurecr.io/elcapitan-demo:20260827-review.4
 trigger: Manual
 retry limit: 0
 timeout: 1800 seconds

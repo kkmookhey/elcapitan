@@ -3,7 +3,8 @@
   "environment": "non-production training laboratory",
   "owner": "kkmookhey",
   "dependencies": [
-    "Eiger training modules that read the Azure-hosted corpus",
+    "Running Azure Container App eiger-app",
+    "eiger-app uses KB_SOURCE=blob and has KB_BLOB_URL configured",
     "Azure Blob Storage data-plane reachability"
   ],
   "health_signals": [
@@ -19,5 +20,38 @@
     "No production workload is hosted in this environment",
     "The implementation must not proceed until an approved private endpoint, service endpoint, or explicit network rule preserves required corpus access",
     "The current worker has planning permissions only and cannot apply the change"
+  ],
+  "observed_topology": {
+    "observed_at": "2026-08-27T18:12:00Z",
+    "resource_group_inventory": [
+      "Microsoft.App/containerApps/eiger-app",
+      "Microsoft.App/managedEnvironments/eiger-env",
+      "Microsoft.ContainerRegistry/registries/eigeracr",
+      "Microsoft.OperationalInsights/workspaces/eiger-logs",
+      "Microsoft.Storage/storageAccounts/eigercorpus8dlub3zy"
+    ],
+    "eiger_app": {
+      "running_status": "Running",
+      "knowledge_base_source": "blob",
+      "blob_url_configured": true,
+      "managed_identity": false,
+      "external_ingress": true
+    },
+    "container_apps_environment": {
+      "vnet_injected": false
+    },
+    "storage_network": {
+      "public_network_access": "Enabled",
+      "default_action": "Allow",
+      "ip_rules": 0,
+      "virtual_network_rules": 0,
+      "private_endpoint_connections": 0
+    },
+    "dependency_conclusion": "The running Eiger app currently depends on the public Blob endpoint. Disabling public network access before migrating the app to a proven private data path would break corpus reads."
+  },
+  "mandatory_preconditions": [
+    "Choose and implement an application-reachable private Blob path or migrate Eiger away from this Blob dependency",
+    "Prove corpus reads from that replacement path before disabling public network access",
+    "Do not execute the storage flag change while eiger-app still relies on the public Blob endpoint"
   ]
 }
