@@ -19,7 +19,7 @@ attach an executor identity, Contributor role, model API key, or customer
 write credential to this service.
 
 The first customer run should use a dedicated deployment and database. Do not
-reuse the public synthetic lifecycle demo's `/data` volume.
+reuse the public synthetic lifecycle demo's `/data` volume or cloud identity.
 
 ## Supported live validation
 
@@ -71,8 +71,9 @@ uv run elcapitan capabilities
    personal data.
 2. Export findings from the scanner. Keep the source export unchanged for
    chain-of-custody purposes.
-3. Start `serve-shadow` with a fresh 24+ character access token and a dedicated
-   work directory.
+3. Start `serve-shadow` with a fresh 24+ character access token, a dedicated
+   work directory, and `ELCAPITAN_DATABASE_URL` set to a TLS-required PostgreSQL
+   connection string.
 4. Import a small representative batch first. Confirm provider, account,
    resource identifier, rule mapping, risk factors, and supported/unsupported
    counts in the case drill-down.
@@ -92,17 +93,30 @@ evidence and the affected case fails closed.
 
 ## Data handling
 
-Finding documents and captured configuration evidence remain on the service's
-local durable volume. The shadow service sends nothing to OpenAI, Anthropic,
-Gemini, or any other model provider. `/healthz` is anonymous for the hosting
-platform; all dashboard assets and case APIs require the access token. Browser
-sessions use an HttpOnly, Secure, SameSite=Strict cookie, and cross-origin
-writes are rejected.
+When `ELCAPITAN_DATABASE_URL` is present, cases, events, findings, product
+records, and immutable evidence blobs are stored in PostgreSQL. Evidence is
+rehydrated into the container's private working directory at startup and every
+blob is checked against its persisted SHA-256 digest. Reusing an artifact path
+with different content fails closed. SQLite and local files remain the local,
+single-node fallback when the database variable is absent.
+
+The shadow service sends nothing to OpenAI, Anthropic, Gemini, or any other
+model provider. `/healthz` is anonymous for the hosting platform and performs
+a real database query; all dashboard assets and case APIs require the access
+token. Browser sessions use an HttpOnly, Secure, SameSite=Strict cookie, and
+cross-origin writes are rejected.
+
+The Azure reference deployment uses a VNet-integrated Container Apps
+environment and PostgreSQL Flexible Server with public network access disabled,
+TLS required, seven-day backups, and a database-scoped application credential.
+The checked-in `deploy/azure/shadow-app.yaml` deliberately defaults to internal
+ingress. Enable HTTPS-only external ingress only after database health,
+anonymous denial, and authenticated UI/API checks pass.
 
 For a real customer, put Entra ID, an identity-aware proxy, or equivalent SSO
-in front of the app, encrypt the durable store with customer-managed controls,
-define retention, centralize audit logs, and replace SQLite with PostgreSQL
-before horizontal scaling.
+in front of the app, use customer-controlled encryption and retention, and
+centralize audit logs. The access-token boundary is appropriate for this
+non-production demo, not the final customer authentication design.
 
 ## Promotion to human review
 

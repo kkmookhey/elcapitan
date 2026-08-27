@@ -18,6 +18,10 @@ from .finding_store import SqliteFindingStore
 from .fleet import CapabilityRegistry, FleetSnapshotService, connector_readiness
 from .intake import IntakeContext, RemediationIntake, priority_signals
 from .product_records import SqliteProductRecordStore, product_record_to_dict
+from .postgres_store import (
+    PostgresArtifactStore, PostgresCaseStore, PostgresFindingStore,
+    PostgresProductRecordStore,
+)
 from .promotion import PromotionReadinessService
 from .schema import validate_doc
 
@@ -60,16 +64,47 @@ class IntakeBatchOutcome:
 class ShadowFleetControlPlane:
     """No approval, scheduling, or execution endpoints exist on this boundary."""
 
-    def __init__(self, root, *, host_env: Mapping[str, str] | None = None) -> None:
+    def __init__(self, root, *, host_env: Mapping[str, str] | None = None,
+                 database_url: str | None = None) -> None:
         self.root = Path(root).resolve()
         self.root.mkdir(parents=True, exist_ok=True)
-        self.database = self.root / "product.db"
         self.artifacts = self.root / "artifacts"
+        self.artifacts.mkdir(parents=True, exist_ok=True)
         self.host_env = dict(os.environ if host_env is None else host_env)
         self.registry = CapabilityRegistry()
-        self.cases = SqliteCaseStore(self.database)
-        self.findings = SqliteFindingStore(self.database)
-        self.records = SqliteProductRecordStore(self.database)
+        selected_database_url = (
+            database_url if database_url is not None
+            else self.host_env.get("ELCAPITAN_DATABASE_URL", ""))
+        if selected_database_url:
+            self.database = "postgresql"
+            self.cases = PostgresCaseStore(selected_database_url)
+            self.findings = PostgresFindingStore(selected_database_url)
+            self.records = PostgresProductRecordStore(selected_database_url)
+            self.artifact_store = PostgresArtifactStore(selected_database_url)
+            self.artifact_store.hydrate(self.artifacts)
+        else:
+            self.database = self.root / "product.db"
+            self.cases = SqliteCaseStore(self.database)
+            self.findings = SqliteFindingStore(self.database)
+            self.records = SqliteProductRecordStore(self.database)
+            self.artifact_store = None
+
+    def _sync_artifacts(self) -> None:
+        if self.artifact_store is not None:
+            self.artifact_store.sync(self.artifacts)
+
+    def health(self) -> dict:
+        # Executes an actual state-store query; a process-only health response
+        # could otherwise route traffic while PostgreSQL is unavailable.
+        self.cases.list_cases(tenant_id="__elcapitan_health__")
+        return {
+            "status": "ok",
+            "state_store": "postgresql" if self.database == "postgresql" else "sqlite",
+            "artifact_store": "postgresql" if self.artifact_store else "filesystem",
+            "durable_artifacts": (
+                self.artifact_store.count() if self.artifact_store else None),
+            "artifact_root_writable": os.access(self.artifacts, os.W_OK),
+        }
 
     def _fleet(self) -> FleetSnapshotService:
         return FleetSnapshotService(
@@ -176,6 +211,7 @@ class ShadowFleetControlPlane:
             service.ingest(document, tenant_id=tenant_id, context=context)
             for document in normalized
         ]
+        self._sync_artifacts()
         case_ids = tuple(dict.fromkeys(item.case.case_id for item in outcomes))
         return IntakeBatchOutcome(
             tenant_id=tenant_id,
@@ -253,6 +289,7 @@ class ShadowFleetControlPlane:
             artifact_root=self.artifacts,
             now=_now,
         ).validate(case_id, host_env=self.host_env)
+        self._sync_artifacts()
         return {
             "case": case_to_dict(outcome.case),
             "validation": product_record_to_dict(outcome.record),

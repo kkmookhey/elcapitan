@@ -113,7 +113,15 @@ class ShadowRequestHandler(DemoRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
-        if parsed.path in {"/healthz", "/login"}:
+        if parsed.path == "/healthz":
+            try:
+                self._json(self.server.control.health())
+            except Exception as exc:
+                print(f"shadow-web health failure: {type(exc).__name__}: {exc}")
+                self._json({"status": "unhealthy"},
+                           status=HTTPStatus.SERVICE_UNAVAILABLE)
+            return
+        if parsed.path == "/login":
             super().do_GET()
             return
         if not self._authorized():

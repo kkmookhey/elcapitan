@@ -6,6 +6,7 @@ import fake_az
 import pytest
 
 from elcapitan.intake import IntakeContext
+from elcapitan import shadow_control
 from elcapitan.shadow_control import ShadowControlError, ShadowFleetControlPlane
 
 
@@ -20,6 +21,37 @@ def findings():
     second["finding_info"]["analytic"]["uid"] = (
         "storage_blob_public_access_level_is_disabled")
     return [first, second]
+
+
+def test_shadow_uses_postgresql_when_database_url_is_configured(
+        tmp_path, monkeypatch):
+    created = []
+
+    class FakePostgresStore:
+        def __init__(self, dsn):
+            created.append(dsn)
+
+        def list_cases(self, *, tenant_id=None):
+            return ()
+
+        def hydrate(self, root):
+            return 0
+
+        def count(self):
+            return 0
+
+    monkeypatch.setattr(shadow_control, "PostgresCaseStore", FakePostgresStore)
+    monkeypatch.setattr(shadow_control, "PostgresFindingStore", FakePostgresStore)
+    monkeypatch.setattr(
+        shadow_control, "PostgresProductRecordStore", FakePostgresStore)
+    monkeypatch.setattr(shadow_control, "PostgresArtifactStore", FakePostgresStore)
+
+    dsn = "postgresql://shadow:secret@database/elcapitan?sslmode=require"
+    control = ShadowFleetControlPlane(
+        tmp_path, host_env={"ELCAPITAN_DATABASE_URL": dsn})
+
+    assert created == [dsn, dsn, dsn, dsn]
+    assert control.health()["state_store"] == "postgresql"
 
 
 def test_shadow_intake_creates_tenant_fleet_and_is_idempotent(tmp_path):
@@ -40,6 +72,7 @@ def test_shadow_intake_creates_tenant_fleet_and_is_idempotent(tmp_path):
     ).to_dict()
     assert replay["duplicates"] == 2
     assert replay["fleet"]["summary"]["total_findings"] == 2
+    assert control.health()["state_store"] == "sqlite"
 
 
 def test_shadow_intake_rejects_entire_unsupported_provider_batch(tmp_path):

@@ -49,9 +49,9 @@ session; it deliberately does not delete earlier audit evidence.
 
 The root `Dockerfile` runs as UID 10001, contains no provider keys, includes the
 Terraform CLI for deterministic plan checks, exposes port 8080, and writes demo
-state only under `/data`. Deploy a single replica because the current durable
-store is SQLite. A production service should replace it with PostgreSQL before
-horizontal scaling.
+state only under `/data`. The synthetic lifecycle demo uses SQLite. The customer
+shadow service selects PostgreSQL when `ELCAPITAN_DATABASE_URL` is set and also
+persists its hash-checked evidence blobs there.
 
 When `ELCAPITAN_DEMO_ACCESS_TOKEN` is set, every dashboard asset and API is
 protected by a login. The server stores only a one-way derived value in the
