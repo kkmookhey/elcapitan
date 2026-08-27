@@ -141,6 +141,7 @@ def test_cli_demo_stops_at_human_review_without_changing_source(
     assert result["status"] == "awaiting_approval"
     assert result["execution_status"] == "not_started"
     assert result["source_repository_unchanged"] is True
+    assert len(result["promotion_token"]) == 64
     assert [check["passed"] for check in result["terraform_checks"]] == [
         True, True, True, True,
     ]

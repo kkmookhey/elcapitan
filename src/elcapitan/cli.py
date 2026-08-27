@@ -464,6 +464,13 @@ resource "terraform_data" "storage_policy" {{
             provider="azure", resource_uid=resource_uid, region="westus2",
             config=(("public_network_access", '"Enabled"'),)),
     ).validate(ingested.case.case_id, host_env={})
+    promotion_service = PromotionReadinessService(
+        case_store=cases, finding_store=findings, record_store=records)
+    promotion = promotion_service.inspect(
+        tenant_id="TEN-DEMO", case_id=ingested.case.case_id)
+    promotion_service.require(
+        tenant_id="TEN-DEMO", case_id=ingested.case.case_id,
+        promotion_token=promotion.promotion_token)
     documents = {
         "TerraformRemediationProposal.v1": {"output": {
             "objective": "disable public network access for the validated storage service",
@@ -531,6 +538,7 @@ resource "terraform_data" "storage_policy" {{
         "case_id": ingested.case.case_id, "workdir": str(root),
         "database": str(db), "artifacts": str(artifacts),
         "review_package_id": outcome.human_review.review_package.record_id,
+        "promotion_token": promotion.promotion_token,
         "selected_window": case_to_dict(outcome.human_review.case)["change_window"],
         "terraform_checks": [check.to_dict() for check in outcome.planning.checks],
         "source_repository_unchanged": source.read_text(encoding="utf-8") == original,
