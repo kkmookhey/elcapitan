@@ -1,0 +1,30 @@
+{
+  "source": {
+    "provider": "Azure Monitor",
+    "resource": "/subscriptions/8cd2b4cc-c789-466d-a8f7-8f51fb20985d/resourceGroups/elcapitan-remediation-lab-rg/providers/Microsoft.Storage/storageAccounts/elcapassure8f51fb20985d",
+    "metric": "Transactions",
+    "aggregation": "Total",
+    "interval": "PT1M",
+    "captured_at": "2026-08-27T19:35:00Z",
+    "observed_range": "2026-08-27T19:20:00Z/2026-08-27T19:35:00Z",
+    "observed_samples": 15,
+    "observed_transactions": 1
+  },
+  "samples": [
+    {"timestamp": "2026-08-27T19:20:00Z", "requests": 0},
+    {"timestamp": "2026-08-27T19:21:00Z", "requests": 0},
+    {"timestamp": "2026-08-27T19:22:00Z", "requests": 0},
+    {"timestamp": "2026-08-27T19:23:00Z", "requests": 0},
+    {"timestamp": "2026-08-27T19:24:00Z", "requests": 0},
+    {"timestamp": "2026-08-27T19:25:00Z", "requests": 0},
+    {"timestamp": "2026-08-27T19:26:00Z", "requests": 0},
+    {"timestamp": "2026-08-27T19:27:00Z", "requests": 1},
+    {"timestamp": "2026-08-27T19:28:00Z", "requests": 0},
+    {"timestamp": "2026-08-27T19:29:00Z", "requests": 0},
+    {"timestamp": "2026-08-27T19:30:00Z", "requests": 0},
+    {"timestamp": "2026-08-27T19:31:00Z", "requests": 0},
+    {"timestamp": "2026-08-27T19:32:00Z", "requests": 0},
+    {"timestamp": "2026-08-27T19:33:00Z", "requests": 0},
+    {"timestamp": "2026-08-27T19:34:00Z", "requests": 0}
+  ]
+}

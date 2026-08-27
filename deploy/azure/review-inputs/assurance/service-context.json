@@ -1,0 +1,47 @@
+{
+  "service": "Disposable Azure Storage assurance target",
+  "environment": "isolated non-production assurance laboratory",
+  "owner": "kkmookhey",
+  "dependencies": [],
+  "health_signals": [
+    "storage account provisioning state remains Succeeded",
+    "publicNetworkAccess reports Disabled after implementation",
+    "Azure Storage Transactions remains at the pre-change zero-traffic baseline",
+    "live vulnerability validation reports the finding is no longer confirmed"
+  ],
+  "service_tier": "disposable-lab",
+  "customer_impact": "none; the account was created solely for this assurance run and contains no containers or blobs",
+  "iac_snapshot_provenance": "Exact Terraform owner and imported state snapshot for the newly created disposable account; no keys, connection strings, tokens, or data-plane content are included.",
+  "operational_assumptions": [
+    "The target is explicitly tagged elcapitan_scope=lab and environment=nonproduction",
+    "Azure returned an empty container inventory before planning",
+    "No application, user, pipeline, or service is configured to depend on this account",
+    "The executor identity is limited to storageAccounts/read and storageAccounts/write on this exact resource"
+  ],
+  "observed_topology": {
+    "observed_at": "2026-08-27T19:28:00Z",
+    "storage_account": {
+      "purpose": "assurance-lifecycle",
+      "provisioning_state": "Succeeded",
+      "public_network_access": "Enabled",
+      "blob_containers": 0,
+      "blob_cors_rules": 0,
+      "private_endpoint_requirement": "not applicable because the account has no consumers or data"
+    },
+    "dependency_conclusion": "Disabling public network access cannot interrupt a workload because the newly created account has no containers, data, or consumers."
+  },
+  "mandatory_preconditions": [
+    "Confirm the exact resource retains the lab and nonproduction scope tags at execution preflight",
+    "Confirm publicNetworkAccess is still Enabled immediately before deployment",
+    "Checkpoint the prior value and automatically restore it on any deployment, health, verification, or release-audit failure"
+  ],
+  "window_policy": {
+    "timezone": "UTC",
+    "duration_minutes": 30,
+    "notice_hours": 0,
+    "allowed_weekdays": [0, 1, 2, 3, 4, 5, 6],
+    "allowed_start_hours": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23],
+    "candidate_count": 1,
+    "minimum_profile_samples": 2
+  }
+}

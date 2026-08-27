@@ -3,7 +3,10 @@ from elcapitan.agents import (
 )
 from elcapitan.cases import CaseState, RemediationCase
 from elcapitan.product_records import ProductRecord
-from elcapitan.review_worker import _policy_stop_payload, _SemanticRetryRuntime
+from elcapitan.review_worker import (
+    _policy_stop_payload, _SemanticRetryRuntime, _window_policy,
+    ReviewWorkerError,
+)
 from elcapitan.provider_runtimes import ProviderRuntimeError
 
 
@@ -107,3 +110,25 @@ def test_policy_rejection_is_a_structured_successful_worker_outcome(monkeypatch)
     assert result["decision_record"]["record_id"] == "SRE-1"
     assert result["review_package"] is None
     assert result["safety_boundary"] == "No infrastructure change has been applied."
+
+
+def test_review_worker_accepts_an_explicit_validated_window_policy():
+    policy = _window_policy({"window_policy": {
+        "timezone": "UTC", "duration_minutes": 30, "notice_hours": 0,
+        "allowed_weekdays": [0, 1, 2, 3, 4, 5, 6],
+        "allowed_start_hours": list(range(24)),
+        "candidate_count": 1, "minimum_profile_samples": 2,
+    }})
+
+    assert policy.timezone == "UTC"
+    assert policy.duration_minutes == 30
+    assert policy.allowed_start_hours == tuple(range(24))
+
+
+def test_review_worker_rejects_unknown_window_policy_fields():
+    try:
+        _window_policy({"window_policy": {"timezone": "UTC", "execute_now": True}})
+    except ReviewWorkerError as exc:
+        assert "unknown fields: execute_now" in str(exc)
+    else:
+        raise AssertionError("unknown policy fields must fail closed")

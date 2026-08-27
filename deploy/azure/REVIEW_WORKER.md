@@ -16,7 +16,7 @@ must not be committed, supplied as container arguments, or printed in deployment
 logs. The non-secret configuration is:
 
 ```text
-image: ca7b25e7d425acr.azurecr.io/elcapitan-demo:20260827-review.16
+image: ca7b25e7d425acr.azurecr.io/elcapitan-demo:20260827-review.17
 trigger: Manual
 retry limit: 0
 timeout: 1800 seconds
@@ -35,3 +35,8 @@ The plan is accepted only if JSON inspection proves exactly one in-place change:
 `false`. The binary plan and state are deleted before the container exits. The
 worker is resumable from any completed preapproval stage and stops before approval
 or execution.
+
+The service-context document may include a strict `window_policy` object for a
+customer or laboratory maintenance policy. Unknown fields and invalid timezone,
+duration, weekday, hour, candidate, or sample constraints fail closed. When it
+is absent, the worker retains the conservative weekday midnight default.

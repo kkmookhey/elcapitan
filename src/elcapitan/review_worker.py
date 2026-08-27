@@ -133,6 +133,43 @@ def _policy_stop_payload(case, records) -> Mapping | None:
     }
 
 
+def _window_policy(service_context: Mapping) -> WindowPolicy:
+    raw = service_context.get("window_policy")
+    if raw is None:
+        return WindowPolicy(
+            timezone="America/Los_Angeles", duration_minutes=60,
+            notice_hours=24, allowed_weekdays=(0, 1, 2, 3, 4),
+            allowed_start_hours=(0, 1, 2, 3, 4, 5),
+            candidate_count=3, minimum_profile_samples=2)
+    if not isinstance(raw, Mapping):
+        raise ReviewWorkerError("service context window_policy must be an object")
+    allowed = {
+        "timezone", "duration_minutes", "notice_hours", "allowed_weekdays",
+        "allowed_start_hours", "candidate_count", "minimum_profile_samples",
+    }
+    unknown = sorted(set(raw) - allowed)
+    if unknown:
+        raise ReviewWorkerError(
+            "service context window_policy has unknown fields: "
+            + ", ".join(unknown))
+    defaults = WindowPolicy()
+    values = {
+        "timezone": raw.get("timezone", defaults.timezone),
+        "duration_minutes": raw.get(
+            "duration_minutes", defaults.duration_minutes),
+        "notice_hours": raw.get("notice_hours", defaults.notice_hours),
+        "allowed_weekdays": raw.get(
+            "allowed_weekdays", defaults.allowed_weekdays),
+        "allowed_start_hours": raw.get(
+            "allowed_start_hours", defaults.allowed_start_hours),
+        "candidate_count": raw.get(
+            "candidate_count", defaults.candidate_count),
+        "minimum_profile_samples": raw.get(
+            "minimum_profile_samples", defaults.minimum_profile_samples),
+    }
+    return WindowPolicy(**values)
+
+
 def prepare_review(*, tenant_id: str, case_id: str, promotion_token: str,
                    repository, state_json, service_context_json, usage_json,
                    artifact_root, terraform_bin: str = "terraform",
@@ -182,11 +219,7 @@ def prepare_review(*, tenant_id: str, case_id: str, promotion_token: str,
             ).advance_to_human_review(
                 case_id, repository=repository, state_document=state,
                 service_context=service_context, usage_samples=usage_samples,
-                window_policy=WindowPolicy(
-                    timezone="America/Los_Angeles", duration_minutes=60,
-                    notice_hours=24, allowed_weekdays=(0, 1, 2, 3, 4),
-                    allowed_start_hours=(0, 1, 2, 3, 4, 5),
-                    candidate_count=3, minimum_profile_samples=2),
+                window_policy=_window_policy(service_context),
             )
         except PreApprovalError:
             stopped = _policy_stop_payload(cases.get(case_id), records)
