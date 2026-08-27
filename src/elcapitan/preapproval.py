@@ -51,6 +51,12 @@ def _strings(document: Mapping, name: str, *, required: bool = False) -> tuple[s
 def _prechange_claim_failures(summary: str) -> tuple[str, ...]:
     """Catch explicit claims that future-state proof already exists pre-change."""
     lowered = " ".join(summary.lower().split())
+    for negated in (
+        "not already satisfied", "not already verified", "not already passed",
+        "have not already been satisfied", "have not already been verified",
+        "has not already passed",
+    ):
+        lowered = lowered.replace(negated, "")
     phrases = (
         "already satisfied", "already verified", "already passed",
         "post-change health signals confirm",

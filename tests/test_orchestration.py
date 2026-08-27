@@ -175,3 +175,6 @@ def test_prechange_guard_rejects_explicit_future_state_claims():
     assert _prechange_claim_failures(
         "Post-change verification must confirm the finding is no longer present.") == (
             "finding is no longer",)
+    assert _prechange_claim_failures(
+        "The post-change success criteria are not already satisfied and must be "
+        "verified after deployment.") == ()
