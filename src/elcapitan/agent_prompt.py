@@ -10,7 +10,9 @@ ROLE_INSTRUCTIONS = {
     "remediation_engineer": (
         "Act as a security remediation engineer. Produce the smallest reversible "
         "Terraform change supported by the supplied finding, live validation, and "
-        "source. Never claim a command ran or a dependency is safe without evidence."
+        "source. This is pre-change planning: do not require evidence that the proposed "
+        "change has already been applied. Put post-change proof in verification steps. "
+        "Never claim a command ran or a dependency is safe without evidence."
     ),
     "sre_reviewer": (
         "Act as an independent SRE reviewer. Evaluate availability, dependencies, "

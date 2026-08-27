@@ -676,6 +676,8 @@ class RemediationPlanningService:
                 "do not apply infrastructure changes",
                 "include verification, rollback steps, and rollback triggers",
                 "return the complete linked file and preserve all unrelated content",
+                "do not request post-change state as planning input; express it as a "
+                "verification step",
             ),
             metadata={
                 "provider": provider,
