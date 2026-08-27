@@ -229,10 +229,15 @@ def test_repository_symlinks_are_rejected_before_terraform_runs(prepared):
     assert runner.calls == []
 
 
-def test_state_grounded_runner_accepts_only_one_targeted_update(tmp_path):
+def test_state_grounded_runner_accepts_only_one_targeted_update(tmp_path, monkeypatch):
+    monkeypatch.setenv("IDENTITY_ENDPOINT", "http://localhost:42356/msi/token")
+    monkeypatch.setenv("IDENTITY_HEADER", "rotating-platform-header")
     terraform = tmp_path / "terraform"
     terraform.write_text(
         "#!/bin/sh\n"
+        "[ \"$ARM_MSI_ENDPOINT\" = \"$IDENTITY_ENDPOINT\" ] || exit 41\n"
+        "[ \"$ARM_MSI_API_VERSION\" = \"2019-08-01\" ] || exit 42\n"
+        "[ \"$IDENTITY_HEADER\" = \"rotating-platform-header\" ] || exit 43\n"
         "if [ \"$1\" = \"plan\" ]; then for arg in \"$@\"; do "
         "case \"$arg\" in -out=*) touch \"${arg#-out=}\";; esac; done; fi\n"
         "if [ \"$1\" = \"show\" ]; then "

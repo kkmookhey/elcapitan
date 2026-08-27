@@ -267,6 +267,7 @@ class SubprocessTerraformRunner:
             }
             # Only the explicitly configured planning identity may cross into the
             # provider process. Ambient scanner, observer, and user credentials stay out.
+            identity_endpoint = os.environ.get("IDENTITY_ENDPOINT", "")
             planning_environment = {
                 "ARM_USE_MSI": os.environ.get("ELCAP_PLANNER_AZURE_USE_MSI", ""),
                 "ARM_CLIENT_ID": os.environ.get(
@@ -275,6 +276,15 @@ class SubprocessTerraformRunner:
                     "ELCAP_PLANNER_AZURE_SUBSCRIPTION_ID", ""),
                 "ARM_TENANT_ID": os.environ.get(
                     "ELCAP_PLANNER_AZURE_TENANT_ID", ""),
+                # Container Apps exposes an App Service-style identity endpoint,
+                # while AzureRM otherwise falls back to the VM IMDS address. Keep
+                # the platform endpoint and rotating header inside the isolated
+                # provider process and use the API version required by ACA.
+                "ARM_MSI_ENDPOINT": os.environ.get(
+                    "ELCAP_PLANNER_AZURE_MSI_ENDPOINT", "") or identity_endpoint,
+                "ARM_MSI_API_VERSION": os.environ.get(
+                    "ELCAP_PLANNER_AZURE_MSI_API_VERSION", "") or (
+                        "2019-08-01" if identity_endpoint else ""),
                 "IDENTITY_ENDPOINT": os.environ.get("IDENTITY_ENDPOINT", ""),
                 "IDENTITY_HEADER": os.environ.get("IDENTITY_HEADER", ""),
             }
