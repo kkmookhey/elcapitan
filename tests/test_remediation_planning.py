@@ -195,6 +195,20 @@ def test_agent_cannot_modify_a_file_other_than_the_linked_source(prepared):
         )
 
 
+def test_supported_control_is_materialized_without_model_side_edits(prepared):
+    _, _, _, _, _, validated, repository, _, replacement = prepared
+    proposed = replacement + '\nresource "null_resource" "unrelated" {}\n'
+    runner = Runner()
+
+    outcome = service(prepared, Runtime(proposed), runner).prepare(
+        validated.case_id, repository=repository)
+
+    workspace = runner.calls[0][0]
+    assert (workspace / "infra" / "storage.tf").read_text() == replacement
+    assert outcome.plan_record.body["change"]["materialization"] == (
+        "deterministic_control_patch")
+
+
 def test_agent_must_cite_the_linked_source(prepared):
     *_, validated, repository, _, replacement = prepared
     runtime = Runtime(replacement, citations=())

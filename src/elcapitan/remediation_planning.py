@@ -403,6 +403,30 @@ def _copy_repository(source: Path, destination: Path) -> None:
                 )
 
 
+def _materialize_control_patch(*, original: str, proposed: str,
+                               link: TerraformLink,
+                               rule_ids: set[str]) -> tuple[str, str]:
+    """Materialize supported edits deterministically instead of trusting model text."""
+    if (link.resource_type == "azurerm_storage_account"
+            and rule_ids == {"storage_account_public_network_access_disabled"}):
+        proposed_assignment = re.compile(
+            r"(?m)^\s*public_network_access_enabled\s*=\s*false\s*(?:#.*)?$")
+        if not proposed_assignment.search(proposed):
+            raise RemediationPlanningError(
+                "agent proposal did not request public_network_access_enabled = false")
+        current_assignment = re.compile(
+            r"(?m)^(?P<prefix>\s*public_network_access_enabled\s*=\s*)"
+            r"true(?P<suffix>\s*(?:#.*)?)$")
+        replacement, count = current_assignment.subn(
+            r"\g<prefix>false\g<suffix>", original)
+        if count != 1:
+            raise RemediationPlanningError(
+                "linked source must contain exactly one literal "
+                "public_network_access_enabled = true assignment")
+        return replacement, "deterministic_control_patch"
+    return proposed, "agent_source_replacement"
+
+
 def _string_tuple(output: Mapping, name: str, *, required: bool = True) -> tuple[str, ...]:
     value = output.get(name)
     if value is None and not required:
@@ -517,6 +541,7 @@ class RemediationPlanningService:
         run_dir.mkdir(parents=True, exist_ok=False)
 
         source_path = safe_resolve(repository_root, link.source_path)
+        original_source = source_path.read_text(encoding="utf-8")
         source_ref = write_evidence(
             run_dir, self.id_factory("EVD"), "terraform_source_before",
             source_path.read_bytes(), self.collector, now=now,
@@ -553,12 +578,13 @@ class RemediationPlanningService:
                 "modify only the linked Terraform source file",
                 "do not apply infrastructure changes",
                 "include verification, rollback steps, and rollback triggers",
+                "return the complete linked file and preserve all unrelated content",
             ),
             metadata={
                 "provider": provider,
                 "resource_uid": resource_uid,
                 "link": link.to_dict(),
-                "source": source_path.read_text(encoding="utf-8"),
+                "source": original_source,
                 "findings": [finding.record for finding in findings],
                 "validation": validation.body,
             },
@@ -605,11 +631,17 @@ class RemediationPlanningService:
             raise RemediationPlanningError(
                 f"agent must replace exactly the linked file {link.source_path!r}"
             )
-        replacement = files[link.source_path]
-        if not isinstance(replacement, str) or not replacement:
+        proposed_replacement = files[link.source_path]
+        if not isinstance(proposed_replacement, str) or not proposed_replacement:
             raise RemediationPlanningError("replacement Terraform source must be non-empty text")
-        if len(replacement.encode("utf-8")) > 2 * 1024 * 1024:
+        if len(proposed_replacement.encode("utf-8")) > 2 * 1024 * 1024:
             raise RemediationPlanningError("replacement Terraform source exceeds 2 MiB")
+        rule_ids = {
+            str(item.record["ocsf"].get("rule_id", "")) for item in findings
+        }
+        replacement, source_materialization = _materialize_control_patch(
+            original=original_source, proposed=proposed_replacement,
+            link=link, rule_ids=rule_ids)
 
         workspace = run_dir / "workspace"
         _copy_repository(repository_root, workspace)
@@ -681,6 +713,7 @@ class RemediationPlanningService:
                 "source_path": link.source_path,
                 "before_sha256": before_sha256,
                 "after_sha256": after_sha256,
+                "materialization": source_materialization,
             },
             "checks": [check.to_dict() for check in checks],
             "artifact_namespace": namespace,
