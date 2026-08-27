@@ -346,6 +346,23 @@ def test_container_apps_identity_proxy_injects_header_and_bounds_request():
     }
 
 
+def test_terraform_output_redaction_preserves_diagnostic_text_only():
+    raw = (
+        "could not acquire access token to parse claims\n"
+        'access_token="credential-value" client_secret: hidden-value\n'
+        "eyJabcdefghijklmnop.qrstuvwxyz012345.signature\n"
+    )
+
+    redacted = SubprocessTerraformRunner._redact_output(raw)
+
+    assert "could not acquire access token to parse claims" in redacted
+    assert "credential-value" not in redacted
+    assert "hidden-value" not in redacted
+    assert "eyJabcdefghijklmnop" not in redacted
+    assert redacted.count("[redacted]") == 2
+    assert "[redacted JWT]" in redacted
+
+
 def test_plan_scope_rejects_create_or_destroy(tmp_path):
     terraform = tmp_path / "terraform"
     terraform.write_text(

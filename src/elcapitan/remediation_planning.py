@@ -217,12 +217,18 @@ class SubprocessTerraformRunner:
 
     @staticmethod
     def _redact_output(value: str) -> str:
-        sensitive = re.compile(
-            r"(?i)(access.?key|connection.?string|client.?secret|password|token)")
-        return "\n".join(
-            "[sensitive Terraform output redacted]" if sensitive.search(line) else line
-            for line in value.splitlines()
-        )
+        assigned_secret = re.compile(
+            r'''(?ix)
+            (
+              ["']?(?:access[_. -]?key|connection[_. -]?string|
+                client[_. -]?secret|password|access[_. -]?token|token)["']?
+              \s*[:=]\s*
+            )
+            (?:["'][^"'\n]*["']|[^\s,;}]+)
+            ''')
+        jwt = re.compile(r"\beyJ[A-Za-z0-9_-]{16,}(?:\.[A-Za-z0-9_-]+){1,2}\b")
+        redacted = assigned_secret.sub(r'\1"[redacted]"', value)
+        return jwt.sub("[redacted JWT]", redacted)
 
     @classmethod
     def _changed_paths(cls, before, after, *, prefix: str = "") -> tuple[str, ...]:
