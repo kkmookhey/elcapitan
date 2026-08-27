@@ -375,6 +375,7 @@ class HumanReviewGate:
     def __init__(self, *, case_store: CaseStore, record_store: ProductRecordStore,
                  now: Callable[[], str],
                  minimum_distinct_agent_models: int = 1,
+                 require_state_grounded_plan: bool = False,
                  id_factory: Callable[[str], str] = numeric_id) -> None:
         self.case_store = case_store
         self.record_store = record_store
@@ -383,6 +384,7 @@ class HumanReviewGate:
         if not 1 <= minimum_distinct_agent_models <= 4:
             raise ValueError("minimum distinct agent models must be between 1 and 4")
         self.minimum_distinct_agent_models = minimum_distinct_agent_models
+        self.require_state_grounded_plan = require_state_grounded_plan
         self.workflow = WorkflowCoordinator(case_store)
 
     def prepare(self, case_id: str) -> HumanReviewOutcome:
@@ -415,6 +417,22 @@ class HumanReviewGate:
                        all(item.get("passed") is True for item in plan.body["checks"]))
         checks.append({"check": "terraform_verification", "passed": plan_ok,
                        "detail": "fmt/init/validate/plan must all pass"})
+        if self.require_state_grounded_plan:
+            verification = (plan.body.get("verification") if plan else {}) or {}
+            state_plan_ok = (
+                verification.get("mode") == "targeted_state_plan"
+                and verification.get("plan_artifact_persisted") is False
+                and bool(verification.get("resource_address"))
+                and bool(verification.get("state_sha256"))
+                and any(item.get("name") == "plan_scope" and item.get("passed") is True
+                        for item in (plan.body.get("checks", ()) if plan else ()))
+            )
+            checks.append({
+                "check": "state_grounded_plan_scope", "passed": state_plan_ok,
+                "detail": (
+                    "ephemeral plan must contain only the allowed in-place attribute "
+                    "update to the state-linked resource"),
+            })
         sre_ok = bool(records.get("sre_review_id") and
                       records["sre_review_id"].body.get("decision") == "approve")
         checks.append({"check": "sre_approval", "passed": sre_ok,

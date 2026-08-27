@@ -230,7 +230,7 @@ class ShadowFleetControlPlane:
             item.case_id: item for item in self._promotions().list(tenant_id=tenant_id)
         }
         document["summary"]["review_ready_cases"] = sum(
-            item.eligible for item in promotions.values())
+            item.status == "ready_for_preapproval" for item in promotions.values())
         for case in document["cases"]:
             readiness = promotions[case["case_id"]]
             case["promotion_status"] = readiness.status

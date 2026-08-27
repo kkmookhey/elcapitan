@@ -104,7 +104,8 @@ resource "azurerm_storage_account" "corpus" {
     terraform = tmp_path / "terraform"
     terraform.write_text(
         "#!/bin/sh\n"
-        "if [ \"$1\" = \"plan\" ]; then touch .elcapitan-plan.tfplan; fi\n"
+        "if [ \"$1\" = \"plan\" ]; then for arg in \"$@\"; do "
+        "case \"$arg\" in -out=*) touch \"${arg#-out=}\";; esac; done; fi\n"
         "exit 0\n"
     )
     terraform.chmod(0o755)
@@ -128,7 +129,8 @@ def test_cli_demo_stops_at_human_review_without_changing_source(
     terraform = tmp_path / "terraform"
     terraform.write_text(
         "#!/bin/sh\n"
-        "if [ \"$1\" = \"plan\" ]; then touch .elcapitan-plan.tfplan; fi\n"
+        "if [ \"$1\" = \"plan\" ]; then for arg in \"$@\"; do "
+        "case \"$arg\" in -out=*) touch \"${arg#-out=}\";; esac; done; fi\n"
         "exit 0\n"
     )
     terraform.chmod(0o755)
@@ -168,7 +170,8 @@ def test_cli_complete_lifecycle_success_and_automatic_rollback(
     terraform = tmp_path / "terraform"
     terraform.write_text(
         "#!/bin/sh\n"
-        "if [ \"$1\" = \"plan\" ]; then touch .elcapitan-plan.tfplan; fi\n"
+        "if [ \"$1\" = \"plan\" ]; then for arg in \"$@\"; do "
+        "case \"$arg\" in -out=*) touch \"${arg#-out=}\";; esac; done; fi\n"
         "exit 0\n"
     )
     terraform.chmod(0o755)

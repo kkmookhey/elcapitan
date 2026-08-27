@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, Protocol
@@ -69,11 +71,13 @@ class TerraformCheck:
 
 
 class TerraformRunner(Protocol):
-    def check(self, workspace: Path, link: TerraformLink) -> tuple[TerraformCheck, ...]: ...
+    def check(self, workspace: Path, link: TerraformLink, *,
+              state_document: Mapping | None = None
+              ) -> tuple[TerraformCheck, ...]: ...
 
 
 class SubprocessTerraformRunner:
-    """Run local, non-interactive checks without ambient cloud credentials.
+    """Run non-interactive checks with an explicit planning identity only.
 
     Provider installation is constrained by the repository lock file. This is
     a development runner; production will execute the same contract in an
@@ -120,55 +124,216 @@ class SubprocessTerraformRunner:
         except OSError as exc:
             return TerraformCheck(name=name, argv=argv, exit_code=127, stderr=str(exc))
 
-    def check(self, workspace: Path, link: TerraformLink) -> tuple[TerraformCheck, ...]:
+    @staticmethod
+    def _raw_state(document: Mapping | None) -> bool:
+        return bool(
+            isinstance(document, Mapping)
+            and isinstance(document.get("version"), int)
+            and isinstance(document.get("resources"), list)
+        )
+
+    @staticmethod
+    def _redact_output(value: str) -> str:
+        sensitive = re.compile(
+            r"(?i)(access.?key|connection.?string|client.?secret|password|token)")
+        return "\n".join(
+            "[sensitive Terraform output redacted]" if sensitive.search(line) else line
+            for line in value.splitlines()
+        )
+
+    @classmethod
+    def _changed_paths(cls, before, after, *, prefix: str = "") -> tuple[str, ...]:
+        """Return stable leaf paths without serializing before/after values."""
+        if isinstance(before, Mapping) and isinstance(after, Mapping):
+            paths = []
+            for key in sorted(set(before) | set(after)):
+                child = f"{prefix}.{key}" if prefix else str(key)
+                if key not in before or key not in after:
+                    paths.append(child)
+                else:
+                    paths.extend(cls._changed_paths(
+                        before[key], after[key], prefix=child))
+            return tuple(paths)
+        if isinstance(before, list) and isinstance(after, list):
+            return () if before == after else (prefix,)
+        return () if before == after else (prefix,)
+
+    @staticmethod
+    def _allowed_target_change(target: str, change: Mapping,
+                               changed_paths: tuple[str, ...]) -> bool:
+        """Fail closed around the only live remediation implemented today."""
+        if target.split(".", 1)[0] != "azurerm_storage_account":
+            return False
+        before, after = change.get("before"), change.get("after")
+        return (
+            isinstance(before, Mapping)
+            and isinstance(after, Mapping)
+            and changed_paths == ("public_network_access_enabled",)
+            and before.get("public_network_access_enabled") is True
+            and after.get("public_network_access_enabled") is False
+        )
+
+    def _plan_scope(self, *, plan_path: Path, target: str, cwd: Path,
+                    environment: Mapping[str, str]) -> TerraformCheck:
+        argv = (self.executable, "show", "-json", str(plan_path))
+        try:
+            completed = subprocess.run(
+                argv, cwd=cwd, env=dict(environment), text=True,
+                capture_output=True, check=False, timeout=self.timeout_seconds,
+            )
+        except subprocess.TimeoutExpired:
+            return TerraformCheck(
+                "plan_scope", (self.executable, "show", "-json", "[EPHEMERAL_PLAN]"),
+                124, stderr="Terraform plan inspection timed out")
+        except OSError as exc:
+            return TerraformCheck(
+                "plan_scope", (self.executable, "show", "-json", "[EPHEMERAL_PLAN]"),
+                127, stderr=str(exc))
+        normalized_argv = (
+            self.executable, "show", "-json", "[EPHEMERAL_PLAN]")
+        if completed.returncode != 0:
+            return TerraformCheck(
+                "plan_scope", normalized_argv, completed.returncode,
+                stderr=self._redact_output(self._output(completed.stderr)))
+        try:
+            document = json.loads(completed.stdout)
+        except (json.JSONDecodeError, RecursionError) as exc:
+            return TerraformCheck(
+                "plan_scope", normalized_argv, 1,
+                stderr=f"Terraform plan JSON was invalid: {exc}")
+        changes = []
+        target_change = None
+        for item in document.get("resource_changes", ()):
+            if not isinstance(item, Mapping):
+                continue
+            change = item.get("change") or {}
+            actions = list(change.get("actions") or ())
+            if actions != ["no-op"]:
+                changed_paths = self._changed_paths(
+                    change.get("before"), change.get("after"))
+                changes.append({
+                    "address": str(item.get("address", "")),
+                    "actions": actions,
+                    "changed_attribute_paths": list(changed_paths),
+                })
+                if item.get("address") == target:
+                    target_change = (change, changed_paths)
+        structural_scope = (
+            len(changes) == 1
+            and changes[0]["address"] == target
+            and changes[0]["actions"] == ["update"]
+        )
+        attribute_scope = bool(
+            structural_scope
+            and target_change
+            and self._allowed_target_change(target, *target_change)
+        )
+        passed = structural_scope and attribute_scope
+        summary = {
+            "required_target": target,
+            "observed_changes": changes,
+            "creates": sum("create" in item["actions"] for item in changes),
+            "updates": sum("update" in item["actions"] for item in changes),
+            "deletes": sum("delete" in item["actions"] for item in changes),
+            "attribute_scope_passed": attribute_scope,
+            "passed": passed,
+        }
+        return TerraformCheck(
+            "plan_scope", normalized_argv, 0 if passed else 1,
+            stdout=json.dumps(summary, sort_keys=True, separators=(",", ":")),
+            stderr=("plan must contain exactly the allowed public-network-access "
+                    "update to the linked storage account"
+                    if not passed else ""),
+        )
+
+    def check(self, workspace: Path, link: TerraformLink, *,
+              state_document: Mapping | None = None
+              ) -> tuple[TerraformCheck, ...]:
         module = safe_resolve(workspace, link.module_path)
         source = safe_resolve(workspace, link.source_path)
         relative_source = source.relative_to(module).as_posix()
-        isolated_home = workspace / ".elcapitan-home"
-        isolated_home.mkdir()
-        environment = {
-            "PATH": os.environ.get("PATH", ""),
-            "HOME": str(isolated_home),
-            "AZURE_CONFIG_DIR": str(isolated_home / ".azure"),
-            "AWS_CONFIG_FILE": str(isolated_home / "aws-config"),
-            "AWS_SHARED_CREDENTIALS_FILE": str(isolated_home / "aws-credentials"),
-            "TF_IN_AUTOMATION": "1",
-            "CHECKPOINT_DISABLE": "1",
-            "TF_INPUT": "0",
-        }
-        commands = (
-            ("fmt", (self.executable, "fmt", "-check", "-diff", relative_source)),
-            (
-                "init",
-                (
-                    self.executable, "init", "-backend=false", "-input=false",
-                    "-lockfile=readonly", "-no-color",
-                ),
-            ),
-            ("validate", (self.executable, "validate", "-no-color")),
-            (
-                "plan",
-                (
-                    self.executable, "plan", "-input=false", "-lock=false",
-                    "-refresh=false", "-no-color", "-out=.elcapitan-plan.tfplan",
-                ),
-            ),
-        )
-        results: list[TerraformCheck] = []
-        for name, argv in commands:
-            result = self._run(name, argv, cwd=module, environment=environment)
-            if (name == "plan" and result.passed
-                    and not (module / ".elcapitan-plan.tfplan").is_file()):
-                result = TerraformCheck(
-                    name=name, argv=argv, exit_code=1,
-                    stdout=result.stdout,
-                    stderr=(result.stderr + "\nterraform exited successfully but did not "
-                            "create the requested plan artifact").strip(),
-                )
-            results.append(result)
-            if not result.passed:
-                break
-        return tuple(results)
+        with tempfile.TemporaryDirectory(prefix="elcapitan-terraform-") as temporary:
+            isolated = Path(temporary)
+            environment = {
+                "PATH": os.environ.get("PATH", ""),
+                "HOME": str(isolated / "home"),
+                "AZURE_CONFIG_DIR": str(isolated / "azure"),
+                "AWS_CONFIG_FILE": str(isolated / "aws-config"),
+                "AWS_SHARED_CREDENTIALS_FILE": str(isolated / "aws-credentials"),
+                "TF_DATA_DIR": str(isolated / "terraform-data"),
+                "TF_IN_AUTOMATION": "1",
+                "CHECKPOINT_DISABLE": "1",
+                "TF_INPUT": "0",
+            }
+            # Only the explicitly configured planning identity may cross into the
+            # provider process. Ambient scanner, observer, and user credentials stay out.
+            planning_environment = {
+                "ARM_USE_MSI": os.environ.get("ELCAP_PLANNER_AZURE_USE_MSI", ""),
+                "ARM_CLIENT_ID": os.environ.get(
+                    "ELCAP_PLANNER_AZURE_MANAGED_IDENTITY_CLIENT_ID", ""),
+                "ARM_SUBSCRIPTION_ID": os.environ.get(
+                    "ELCAP_PLANNER_AZURE_SUBSCRIPTION_ID", ""),
+                "ARM_TENANT_ID": os.environ.get(
+                    "ELCAP_PLANNER_AZURE_TENANT_ID", ""),
+                "IDENTITY_ENDPOINT": os.environ.get("IDENTITY_ENDPOINT", ""),
+                "IDENTITY_HEADER": os.environ.get("IDENTITY_HEADER", ""),
+            }
+            environment.update({
+                key: value for key, value in planning_environment.items() if value
+            })
+            plan_path = isolated / "target.tfplan"
+            raw_state = self._raw_state(state_document)
+            if raw_state and not link.resource_address:
+                return (TerraformCheck(
+                    "plan", (self.executable, "plan"), 1,
+                    stderr="state-grounded planning requires an exact resource address"),)
+            plan_args = [
+                self.executable, "plan", "-input=false", "-lock=false",
+                "-refresh=false", "-no-color",
+            ]
+            if raw_state:
+                state_path = isolated / "input.tfstate"
+                state_path.write_bytes(canonical_json(state_document))
+                plan_args.extend((f"-state={state_path}",
+                                  f"-target={link.resource_address}"))
+            plan_args.append(f"-out={plan_path}")
+            commands = (
+                ("fmt", (self.executable, "fmt", "-check", "-diff", relative_source)),
+                ("init", (self.executable, "init", "-backend=false", "-input=false",
+                          "-lockfile=readonly", "-no-color")),
+                ("validate", (self.executable, "validate", "-no-color")),
+                ("plan", tuple(plan_args)),
+            )
+            results: list[TerraformCheck] = []
+            for name, argv in commands:
+                result = self._run(name, argv, cwd=module, environment=environment)
+                if name == "plan":
+                    normalized = tuple(
+                        "-state=[EPHEMERAL_STATE]" if item.startswith("-state=")
+                        else "-out=[EPHEMERAL_PLAN]" if item.startswith("-out=")
+                        else item for item in argv)
+                    if result.passed:
+                        result = TerraformCheck(
+                            name, normalized, result.exit_code,
+                            stdout="Terraform created an ephemeral plan for policy inspection.",
+                            stderr=self._redact_output(result.stderr))
+                    else:
+                        result = TerraformCheck(
+                            name, normalized, result.exit_code,
+                            stdout=self._redact_output(result.stdout),
+                            stderr=self._redact_output(result.stderr))
+                    if result.passed and not plan_path.is_file():
+                        result = TerraformCheck(
+                            name, normalized, 1, stdout=result.stdout,
+                            stderr="Terraform exited successfully without a plan artifact")
+                results.append(result)
+                if not result.passed:
+                    break
+            if results and results[-1].name == "plan" and results[-1].passed and raw_state:
+                results.append(self._plan_scope(
+                    plan_path=plan_path, target=link.resource_address,
+                    cwd=module, environment=environment))
+            return tuple(results)
 
 
 class RecordedAgentRuntime:
@@ -474,7 +639,8 @@ class RemediationPlanningService:
         change_ref = (
             f"{namespace}/workspace/{link.source_path}#sha256:{after_sha256}"
         )
-        checks = self.runner.check(workspace, link)
+        checks = self.runner.check(
+            workspace, link, state_document=state_document)
         if not checks:
             raise RemediationPlanningError("Terraform runner returned no checks")
         check_evidence = []
@@ -494,6 +660,14 @@ class RemediationPlanningService:
         )
         body = {
             "status": "verified" if all(check.passed for check in checks) else "rejected",
+            "verification": {
+                "mode": ("targeted_state_plan"
+                         if SubprocessTerraformRunner._raw_state(state_document)
+                         else "offline_plan_without_state"),
+                "resource_address": link.resource_address,
+                "state_sha256": link.state_sha256,
+                "plan_artifact_persisted": False,
+            },
             "plan": _plan_to_dict(plan),
             "link_record_id": link_id,
             "task": {

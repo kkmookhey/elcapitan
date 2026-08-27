@@ -1,0 +1,22 @@
+FROM hashicorp/terraform:1.15.8 AS terraform
+
+FROM python:3.12.11-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+COPY --from=terraform /bin/terraform /usr/local/bin/terraform
+
+WORKDIR /app
+COPY pyproject.toml README.md ./
+COPY src ./src
+COPY deploy/azure/review-inputs /review-inputs
+RUN python -m pip install --no-cache-dir . \
+    && useradd --system --uid 10001 --create-home elcapitan \
+    && mkdir -p /data/review/artifacts \
+    && chown -R elcapitan:elcapitan /data
+
+USER 10001
+
+ENTRYPOINT ["elcapitan", "prepare-review-worker"]

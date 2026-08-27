@@ -1,0 +1,27 @@
+{
+  "source": {
+    "provider": "Azure Monitor",
+    "resource": "/subscriptions/8cd2b4cc-c789-466d-a8f7-8f51fb20985d/resourceGroups/eiger-rg/providers/Microsoft.Storage/storageAccounts/eigercorpus8dlub3zy",
+    "metric": "Transactions",
+    "aggregation": "Total",
+    "interval": "PT1H",
+    "captured_at": "2026-08-27T17:48:00Z",
+    "observed_range": "2026-07-30T00:00:00Z/2026-08-27T23:00:00Z",
+    "observed_samples": 696,
+    "observed_transactions": 494
+  },
+  "samples": [
+    {"timestamp": "2026-08-03T07:00:00Z", "requests": 0, "errors": 0, "p95_latency_ms": 0},
+    {"timestamp": "2026-08-10T07:00:00Z", "requests": 0, "errors": 0, "p95_latency_ms": 0},
+    {"timestamp": "2026-08-17T07:00:00Z", "requests": 0, "errors": 0, "p95_latency_ms": 0},
+    {"timestamp": "2026-08-24T07:00:00Z", "requests": 0, "errors": 0, "p95_latency_ms": 0},
+    {"timestamp": "2026-08-04T08:00:00Z", "requests": 0, "errors": 0, "p95_latency_ms": 0},
+    {"timestamp": "2026-08-11T08:00:00Z", "requests": 0, "errors": 0, "p95_latency_ms": 0},
+    {"timestamp": "2026-08-18T08:00:00Z", "requests": 0, "errors": 0, "p95_latency_ms": 0},
+    {"timestamp": "2026-08-25T08:00:00Z", "requests": 0, "errors": 0, "p95_latency_ms": 0},
+    {"timestamp": "2026-08-05T09:00:00Z", "requests": 0, "errors": 0, "p95_latency_ms": 0},
+    {"timestamp": "2026-08-12T09:00:00Z", "requests": 0, "errors": 0, "p95_latency_ms": 0},
+    {"timestamp": "2026-08-19T09:00:00Z", "requests": 0, "errors": 0, "p95_latency_ms": 0},
+    {"timestamp": "2026-08-26T09:00:00Z", "requests": 0, "errors": 0, "p95_latency_ms": 0}
+  ]
+}

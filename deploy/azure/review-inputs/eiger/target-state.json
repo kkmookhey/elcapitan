@@ -1,0 +1,197 @@
+{
+  "version": 4,
+  "terraform_version": "1.15.8",
+  "serial": 29,
+  "lineage": "f9c6fd36-23cb-48e9-1217-0e82be4a9bd2",
+  "outputs": {},
+  "resources": [
+    {
+      "mode": "managed",
+      "type": "azurerm_storage_account",
+      "name": "corpus",
+      "provider": "provider[\"registry.terraform.io/hashicorp/azurerm\"]",
+      "instances": [
+        {
+          "schema_version": 4,
+          "attributes": {
+            "access_tier": "Hot",
+            "account_kind": "StorageV2",
+            "account_replication_type": "LRS",
+            "account_tier": "Standard",
+            "allow_nested_items_to_be_public": true,
+            "allowed_copy_scope": "",
+            "azure_files_authentication": [],
+            "blob_properties": [
+              {
+                "change_feed_enabled": false,
+                "change_feed_retention_in_days": 0,
+                "container_delete_retention_policy": [],
+                "cors_rule": [],
+                "default_service_version": "",
+                "delete_retention_policy": [],
+                "last_access_time_enabled": false,
+                "restore_policy": [],
+                "versioning_enabled": false
+              }
+            ],
+            "cross_tenant_replication_enabled": false,
+            "custom_domain": [],
+            "customer_managed_key": [],
+            "default_to_oauth_authentication": false,
+            "dns_endpoint_type": "Standard",
+            "edge_zone": "",
+            "https_traffic_only_enabled": true,
+            "id": "/subscriptions/8cd2b4cc-c789-466d-a8f7-8f51fb20985d/resourceGroups/eiger-rg/providers/Microsoft.Storage/storageAccounts/eigercorpus8dlub3zy",
+            "identity": [],
+            "immutability_policy": [],
+            "infrastructure_encryption_enabled": false,
+            "is_hns_enabled": false,
+            "large_file_share_enabled": false,
+            "local_user_enabled": true,
+            "location": "centralindia",
+            "min_tls_version": "TLS1_2",
+            "name": "eigercorpus8dlub3zy",
+            "network_rules": [],
+            "nfsv3_enabled": false,
+            "primary_blob_endpoint": "https://eigercorpus8dlub3zy.blob.core.windows.net/",
+            "primary_blob_host": "eigercorpus8dlub3zy.blob.core.windows.net",
+            "primary_blob_internet_endpoint": "",
+            "primary_blob_internet_host": "",
+            "primary_blob_microsoft_endpoint": "",
+            "primary_blob_microsoft_host": "",
+            "primary_dfs_endpoint": "https://eigercorpus8dlub3zy.dfs.core.windows.net/",
+            "primary_dfs_host": "eigercorpus8dlub3zy.dfs.core.windows.net",
+            "primary_dfs_internet_endpoint": "",
+            "primary_dfs_internet_host": "",
+            "primary_dfs_microsoft_endpoint": "",
+            "primary_dfs_microsoft_host": "",
+            "primary_file_endpoint": "https://eigercorpus8dlub3zy.file.core.windows.net/",
+            "primary_file_host": "eigercorpus8dlub3zy.file.core.windows.net",
+            "primary_file_internet_endpoint": "",
+            "primary_file_internet_host": "",
+            "primary_file_microsoft_endpoint": "",
+            "primary_file_microsoft_host": "",
+            "primary_location": "centralindia",
+            "primary_queue_endpoint": "https://eigercorpus8dlub3zy.queue.core.windows.net/",
+            "primary_queue_host": "eigercorpus8dlub3zy.queue.core.windows.net",
+            "primary_queue_microsoft_endpoint": "",
+            "primary_queue_microsoft_host": "",
+            "primary_table_endpoint": "https://eigercorpus8dlub3zy.table.core.windows.net/",
+            "primary_table_host": "eigercorpus8dlub3zy.table.core.windows.net",
+            "primary_table_microsoft_endpoint": "",
+            "primary_table_microsoft_host": "",
+            "primary_web_endpoint": "https://eigercorpus8dlub3zy.z29.web.core.windows.net/",
+            "primary_web_host": "eigercorpus8dlub3zy.z29.web.core.windows.net",
+            "primary_web_internet_endpoint": "",
+            "primary_web_internet_host": "",
+            "primary_web_microsoft_endpoint": "",
+            "primary_web_microsoft_host": "",
+            "provisioned_billing_model_version": "",
+            "public_network_access_enabled": true,
+            "queue_encryption_key_type": "Service",
+            "queue_properties": [
+              {
+                "cors_rule": [],
+                "hour_metrics": [
+                  {
+                    "enabled": false,
+                    "include_apis": false,
+                    "retention_policy_days": 0,
+                    "version": "1.0"
+                  }
+                ],
+                "logging": [
+                  {
+                    "delete": false,
+                    "read": false,
+                    "retention_policy_days": 0,
+                    "version": "1.0",
+                    "write": false
+                  }
+                ],
+                "minute_metrics": [
+                  {
+                    "enabled": false,
+                    "include_apis": false,
+                    "retention_policy_days": 0,
+                    "version": "1.0"
+                  }
+                ]
+              }
+            ],
+            "resource_group_name": "eiger-rg",
+            "routing": [],
+            "sas_policy": [],
+            "secondary_blob_endpoint": "",
+            "secondary_blob_host": "",
+            "secondary_blob_internet_endpoint": "",
+            "secondary_blob_internet_host": "",
+            "secondary_blob_microsoft_endpoint": "",
+            "secondary_blob_microsoft_host": "",
+            "secondary_dfs_endpoint": "",
+            "secondary_dfs_host": "",
+            "secondary_dfs_internet_endpoint": "",
+            "secondary_dfs_internet_host": "",
+            "secondary_dfs_microsoft_endpoint": "",
+            "secondary_dfs_microsoft_host": "",
+            "secondary_file_endpoint": "",
+            "secondary_file_host": "",
+            "secondary_file_internet_endpoint": "",
+            "secondary_file_internet_host": "",
+            "secondary_file_microsoft_endpoint": "",
+            "secondary_file_microsoft_host": "",
+            "secondary_location": "",
+            "secondary_queue_endpoint": "",
+            "secondary_queue_host": "",
+            "secondary_queue_microsoft_endpoint": "",
+            "secondary_queue_microsoft_host": "",
+            "secondary_table_endpoint": "",
+            "secondary_table_host": "",
+            "secondary_table_microsoft_endpoint": "",
+            "secondary_table_microsoft_host": "",
+            "secondary_web_endpoint": "",
+            "secondary_web_host": "",
+            "secondary_web_internet_endpoint": "",
+            "secondary_web_internet_host": "",
+            "secondary_web_microsoft_endpoint": "",
+            "secondary_web_microsoft_host": "",
+            "sftp_enabled": false,
+            "share_properties": [
+              {
+                "cors_rule": [],
+                "retention_policy": [
+                  {
+                    "days": 7
+                  }
+                ],
+                "smb": []
+              }
+            ],
+            "shared_access_key_enabled": true,
+            "static_website": [],
+            "table_encryption_key_type": "Service",
+            "tags": {
+              "managed_by": "terraform",
+              "project": "eiger",
+              "purpose": "rag-corpus-storage"
+            },
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "identity": {
+            "name": "eigercorpus8dlub3zy",
+            "resource_group_name": "eiger-rg",
+            "subscription_id": "8cd2b4cc-c789-466d-a8f7-8f51fb20985d"
+          },
+          "dependencies": [
+            "azurerm_resource_group.main",
+            "data.azurerm_client_config.current",
+            "random_string.storage_suffix"
+          ]
+        }
+      ]
+    }
+  ]
+}
+

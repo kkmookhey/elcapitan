@@ -149,6 +149,24 @@ def _parser() -> argparse.ArgumentParser:
         help="optional ignored dotenv file from which only provider API keys are loaded")
     review.add_argument("--terraform-bin", default="terraform")
     review.add_argument("--terraform-timeout", type=float, default=300)
+    worker = sub.add_parser(
+        "prepare-review-worker",
+        help="run the isolated PostgreSQL-backed planning worker to human review",
+    )
+    worker.add_argument("--tenant", required=True)
+    worker.add_argument("--case", required=True)
+    worker.add_argument(
+        "--promotion-token",
+        help="promotion token; defaults to ELCAPITAN_PROMOTION_TOKEN",
+    )
+    worker.add_argument("--repo", type=Path, required=True)
+    worker.add_argument("--state-json", type=Path, required=True)
+    worker.add_argument("--service-context-json", type=Path, required=True)
+    worker.add_argument("--usage-json", type=Path, required=True)
+    worker.add_argument("--artifacts", type=Path, default=Path("/data/review/artifacts"))
+    worker.add_argument("--terraform-bin", default="terraform")
+    worker.add_argument("--terraform-timeout", type=float, default=300)
+    worker.add_argument("--minimum-distinct-models", type=int, default=2)
     demo = sub.add_parser(
         "demo-review", help="run a safe local end-to-end demo through human review")
     demo.add_argument("--workdir", type=Path)
@@ -958,6 +976,22 @@ def main(argv=None) -> int:
         return 0
     if args.command == "prepare-review":
         return _prepare_review(args)
+    if args.command == "prepare-review-worker":
+        from .review_worker import prepare_review
+        result = prepare_review(
+            tenant_id=args.tenant, case_id=args.case,
+            promotion_token=(args.promotion_token or os.environ.get(
+                "ELCAPITAN_PROMOTION_TOKEN", "")),
+            repository=args.repo, state_json=args.state_json,
+            service_context_json=args.service_context_json,
+            usage_json=args.usage_json, artifact_root=args.artifacts,
+            terraform_bin=args.terraform_bin,
+            terraform_timeout=args.terraform_timeout,
+            minimum_distinct_models=args.minimum_distinct_models,
+        )
+        json.dump(result, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 0
     if args.command == "demo-review":
         return _demo_review(args)
     if args.command == "demo-lifecycle":

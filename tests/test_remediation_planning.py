@@ -13,9 +13,10 @@ from elcapitan.finding_store import SqliteFindingStore
 from elcapitan.intake import RemediationIntake
 from elcapitan.product_records import SqliteProductRecordStore
 from elcapitan.remediation_planning import (
-    RemediationPlanningError, RemediationPlanningService, TerraformCheck,
-    TerraformChecksFailed,
+    RemediationPlanningError, RemediationPlanningService,
+    SubprocessTerraformRunner, TerraformCheck, TerraformChecksFailed,
 )
+from elcapitan.terraform_linker import TerraformLink
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "prowler-ocsf-azure-sample.json"
@@ -74,8 +75,8 @@ class Runner:
         self.exit_codes = exit_codes
         self.calls = []
 
-    def check(self, workspace, link):
-        self.calls.append((workspace, link))
+    def check(self, workspace, link, *, state_document=None):
+        self.calls.append((workspace, link, state_document))
         names = ("fmt", "validate", "plan")
         return tuple(
             TerraformCheck(name, ("terraform", name), code, stdout=f"{name} output")
@@ -212,3 +213,100 @@ def test_repository_symlinks_are_rejected_before_terraform_runs(prepared):
             validated.case_id, repository=repository
         )
     assert runner.calls == []
+
+
+def test_state_grounded_runner_accepts_only_one_targeted_update(tmp_path):
+    terraform = tmp_path / "terraform"
+    terraform.write_text(
+        "#!/bin/sh\n"
+        "if [ \"$1\" = \"plan\" ]; then for arg in \"$@\"; do "
+        "case \"$arg\" in -out=*) touch \"${arg#-out=}\";; esac; done; fi\n"
+        "if [ \"$1\" = \"show\" ]; then "
+        "printf '%s' '{\"resource_changes\":[{\"address\":\"azurerm_storage_account.corpus\",\"change\":{\"actions\":[\"update\"],\"before\":{\"public_network_access_enabled\":true},\"after\":{\"public_network_access_enabled\":false}}}]}'; fi\n"
+        "exit 0\n"
+    )
+    terraform.chmod(0o755)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "storage.tf").write_text(
+        'resource "azurerm_storage_account" "corpus" {}\n')
+    link = TerraformLink(
+        resource_uid="/subscriptions/sub/resourceGroups/rg/providers/"
+                     "Microsoft.Storage/storageAccounts/account",
+        source_path="storage.tf", module_path=".",
+        resource_type="azurerm_storage_account", resource_name="corpus",
+        start_line=1, end_line=1, match_strategy="state_resource_id",
+        confidence=1, source_sha256="a", resource_address=(
+            "azurerm_storage_account.corpus"), state_sha256="b",
+    )
+    state = {
+        "version": 4, "serial": 1, "lineage": "lineage", "outputs": {},
+        "resources": [],
+    }
+
+    checks = SubprocessTerraformRunner(str(terraform)).check(
+        workspace, link, state_document=state)
+
+    assert [item.name for item in checks] == [
+        "fmt", "init", "validate", "plan", "plan_scope"]
+    assert all(item.passed for item in checks)
+    assert json.loads(checks[-1].stdout) == {
+        "creates": 0, "deletes": 0,
+        "attribute_scope_passed": True,
+        "observed_changes": [{
+            "actions": ["update"],
+            "address": "azurerm_storage_account.corpus",
+            "changed_attribute_paths": ["public_network_access_enabled"],
+        }],
+        "passed": True,
+        "required_target": "azurerm_storage_account.corpus",
+        "updates": 1,
+    }
+    assert "-state=[EPHEMERAL_STATE]" in checks[-2].argv
+    assert "-out=[EPHEMERAL_PLAN]" in checks[-2].argv
+
+
+def test_plan_scope_rejects_create_or_destroy(tmp_path):
+    terraform = tmp_path / "terraform"
+    terraform.write_text(
+        "#!/bin/sh\n"
+        "printf '%s' '{\"resource_changes\":["
+        "{\"address\":\"azurerm_storage_account.corpus\",\"change\":{\"actions\":[\"delete\",\"create\"]}}]}'\n"
+    )
+    terraform.chmod(0o755)
+    plan = tmp_path / "plan"
+    plan.write_bytes(b"opaque")
+
+    check = SubprocessTerraformRunner(str(terraform))._plan_scope(
+        plan_path=plan, target="azurerm_storage_account.corpus",
+        cwd=tmp_path, environment={"PATH": ""})
+
+    assert check.passed is False
+    summary = json.loads(check.stdout)
+    assert summary["creates"] == 1
+    assert summary["deletes"] == 1
+
+
+def test_plan_scope_rejects_extra_attribute_change(tmp_path):
+    terraform = tmp_path / "terraform"
+    terraform.write_text(
+        "#!/bin/sh\n"
+        "printf '%s' '{\"resource_changes\":[{"
+        "\"address\":\"azurerm_storage_account.corpus\","
+        "\"change\":{\"actions\":[\"update\"],"
+        "\"before\":{\"public_network_access_enabled\":true,\"min_tls_version\":\"TLS1_2\"},"
+        "\"after\":{\"public_network_access_enabled\":false,\"min_tls_version\":\"TLS1_0\"}}}]}'\n"
+    )
+    terraform.chmod(0o755)
+    plan = tmp_path / "plan"
+    plan.write_bytes(b"opaque")
+
+    check = SubprocessTerraformRunner(str(terraform))._plan_scope(
+        plan_path=plan, target="azurerm_storage_account.corpus",
+        cwd=tmp_path, environment={"PATH": ""})
+
+    assert check.passed is False
+    summary = json.loads(check.stdout)
+    assert summary["attribute_scope_passed"] is False
+    assert summary["observed_changes"][0]["changed_attribute_paths"] == [
+        "min_tls_version", "public_network_access_enabled"]

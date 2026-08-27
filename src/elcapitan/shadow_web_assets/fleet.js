@@ -78,7 +78,7 @@ function validationSummary(item) {
 
 function schedulingSummary(item) {
   const status = item.scheduling_status || "not_schedulable";
-  const collision = status === "window_conflict";
+  const collision = status === "window_conflict" || status === "candidate_window_conflict";
   const tone = collision || status === "blocked" ? "bad" : status === "scheduled" ? "good" : "warn";
   return [tone, humanize(status), (item.scheduling_reasons || [])[0] || "No scheduling signal"];
 }
@@ -104,7 +104,12 @@ function renderFleet(document) {
     });
     return totals;
   }, {});
-  $("#metric-validated").textContent = summary.case_state_counts.validated || 0;
+  const validatedCases = document.cases.filter(item => {
+    const counts = item.validation_counts || {};
+    return (counts.confirmed || counts.not_confirmed) &&
+      !(counts.unavailable || counts.unsupported);
+  }).length;
+  $("#metric-validated").textContent = validatedCases;
   const outcomeText = Object.entries(validationOutcomes).map(([status, count]) => `${count} ${humanize(status)}`).join(" · ");
   $("#metric-validation-detail").textContent = outcomeText || "No live evidence outcomes";
   const highest = document.cases[0];
@@ -162,12 +167,24 @@ function fact(label, value) {
   return `<div class="fact"><span>${escapeHtml(label)}</span><span>${escapeHtml(value ?? "—")}</span></div>`;
 }
 
+function recordSummary(record) {
+  const body = record.body || {};
+  const findings = body.findings || [];
+  if (findings.length) return findings.map(item => `${humanize(item.status)}: ${item.reason}`).join(" · ");
+  if (record.record_type === "IaCLink.v1") return `Linked ${body.link?.resource_address || body.link?.source_path || "Terraform resource"}`;
+  if (record.record_type === "RemediationPlan.v1") return `${humanize(body.status)}: ${body.plan?.objective || "Remediation plan"}`;
+  if (record.record_type === "SREReview.v1") return `${humanize(body.decision)}: ${body.summary}`;
+  if (record.record_type === "ChangeWindowRecommendation.v1") return `Candidate ${body.selected?.local_start || body.selected?.starts_at || "window selected"}`;
+  if (record.record_type === "RollbackReview.v1") return `${humanize(body.decision)}: ${body.summary}`;
+  if (record.record_type === "PolicyDecision.v1") return `${humanize(body.decision)} · ${(body.checks || []).length} policy checks passed`;
+  if (record.record_type === "HumanReviewPackage.v1") return `${humanize(body.requested_human_decision)} · execution ${humanize(body.execution_status)}`;
+  return "Evidence record captured";
+}
+
 function renderRecords(records) {
   if (!records.length) return '<p class="empty compact">No validation product records yet.</p>';
   return records.map(record => {
-    const findings = record.body?.findings || [];
-    const decision = findings.map(item => `${humanize(item.status)}: ${item.reason}`).join(" · ") || "Evidence record captured";
-    return `<div class="record"><strong>${escapeHtml(record.record_type)}</strong><p>${escapeHtml(decision)}</p><code>${escapeHtml(shortId(record.record_id))} · ${escapeHtml(record.created_at)}</code></div>`;
+    return `<div class="record"><strong>${escapeHtml(record.record_type)}</strong><p>${escapeHtml(recordSummary(record))}</p><code>${escapeHtml(shortId(record.record_id))} · ${escapeHtml(record.created_at)}</code></div>`;
   }).join("");
 }
 
@@ -189,7 +206,7 @@ async function openCase(caseId) {
       <section class="detail-section"><h3>Control & target</h3>${fact("Rule", ocsf.rule_id)}${fact("Resource", finding.resource_uid)}${fact("Severity", finding.record?.severity)}${fact("Findings", caseDoc.finding_ids.length)}</section>
       <section class="detail-section"><h3>Risk rationale</h3>${(caseDoc.priority?.factors || []).map(value => `<div class="record"><p>${escapeHtml(value)}</p></div>`).join("") || '<p class="empty compact">Not assessed.</p>'}</section>
       <section class="detail-section"><h3>Shadow safety boundary</h3>${fact("Live validation", safety.mode === "shadow" ? "Allowed" : "Unknown")}${fact("External models", safety.external_models ? "Allowed" : "Disabled")}${fact("Approval", safety.approval ? "Allowed" : "Unavailable")}${fact("Scheduling", safety.scheduling ? "Allowed" : "Unavailable")}${fact("Execution", safety.execution ? "Allowed" : "Unavailable")}</section>
-      <section class="detail-section full"><h3>Pre-approval promotion</h3>${fact("Status", humanize(promotion.status))}${fact("Promotion token", shortId(promotion.promotion_token, 48))}${fact("Confirmed controls", (promotion.confirmed_rule_ids || []).join(", ") || "None")}${(promotion.blockers || []).map(value => `<div class="record"><p>${escapeHtml(value)}</p></div>`).join("")}${promotion.eligible ? (promotion.required_inputs || []).map(value => `<div class="record"><p>${escapeHtml(value)}</p></div>`).join("") : ""}</section>
+      <section class="detail-section full"><h3>Operational review</h3>${fact("Status", humanize(promotion.status))}${fact("Promotion token", shortId(promotion.promotion_token, 48))}${fact("Confirmed controls", (promotion.confirmed_rule_ids || []).join(", ") || "None")}${(promotion.blockers || []).map(value => `<div class="record"><p>${escapeHtml(value)}</p></div>`).join("")}${promotion.status === "ready_for_preapproval" ? (promotion.required_inputs || []).map(value => `<div class="record"><p>${escapeHtml(value)}</p></div>`).join("") : ""}</section>
       <section class="detail-section full"><h3>Evidence & decision records</h3>${renderRecords(detail.records)}</section>
       <section class="detail-section full"><h3>Immutable case timeline</h3>${detail.events.map(event => `<div class="record"><strong>${escapeHtml(humanize(event.transition))}</strong><p>${escapeHtml(humanize(event.from_state))} → ${escapeHtml(humanize(event.to_state))} · ${escapeHtml(event.actor)}</p><code>${escapeHtml(event.occurred_at)} · ${escapeHtml(shortId(event.event_id))}</code></div>`).join("")}</section>
     </div>`;

@@ -46,6 +46,6 @@ def test_portfolio_orders_validated_risk_and_flags_window_collision():
     planned_case(workflow, "MEDIUM", 70)
     items = PortfolioService(case_store=store).queue(tenant_id="TEN-001")
     assert [item.case_id for item in items] == ["HIGH", "MEDIUM"]
-    assert items[0].scheduling_status == "scheduled"
-    assert items[1].scheduling_status == "window_conflict"
+    assert items[0].scheduling_status == "awaiting_rollback_review"
+    assert items[1].scheduling_status == "candidate_window_conflict"
     assert "HIGH" in items[1].reasons[-1]

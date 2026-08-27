@@ -10,8 +10,8 @@ from .finding_store import FindingStore
 from .intake import numeric_id
 from .observability import UsageSample, WindowPolicy
 from .preapproval import (
-    ChangeWindowService, HumanReviewGate, HumanReviewOutcome, ReviewOutcome,
-    RollbackReviewService, SREReviewService, WindowOutcome,
+    ChangeWindowService, HumanReviewGate, HumanReviewOutcome, PreApprovalError,
+    ReviewOutcome, RollbackReviewService, SREReviewService, WindowOutcome,
 )
 from .product_records import ProductRecordStore
 from .remediation_planning import (
@@ -35,6 +35,7 @@ class PreApprovalOrchestrator:
                  runtime: AgentRuntime, runner: TerraformRunner,
                  now: Callable[[], str],
                  minimum_distinct_agent_models: int = 1,
+                 require_state_grounded_plan: bool = False,
                  id_factory: Callable[[str], str] = numeric_id) -> None:
         common = dict(case_store=case_store, record_store=record_store,
                       artifact_root=artifact_root, runtime=runtime, now=now,
@@ -50,7 +51,40 @@ class PreApprovalOrchestrator:
         self.gate = HumanReviewGate(
             case_store=case_store, record_store=record_store,
             now=now, id_factory=id_factory,
-            minimum_distinct_agent_models=minimum_distinct_agent_models)
+            minimum_distinct_agent_models=minimum_distinct_agent_models,
+            require_state_grounded_plan=require_state_grounded_plan)
+
+    def advance_to_human_review(self, case_id: str, *, repository,
+                                state_document: Mapping | None,
+                                service_context: Mapping,
+                                usage_samples: tuple[UsageSample, ...],
+                                window_policy: WindowPolicy) -> HumanReviewOutcome:
+        """Resume the durable case from its last completed preapproval stage."""
+        for _ in range(5):
+            state = self.case_store.get(case_id).state
+            if state is CaseState.VALIDATED:
+                self.planning.prepare(
+                    case_id, repository=repository, state_document=state_document)
+            elif state is CaseState.PLAN_READY:
+                outcome = self.sre.review(case_id, service_context=service_context)
+                if outcome.case.state is not CaseState.SRE_APPROVED:
+                    raise PreApprovalError(
+                        f"SRE review stopped workflow in {outcome.case.state}")
+            elif state is CaseState.SRE_APPROVED:
+                self.window.select(
+                    case_id, samples=usage_samples, policy=window_policy)
+            elif state is CaseState.WINDOW_SELECTED:
+                outcome = self.rollback.review(case_id)
+                if outcome.case.state is not CaseState.ROLLBACK_READY:
+                    raise PreApprovalError(
+                        f"rollback review stopped workflow in {outcome.case.state}")
+            elif state is CaseState.ROLLBACK_READY:
+                return self.gate.prepare(case_id)
+            else:
+                raise PreApprovalError(
+                    f"case {case_id} cannot enter preapproval from {state}")
+        raise PreApprovalError(
+            f"case {case_id} did not reach the human-review gate")
 
     def prepare(self, case_id: str, *, repository,
                 state_document: Mapping | None, service_context: Mapping,

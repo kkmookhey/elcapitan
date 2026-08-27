@@ -49,6 +49,13 @@ class PromotionReadiness:
 
 
 class PromotionReadinessService:
+    PREAPPROVAL_STATES = frozenset({
+        CaseState.VALIDATED,
+        CaseState.PLAN_READY,
+        CaseState.SRE_APPROVED,
+        CaseState.WINDOW_SELECTED,
+        CaseState.ROLLBACK_READY,
+    })
     REQUIRED_INPUTS = (
         "read-only IaC repository snapshot",
         "Terraform state JSON when resource names are computed",
@@ -71,9 +78,11 @@ class PromotionReadinessService:
             raise ValueError("case does not belong to the requested tenant")
         findings = self.finding_store.list_for_case(case_id)
         blockers: list[str] = []
-        if case.state is not CaseState.VALIDATED:
+        if (case.state not in self.PREAPPROVAL_STATES
+                and case.state is not CaseState.AWAITING_APPROVAL):
             blockers.append(
-                f"case must be validated; current state is {case.state.value}")
+                f"case is outside the preapproval workflow; current state is "
+                f"{case.state.value}")
         validation_id = case.record_ids.get("validation_result_id", "")
         validation = None
         if not validation_id:
@@ -143,11 +152,20 @@ class PromotionReadinessService:
             "rule_ids": list(rules),
         }
         token = hashlib.sha256(canonical_json(token_document)).hexdigest()
+        eligible = not blockers and case.state in self.PREAPPROVAL_STATES
+        if blockers:
+            status = "blocked"
+        elif case.state is CaseState.VALIDATED:
+            status = "ready_for_preapproval"
+        elif case.state is CaseState.AWAITING_APPROVAL:
+            status = "awaiting_human_approval"
+        else:
+            status = "preapproval_in_progress"
         return PromotionReadiness(
             case_id=case_id,
             tenant_id=tenant_id,
-            eligible=not blockers,
-            status="ready_for_preapproval" if not blockers else "blocked",
+            eligible=eligible,
+            status=status,
             blockers=tuple(blockers),
             provider=provider,
             resource_uids=resources,

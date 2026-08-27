@@ -5,12 +5,14 @@ import pytest
 
 from elcapitan.case_store import SqliteCaseStore
 from elcapitan.case_validation import CaseValidationService
+from elcapitan.cases import CaseTransition, ChangePlan
 from elcapitan.cloud import CloudState
 from elcapitan.evidence import Collector
 from elcapitan.finding_store import SqliteFindingStore
 from elcapitan.intake import RemediationIntake
 from elcapitan.product_records import SqliteProductRecordStore
 from elcapitan.promotion import PromotionReadinessService
+from elcapitan.workflow import WorkflowCoordinator
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "prowler-ocsf-azure-sample.json"
@@ -48,7 +50,7 @@ def test_promotion_is_blocked_until_live_validation(tmp_path):
     readiness = service.inspect(tenant_id="TEN-PROMOTION", case_id=case_id)
     assert readiness.eligible is False
     assert readiness.status == "blocked"
-    assert "must be validated" in readiness.blockers[0]
+    assert "outside the preapproval workflow" in readiness.blockers[0]
 
 
 def test_confirmed_case_gets_stable_evidence_minimized_promotion(tmp_path):
@@ -84,3 +86,25 @@ def test_cleared_case_cannot_be_promoted_and_tenant_is_enforced(tmp_path):
     assert any("confirms no finding" in item for item in readiness.blockers)
     with pytest.raises(ValueError, match="does not belong"):
         service.inspect(tenant_id="OTHER", case_id=case_id)
+
+
+def test_promotion_token_resumes_a_durable_in_progress_review(tmp_path):
+    cases, findings, records, case_id, service = product(tmp_path)
+    validate(tmp_path, cases, findings, records, case_id, "Enabled")
+    token = service.inspect(
+        tenant_id="TEN-PROMOTION", case_id=case_id).promotion_token
+    plan = ChangePlan(
+        "PLAN-1", "disable public access", "artifact", (), ("change",),
+        ("roll out",), ("verify",), ("restore",), ("health fails",), (),
+        ("EVD-1",))
+    WorkflowCoordinator(cases).advance(
+        case_id, CaseTransition.PREPARE_PLAN, event_id="EVT-PLAN",
+        occurred_at=NOW, actor="test", record_ids={"change_plan_id": "PLAN-1"},
+        change_plan=plan)
+
+    readiness = service.require(
+        tenant_id="TEN-PROMOTION", case_id=case_id, promotion_token=token)
+
+    assert readiness.eligible is True
+    assert readiness.status == "preapproval_in_progress"
+    assert readiness.promotion_token == token

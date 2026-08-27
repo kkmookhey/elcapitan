@@ -90,18 +90,35 @@ class PortfolioService:
                         or self.policy.maximum_parallel_changes == 1):
                     conflicts.append(higher.case_id)
             reasons = [f"risk score {case.priority.score:.1f}"]
-            if conflicts:
+            if conflicts and case.state is CaseState.APPROVED:
                 status = "window_conflict"
                 reasons.append("conflicts with higher-priority case(s): " + ", ".join(conflicts))
-            elif case.change_window:
+            elif conflicts and case.change_window:
+                status = "candidate_window_conflict"
+                reasons.append(
+                    "candidate conflicts with higher-priority case(s): "
+                    + ", ".join(conflicts))
+            elif case.state is CaseState.APPROVED and case.change_window:
                 status = "scheduled"
-                reasons.append("approved candidate window has no fleet collision")
+                reasons.append("approved window has no fleet collision")
             elif case.state is CaseState.VALIDATED:
                 status = "awaiting_plan"
                 reasons.append("validated case must complete operational planning")
-            else:
+            elif case.state is CaseState.PLAN_READY:
+                status = "awaiting_sre_review"
+                reasons.append("verified plan is awaiting independent SRE review")
+            elif case.state is CaseState.SRE_APPROVED:
                 status = "awaiting_window"
-                reasons.append("operational plan has no candidate change window")
+                reasons.append("SRE-approved plan is awaiting window selection")
+            elif case.state is CaseState.WINDOW_SELECTED:
+                status = "awaiting_rollback_review"
+                reasons.append("candidate window is not approved or scheduled")
+            elif case.state is CaseState.ROLLBACK_READY:
+                status = "assembling_human_review"
+                reasons.append("rollback-ready package is entering the policy gate")
+            else:
+                status = "awaiting_human_approval"
+                reasons.append("candidate window remains unapproved and unscheduled")
             items.append(PortfolioItem(
                 rank=index + 1, case_id=case.case_id, state=case.state.value,
                 base_risk_score=case.priority.score,

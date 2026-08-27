@@ -1,0 +1,23 @@
+{
+  "service": "Eiger AI security training lab corpus storage",
+  "environment": "non-production training laboratory",
+  "owner": "kkmookhey",
+  "dependencies": [
+    "Eiger training modules that read the Azure-hosted corpus",
+    "Azure Blob Storage data-plane reachability"
+  ],
+  "health_signals": [
+    "Azure Storage Transactions metric remains within its pre-change baseline",
+    "storage account provisioning state remains Succeeded",
+    "publicNetworkAccess reports Disabled after implementation",
+    "Eiger corpus read smoke test succeeds from an approved network path"
+  ],
+  "service_tier": "lab",
+  "customer_impact": "training sessions may lose corpus access if their source network is not approved",
+  "iac_snapshot_provenance": "Reconstructed read-only from local Terraform state serial 29 because the Eiger repository has no committed Terraform source; access keys, connection strings, private instance data, and sensitive attribute markers were removed before ingestion.",
+  "operational_assumptions": [
+    "No production workload is hosted in this environment",
+    "The implementation must not proceed until an approved private endpoint, service endpoint, or explicit network rule preserves required corpus access",
+    "The current worker has planning permissions only and cannot apply the change"
+  ]
+}
