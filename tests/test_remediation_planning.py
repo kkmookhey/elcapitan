@@ -326,6 +326,12 @@ def test_container_apps_identity_proxy_injects_header_and_bounds_request():
             })
             with urllib.request.urlopen(f"{proxy}?{query}") as response:
                 assert json.load(response)["access_token"] == "opaque"
+            graph_query = urllib.parse.urlencode({
+                "resource": "https://graph.microsoft.com",
+                "client_id": "planner-client",
+            })
+            with urllib.request.urlopen(f"{proxy}?{graph_query}") as response:
+                assert json.load(response)["access_token"] == "opaque"
             denied = urllib.parse.urlencode({
                 "resource": "https://vault.azure.net/",
                 "client_id": "planner-client",
@@ -350,7 +356,7 @@ def test_container_apps_identity_proxy_injects_header_and_bounds_request():
         "query": {
             "api-version": ["2019-08-01"],
             "client_id": ["planner-client"],
-            "resource": ["https://management.azure.com/"],
+            "resource": ["https://graph.microsoft.com"],
         },
     }
 

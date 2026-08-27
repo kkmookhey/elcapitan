@@ -107,6 +107,7 @@ def _container_apps_identity_proxy(endpoint: str, identity_header: str,
             resource = (query.get("resource") or [""])[0]
             requested_client = (query.get("client_id") or [client_id])[0]
             audience_allowed = resource.rstrip("/") in {
+                "https://graph.microsoft.com",
                 "https://management.azure.com",
                 "https://management.core.windows.net",
             }
