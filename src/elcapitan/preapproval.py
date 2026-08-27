@@ -295,7 +295,7 @@ class SREReviewService(_AgentStage):
     def retry_invalid_approval(self, case_id: str) -> bool:
         """Reopen a persisted legacy approval that fails current semantics."""
         case = self.case_store.get(case_id)
-        if case.state is not CaseState.SRE_APPROVED:
+        if case.state not in {CaseState.SRE_APPROVED, CaseState.WINDOW_SELECTED}:
             return False
         review_id = case.record_ids.get("sre_review_id", "")
         review = self.record_store.get(review_id)

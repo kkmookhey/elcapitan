@@ -78,6 +78,8 @@ class PreApprovalOrchestrator:
                 self.window.select(
                     case_id, samples=usage_samples, policy=window_policy)
             elif state is CaseState.WINDOW_SELECTED:
+                if self.sre.retry_invalid_approval(case_id):
+                    continue
                 outcome = self.rollback.review(case_id)
                 if outcome.case.state is CaseState.VALIDATED:
                     continue

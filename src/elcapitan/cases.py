@@ -300,8 +300,9 @@ def transition_case(case: RemediationCase, transition: CaseTransition, *,
         to_state = case.state
         blocked_from = case.blocked_from
     elif transition is CaseTransition.RETRY_SRE:
-        if case.state is not CaseState.SRE_APPROVED:
-            raise ValueError("SRE retry is allowed only after SRE approval")
+        if case.state not in {CaseState.SRE_APPROVED, CaseState.WINDOW_SELECTED}:
+            raise ValueError(
+                "SRE retry is allowed only after SRE approval and before rollback review")
         if not detail:
             raise ValueError("SRE retry requires a concrete semantic failure")
         to_state = CaseState.PLAN_READY
@@ -379,6 +380,7 @@ def transition_case(case: RemediationCase, transition: CaseTransition, *,
     merged_records = dict(case.record_ids)
     if transition is CaseTransition.RETRY_SRE:
         merged_records.pop("sre_review_id", None)
+        merged_records.pop("change_window_id", None)
     if transition is CaseTransition.REQUEST_REWORK:
         for name in (
             "iac_link_id", "change_plan_id", "sre_review_id",
@@ -409,7 +411,10 @@ def transition_case(case: RemediationCase, transition: CaseTransition, *,
         priority=priority or case.priority,
         change_plan=(None if transition is CaseTransition.REQUEST_REWORK
                      else change_plan or case.change_plan),
-        change_window=(None if transition is CaseTransition.REQUEST_REWORK
+        change_window=(None if transition in {
+                           CaseTransition.RETRY_SRE,
+                           CaseTransition.REQUEST_REWORK,
+                       }
                        else change_window or case.change_window),
         record_ids=merged_records,
         blocked_from=blocked_from,
