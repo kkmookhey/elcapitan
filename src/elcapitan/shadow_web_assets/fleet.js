@@ -98,12 +98,20 @@ function renderFleet(document) {
   $("#case-count").textContent = `${summary.total_cases} case${summary.total_cases === 1 ? "" : "s"}`;
   const stateText = Object.entries(summary.case_state_counts).map(([key, value]) => `${value} ${humanize(key)}`).join(" · ");
   $("#metric-states").textContent = stateText || "No cases";
-  const validated = document.cases.reduce((total, item) => total + Object.values(item.validation_counts || {}).reduce((a,b) => a+b, 0), 0);
-  $("#metric-validated").textContent = validated;
+  const validationOutcomes = document.cases.reduce((totals, item) => {
+    Object.entries(item.validation_counts || {}).forEach(([status, count]) => {
+      totals[status] = (totals[status] || 0) + count;
+    });
+    return totals;
+  }, {});
+  $("#metric-validated").textContent = summary.case_state_counts.validated || 0;
+  const outcomeText = Object.entries(validationOutcomes).map(([status, count]) => `${count} ${humanize(status)}`).join(" · ");
+  $("#metric-validation-detail").textContent = outcomeText || "No live evidence outcomes";
   const highest = document.cases[0];
   $("#metric-risk").textContent = highest ? Math.round(highest.risk_score) : "—";
   $("#metric-urgency").textContent = highest ? `${humanize(highest.urgency)} · ${highest.provider.toUpperCase()}` : "Not assessed";
-  $("#mission").textContent = summary.total_cases ? `${summary.total_cases} cases ranked for ${document.tenant_id}` : `${document.tenant_id} is ready for intake`;
+  const caseWord = summary.total_cases === 1 ? "case" : "cases";
+  $("#mission").textContent = summary.total_cases ? `${summary.total_cases} ${caseWord} tracked for ${document.tenant_id}` : `${document.tenant_id} is ready for intake`;
   $("#mission-detail").textContent = summary.total_cases ? "Validate supported findings to separate confirmed risk from stale scanner state." : "Import an AWS Security Hub or OCSF export to build the portfolio.";
 
   if (!document.cases.length) {
@@ -117,7 +125,7 @@ function renderFleet(document) {
     const rank = item.portfolio_rank ? `#${item.portfolio_rank}` : "—";
     return `<tr>
       <td><span class="risk">${escapeHtml(Math.round(item.risk_score))}</span><span class="urgency">${escapeHtml(item.urgency)} · ${rank}</span></td>
-      <td><span class="title">${escapeHtml(title)}</span><span class="asset" title="${escapeHtml(item.resource_uids[0])}">${escapeHtml(shortId(item.resource_uids[0]))}</span></td>
+      <td><span class="title">${item.synthetic ? '<span class="sample-tag">SYNTHETIC</span>' : ""}${escapeHtml(title)}</span><span class="asset" title="${escapeHtml(item.resource_uids[0])}">${escapeHtml(shortId(item.resource_uids[0]))}</span></td>
       <td><span class="provider">${escapeHtml(item.provider)}</span><span class="state">${escapeHtml(humanize(item.state))}</span></td>
       <td><span class="status ${validationTone}"><i></i>${escapeHtml(validationLabel)}</span><span class="reason">${escapeHtml(validationReason)}</span></td>
       <td><span class="status ${scheduleTone}"><i></i>${escapeHtml(scheduleLabel)}</span><span class="reason">${escapeHtml(scheduleReason)}</span></td>
@@ -175,7 +183,7 @@ async function openCase(caseId) {
   const promotion = detail.promotion || {};
   $("#detail-content").innerHTML = `
     <div class="detail-hero"><div><span class="status ${tone}"><i></i>${escapeHtml(validation)}</span><h2>${escapeHtml(displayTitle)}</h2></div><div class="detail-meta"><strong>${escapeHtml(Math.round(caseDoc.priority?.score || 0))}</strong><span>${escapeHtml(humanize(caseDoc.priority?.urgency || "unassessed"))} risk</span></div></div>
-    <div class="detail-actions">${item && canValidate(item) ? `<button class="primary" data-validate="${escapeHtml(caseId)}">Validate against live ${escapeHtml(item.provider.toUpperCase())}</button>` : ""}<span class="pill">${escapeHtml(humanize(caseDoc.state))}</span></div>
+    <div class="detail-actions">${item && canValidate(item) ? `<button class="primary" data-validate="${escapeHtml(caseId)}">Validate against live ${escapeHtml(item.provider.toUpperCase())}</button>` : ""}<span class="pill">${escapeHtml(humanize(caseDoc.state))}</span>${item?.synthetic ? '<span class="pill sample-pill">Synthetic sample</span>' : ""}</div>
     <div class="detail-grid">
       <section class="detail-section"><h3>Case identity</h3>${fact("Case", caseDoc.case_id)}${fact("Tenant", caseDoc.tenant_id)}${fact("Provider", finding.provider)}${fact("Account", finding.account)}${fact("Service", (caseDoc.service_ids || []).join(", ") || "Unmapped")}</section>
       <section class="detail-section"><h3>Control & target</h3>${fact("Rule", ocsf.rule_id)}${fact("Resource", finding.resource_uid)}${fact("Severity", finding.record?.severity)}${fact("Findings", caseDoc.finding_ids.length)}</section>
@@ -245,11 +253,11 @@ function loadSample() {
   const resource = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/customer-shadow/providers/Microsoft.Storage/storageAccounts/shadowdemo123";
   $("#finding-json").value = JSON.stringify({
     class_uid:2004,severity:"High",time_dt:new Date().toISOString(),
-    metadata:{version:"1.5.0",event_code:"storage_account_public_network_access_disabled",product:{name:"Customer scanner",version:"1"}},
+    metadata:{version:"1.5.0",event_code:"storage_account_public_network_access_disabled",product:{name:"El Capitan synthetic sample",version:"1"}},
     cloud:{provider:"azure",region:"westus2",account:{uid:"00000000-0000-0000-0000-000000000000"}},
     finding_info:{uid:`shadow-sample-${id}`,title:"Storage public network access is enabled",analytic:{uid:"storage_account_public_network_access_disabled"}},
     resources:[{uid:resource,type:"microsoft.storage/storageaccounts",name:"shadowdemo123"}],
-    status_code:"FAIL",unmapped:{categories:["internet-exposed"]},
+    status_code:"FAIL",unmapped:{categories:["internet-exposed"],elcapitan_synthetic:true},
   }, null, 2);
   $("#file-label").textContent = "Safe synthetic Azure sample loaded";
 }

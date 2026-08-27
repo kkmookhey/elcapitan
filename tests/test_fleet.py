@@ -147,7 +147,36 @@ def test_fleet_snapshot_includes_supported_and_unsupported_cases(tmp_path):
     }
     assert document["cases"][0]["validation_counts"] == {"confirmed": 1}
     assert document["cases"][0]["portfolio_rank"] == 1
-    assert document["cases"][0]["scheduling_status"] == "awaiting_window"
+    assert document["cases"][0]["scheduling_status"] == "awaiting_plan"
+    assert document["cases"][0]["synthetic"] is False
     assert document["cases"][1]["portfolio_rank"] is None
     assert document["cases"][1]["scheduling_status"] == "awaiting_validation"
     assert document["shadow_policy"]["allow_execution"] is False
+
+
+def test_fleet_marks_reserved_shadow_samples_as_synthetic(tmp_path):
+    cases, findings, records = stores(tmp_path)
+    counter = iter(range(100, 999))
+    sample = finding(
+        "shadow-sample-123",
+        "/subscriptions/sub-1/resourceGroups/rg/providers/"
+        "Microsoft.Storage/storageAccounts/sample",
+    )
+    sample["unmapped"] = {
+        "categories": ["internet-exposed"],
+        "elcapitan_synthetic": True,
+    }
+    RemediationIntake(
+        case_store=cases, finding_store=findings,
+        artifact_root=tmp_path / "artifacts",
+        collector=Collector("test", "1", "scanner"),
+        now=lambda: "2026-08-27T12:00:00Z",
+        id_factory=lambda prefix: f"{prefix}-{next(counter):03d}",
+    ).ingest(sample, tenant_id="TEN-1", context=IntakeContext())
+
+    document = FleetSnapshotService(
+        case_store=cases, finding_store=findings,
+        record_store=records).snapshot(tenant_id="TEN-1").to_dict()
+
+    assert document["cases"][0]["synthetic"] is True
+    assert document["cases"][0]["scheduling_status"] == "awaiting_validation"

@@ -96,9 +96,12 @@ class PortfolioService:
             elif case.change_window:
                 status = "scheduled"
                 reasons.append("approved candidate window has no fleet collision")
+            elif case.state is CaseState.VALIDATED:
+                status = "awaiting_plan"
+                reasons.append("validated case must complete operational planning")
             else:
                 status = "awaiting_window"
-                reasons.append("case must complete operational planning")
+                reasons.append("operational plan has no candidate change window")
             items.append(PortfolioItem(
                 rank=index + 1, case_id=case.case_id, state=case.state.value,
                 base_risk_score=case.priority.score,

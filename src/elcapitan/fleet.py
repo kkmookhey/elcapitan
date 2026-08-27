@@ -186,6 +186,7 @@ class FleetCase:
     finding_ids: tuple[str, ...]
     finding_titles: tuple[str, ...]
     rule_ids: tuple[str, ...]
+    synthetic: bool
     supported_findings: int
     unsupported_findings: int
     validation_counts: Mapping[str, int]
@@ -275,6 +276,7 @@ class FleetSnapshotService:
             finding_titles=tuple(
                 str(item.record["ocsf"].get("title", "")) for item in findings),
             rule_ids=tuple(dict.fromkeys(self._rule(item) for item in findings)),
+            synthetic=any(self._is_synthetic(item) for item in findings),
             supported_findings=supported,
             unsupported_findings=len(findings) - supported,
             validation_counts=dict(sorted(validation_counts.items())),
@@ -317,6 +319,14 @@ class FleetSnapshotService:
     @staticmethod
     def _rule(finding: StoredFinding) -> str:
         return str(finding.record["ocsf"].get("rule_id", ""))
+
+    @staticmethod
+    def _is_synthetic(finding: StoredFinding) -> bool:
+        extensions = finding.record.get("vendor_extensions") or {}
+        return (
+            extensions.get("elcapitan_synthetic") is True
+            or finding.original_uid.startswith("shadow-sample-")
+        )
 
     def snapshot(self, *, tenant_id: str) -> FleetSnapshot:
         if not tenant_id:
