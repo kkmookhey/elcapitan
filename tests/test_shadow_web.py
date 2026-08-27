@@ -82,6 +82,26 @@ def test_shadow_api_intake_fleet_and_case_detail_are_authenticated(tmp_path):
         server.server_close()
 
 
+def test_shadow_root_shows_login_page_before_authentication(tmp_path):
+    server = _ShadowServer(
+        ("127.0.0.1", 0), ShadowFleetControlPlane(tmp_path, host_env={}),
+        "s" * 32)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        status, headers, content = request(server, "GET", "/")
+        assert status == 200
+        assert headers["Content-Type"].startswith("text/html")
+        assert b"Access token" in content
+
+        status, _, content = request(server, "GET", "/api/connectors")
+        assert status == 401
+        assert json.loads(content) == {"error": "Authentication required."}
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_shadow_api_rejects_cross_origin_and_has_no_action_routes(tmp_path):
     server, cookie = authenticated_server(tmp_path)
     try:

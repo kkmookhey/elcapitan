@@ -124,7 +124,12 @@ class ShadowRequestHandler(DemoRequestHandler):
         if parsed.path == "/login":
             super().do_GET()
             return
-        if not self._authorized():
+        if not self._authenticated():
+            if parsed.path.startswith("/api"):
+                self._json({"error": "Authentication required."},
+                           status=HTTPStatus.UNAUTHORIZED)
+            else:
+                self._login_page()
             return
         try:
             query = parse_qs(parsed.query)
