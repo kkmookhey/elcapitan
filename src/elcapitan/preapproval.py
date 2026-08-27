@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable, Mapping
 
@@ -85,10 +85,28 @@ class _AgentStage:
 
     def _run(self, task: AgentTask, *, run_dir: Path,
              required_citations: tuple[str, ...] = ()) -> tuple[AgentResult, str]:
-        result = self.runtime.run(task)
-        failures = validate_result(task, result)
-        failures.extend(validate_output(task.output_contract, _jsonable(result.output)))
+        dispatched = task
+        if required_citations:
+            dispatched = replace(task, constraints=tuple((*task.constraints,
+                "Cite every mandatory evidence ID exactly: "
+                + ", ".join(required_citations),
+            )))
+        result = self.runtime.run(dispatched)
+        failures = validate_result(dispatched, result)
+        failures.extend(validate_output(
+            dispatched.output_contract, _jsonable(result.output)))
         uncited = sorted(set(required_citations) - set(result.evidence_cited))
+        if uncited and not failures:
+            retry = replace(dispatched, constraints=tuple((*dispatched.constraints,
+                "The previous response omitted mandatory citations. Return a corrected "
+                "response citing all of these evidence IDs: " + ", ".join(uncited),
+            )))
+            result = self.runtime.run(retry)
+            failures = validate_result(retry, result)
+            failures.extend(validate_output(
+                retry.output_contract, _jsonable(result.output)))
+            uncited = sorted(
+                set(required_citations) - set(result.evidence_cited))
         if uncited:
             failures.append("agent did not cite required evidence: " + ", ".join(uncited))
         if failures:
