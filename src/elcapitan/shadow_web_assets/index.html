@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="El Capitan read-only cloud remediation fleet">
+  <title>El Capitan · Shadow Fleet</title>
+  <link rel="stylesheet" href="/fleet.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">
+      <span class="brand-mark">EC</span>
+      <span><strong>El Capitan</strong><small>Customer shadow fleet</small></span>
+    </a>
+    <div class="boundary"><i></i><span><strong>Read-only boundary</strong><small>No approval · No scheduling · No execution</small></span></div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div>
+        <p class="eyebrow">AWS + Azure fleet intelligence</p>
+        <h1>Know what is real.<br>Know what comes next.</h1>
+        <p class="lede">Ingest scanner findings, validate them against live cloud configuration, and build an evidence-bound remediation queue without exposing a change path.</p>
+      </div>
+      <div class="tenant-control">
+        <label for="tenant">Customer tenant</label>
+        <div><input id="tenant" maxlength="100" value="DEMO-CUSTOMER" autocomplete="off"><button class="primary" id="load-fleet">Open fleet</button></div>
+      </div>
+    </section>
+
+    <section class="control-strip">
+      <div><p class="section-label">Fleet mission</p><h2 id="mission">Waiting for a tenant</h2><p id="mission-detail">Select a tenant to load its isolated portfolio.</p></div>
+      <div class="actions"><button class="ghost" id="refresh">Refresh</button><button class="ghost" id="validate-eligible">Validate eligible</button><button class="primary" id="open-intake">Import findings</button></div>
+    </section>
+
+    <section class="metrics" aria-label="Fleet metrics">
+      <article><small>Cases</small><strong id="metric-cases">—</strong><span id="metric-states">No fleet loaded</span></article>
+      <article><small>Findings</small><strong id="metric-findings">—</strong><span id="metric-supported">Capability unknown</span></article>
+      <article><small>Validated</small><strong id="metric-validated">—</strong><span>Live evidence outcomes</span></article>
+      <article><small>Highest risk</small><strong id="metric-risk">—</strong><span id="metric-urgency">Not assessed</span></article>
+    </section>
+
+    <div class="workspace">
+      <section class="card fleet-card">
+        <div class="card-heading">
+          <div><p class="section-label">Prioritized portfolio</p><h2>Customer findings</h2></div>
+          <span class="record-count" id="case-count">0 cases</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Priority</th><th>Finding / asset</th><th>Cloud</th><th>Validation</th><th>Scheduling intelligence</th><th></th></tr></thead>
+            <tbody id="fleet-body"><tr><td colspan="6" class="empty">Open a tenant or import findings to begin.</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <aside class="card connector-card">
+        <div class="card-heading"><div><p class="section-label">Live evidence</p><h2>Connector readiness</h2></div></div>
+        <div id="connectors" class="connectors"><p class="empty compact">Checking local read-only connectors…</p></div>
+        <div class="guardrail">
+          <span>SHADOW</span>
+          <div><strong>Action plane disconnected</strong><p>This service has no route or policy capable of approval, scheduling, or deployment.</p></div>
+        </div>
+      </aside>
+    </div>
+
+    <section class="trust-strip">
+      <div><strong>Tenant isolated</strong><span>Every lookup is bound to the requested customer tenant.</span></div>
+      <div><strong>Evidence bound</strong><span>Live validation produces durable, typed evidence references.</span></div>
+      <div><strong>Fail closed</strong><span>Unknown controls and missing access never become inferred facts.</span></div>
+      <div><strong>Human next</strong><span>Validated cases may later enter a separately deployed review plane.</span></div>
+    </section>
+  </main>
+
+  <dialog id="intake-dialog">
+    <form id="intake-form">
+      <button type="button" class="dialog-close" data-close="intake-dialog" aria-label="Close">×</button>
+      <p class="section-label">Finding intake</p>
+      <h2>Import AWS or Azure findings</h2>
+      <p>Paste OCSF, AWS Security Hub ASFF, an array of findings, or a Security Hub response containing <code>Findings</code>. Provider scope, resource identity, normalization, schema, and priority inputs are checked for the entire batch before anything is written.</p>
+      <label class="upload-zone" for="finding-file"><strong>Choose a JSON export</strong><span id="file-label">or paste findings below · maximum 10 MiB / 1,000 findings</span><input id="finding-file" type="file" accept=".json,application/json"></label>
+      <label>Finding JSON<textarea id="finding-json" required spellcheck="false" placeholder='[{"class_uid":2004,...}]'></textarea></label>
+      <div class="form-grid">
+        <label>Asset criticality <input id="asset-criticality" type="number" min="0" max="1" step="0.05" value="0.5"></label>
+        <label>Exploit probability <input id="exploit-probability" type="number" min="0" max="1" step="0.05" value="0"></label>
+        <label>Service IDs <input id="service-ids" placeholder="payments, identity"></label>
+        <label class="check"><input id="reachable" type="checkbox"> Reachable vulnerable path</label>
+      </div>
+      <div class="dialog-actions"><button type="button" class="ghost" id="load-sample">Load safe sample</button><button class="primary" type="submit">Ingest into shadow fleet</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="detail-dialog" class="detail-dialog">
+    <button type="button" class="dialog-close" data-close="detail-dialog" aria-label="Close">×</button>
+    <p class="section-label">Case evidence</p>
+    <div id="detail-content"></div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/fleet.js" defer></script>
+</body>
+</html>

@@ -34,6 +34,7 @@ from .cases import (
 from .cloud import CloudState
 from .evidence import Collector
 from .finding_store import SqliteFindingStore
+from .fleet import CapabilityRegistry, FleetSnapshotService, connector_readiness
 from .intake import IntakeContext, RemediationIntake
 from .model_egress import ModelEgressRuntime
 from .observability import (
@@ -167,6 +168,11 @@ def _parser() -> argparse.ArgumentParser:
     serve.add_argument(
         "--prepare", action="store_true",
         help="prepare the review package before accepting browser requests")
+    shadow = sub.add_parser(
+        "serve-shadow", help="serve the authenticated read-only fleet API")
+    shadow.add_argument("--host", default="127.0.0.1")
+    shadow.add_argument("--port", type=int, default=8770)
+    shadow.add_argument("--workdir", type=Path, default=Path(".elcapitan-shadow"))
     show = sub.add_parser("show-review", help="print a case's human review package")
     show.add_argument("--case", required=True)
     show.add_argument("--db", type=Path, required=True)
@@ -175,6 +181,18 @@ def _parser() -> argparse.ArgumentParser:
     portfolio.add_argument("--tenant", required=True)
     portfolio.add_argument("--db", type=Path, required=True)
     portfolio.add_argument("--maximum-parallel", type=int, default=1)
+    snapshot = sub.add_parser(
+        "fleet-snapshot",
+        help="report every tenant case and its shadow-mode validation coverage")
+    snapshot.add_argument("--tenant", required=True)
+    snapshot.add_argument("--db", type=Path, required=True)
+    capabilities = sub.add_parser(
+        "capabilities", help="report explicitly supported cloud control capabilities")
+    capabilities.add_argument("--provider", choices=("aws", "azure"))
+    preflight = sub.add_parser(
+        "connector-preflight",
+        help="check a read-only scanner connector without making a cloud request")
+    preflight.add_argument("--provider", choices=("aws", "azure"), required=True)
     smoke = sub.add_parser(
         "model-smoke", help="verify one live provider's strict agent contract")
     smoke.add_argument("--provider", choices=("openai", "anthropic", "gemini"),
@@ -931,10 +949,39 @@ def main(argv=None) -> int:
             prepare=args.prepare,
         )
         return 0
+    if args.command == "serve-shadow":
+        if not 0 <= args.port <= 65535:
+            raise ValueError("--port must be between 0 and 65535")
+        from .shadow_web import run_shadow_server
+        run_shadow_server(host=args.host, port=args.port, workdir=args.workdir)
+        return 0
     if args.command == "show-review":
         return _show_review(args)
     if args.command == "portfolio":
         return _portfolio(args)
+    if args.command == "fleet-snapshot":
+        snapshot = FleetSnapshotService(
+            case_store=SqliteCaseStore(args.db),
+            finding_store=SqliteFindingStore(args.db),
+            record_store=SqliteProductRecordStore(args.db),
+        ).snapshot(tenant_id=args.tenant)
+        json.dump(snapshot.to_dict(), sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 0
+    if args.command == "capabilities":
+        capabilities = CapabilityRegistry().list(provider=args.provider)
+        json.dump({
+            "provider": args.provider or "all",
+            "capabilities": [item.to_dict() for item in capabilities],
+        }, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 0
+    if args.command == "connector-preflight":
+        json.dump(
+            connector_readiness(args.provider, host_env=os.environ).to_dict(),
+            sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 0
     if args.command == "model-smoke":
         return _model_smoke(args)
     if args.command == "azure-storage-lifecycle":

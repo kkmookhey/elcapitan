@@ -23,6 +23,30 @@ five-minute script, safety boundaries, and Azure packaging notes.
 Hermes is not required. Model-backed workers use a provider-neutral runtime
 contract; deterministic workflow and policy code owns state and side effects.
 
+## AWS/Azure customer shadow fleet
+
+Run the authenticated, read-only fleet console separately from the action
+plane:
+
+```bash
+export ELCAPITAN_SHADOW_ACCESS_TOKEN='use-a-random-value-with-at-least-24-characters'
+UV_CACHE_DIR=/private/tmp/elcapitan-uv-cache \
+  uv run elcapitan serve-shadow --workdir .elcapitan-shadow
+```
+
+Open `http://127.0.0.1:8770`. The console accepts OCSF, individual AWS
+Security Hub ASFF findings, JSON arrays, and Security Hub response documents.
+It builds a tenant-isolated, risk-ranked portfolio, reports exactly which
+controls have deterministic support, and can validate up to 100 eligible cases
+against live AWS or Azure configuration in one preflighted batch.
+
+The shadow service deliberately has no approval, scheduling, model, or
+execution endpoint. Scanner credentials are accepted only through the
+`ELCAP_SCANNER_AWS_*` or `ELCAP_SCANNER_AZURE_*` environment contract;
+ambient cloud profiles are ignored. See the
+[customer shadow-run guide](docs/customer-shadow-run.md) before connecting a
+real environment.
+
 ## Current product slice
 
 The current implementation can:
@@ -46,6 +70,9 @@ The current implementation can:
 - revalidate live configuration, deployed hashes, and allowlisted UI/API probes;
 - issue a remediation certificate and originator handoff after release audit;
 - rank validated cases as a fleet and flag service/window collisions;
+- ingest and inspect a tenant-isolated AWS/Azure portfolio in an authenticated
+  shadow console;
+- preflight and batch live validation without exposing an action-plane route;
 - route maker, checker, rollback, and release roles to different providers;
 - persist immutable workflow events and projections in SQLite/WAL;
 - prevent concurrent workers from opening two active cases for one asset;

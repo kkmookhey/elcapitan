@@ -22,8 +22,8 @@ class _DemoServer(ThreadingHTTPServer):
     daemon_threads = True
 
     def __init__(self, address, control: DemoControlPlane,
-                 access_token: str = "") -> None:
-        super().__init__(address, DemoRequestHandler)
+                 access_token: str = "", handler_class=None) -> None:
+        super().__init__(address, handler_class or DemoRequestHandler)
         self.control = control
         self.authenticated_cookie = (
             hashlib.sha256(f"elcapitan-demo-session:{access_token}".encode()).hexdigest()

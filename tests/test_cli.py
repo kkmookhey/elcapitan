@@ -204,3 +204,37 @@ def test_azure_lab_lifecycle_requires_exact_double_confirmation(tmp_path):
             "--subscription", "sub", "--confirm-resource-id", resource_id + "-wrong",
             "--confirm-subscription", "sub", "--workdir", str(tmp_path / "lab"),
         ])
+
+
+def test_cli_reports_capabilities_connector_preflight_and_full_fleet(
+        tmp_path, capsys, monkeypatch):
+    db = tmp_path / "product.db"
+    artifacts = tmp_path / "artifacts"
+    assert main([
+        "intake", str(FIXTURE), "--tenant", "TEN-FLEET",
+        "--db", str(db), "--artifacts", str(artifacts),
+    ]) == 0
+    capsys.readouterr()
+
+    assert main(["capabilities", "--provider", "azure"]) == 0
+    capabilities = json.loads(capsys.readouterr().out)
+    assert len(capabilities["capabilities"]) == 3
+    assert all(item["provider"] == "azure" for item in capabilities["capabilities"])
+
+    monkeypatch.setenv("PATH", "")
+    for name in fake_az.scanner_credentials():
+        monkeypatch.delenv(name, raising=False)
+    assert main(["connector-preflight", "--provider", "azure"]) == 0
+    preflight = json.loads(capsys.readouterr().out)
+    assert preflight["ready_for_live_validation"] is False
+    assert preflight["executable_available"] is False
+    assert len(preflight["missing_environment"]) == 3
+
+    assert main([
+        "fleet-snapshot", "--tenant", "TEN-FLEET", "--db", str(db),
+    ]) == 0
+    fleet = json.loads(capsys.readouterr().out)
+    assert fleet["summary"]["total_cases"] == 1
+    assert fleet["summary"]["total_findings"] == 1
+    assert fleet["summary"]["supported_findings"] == 1
+    assert fleet["shadow_policy"]["allow_execution"] is False
