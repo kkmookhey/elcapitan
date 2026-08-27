@@ -45,7 +45,8 @@ execution endpoint. Scanner credentials are accepted only through the
 `ELCAP_SCANNER_AWS_*` or `ELCAP_SCANNER_AZURE_*` environment contract;
 ambient cloud profiles are ignored. See the
 [customer shadow-run guide](docs/customer-shadow-run.md) before connecting a
-real environment.
+real environment. Use the [first customer pilot profile](docs/first-customer-pilot.md)
+to scope the CTO access request and select the initial account or subscription.
 
 ## Current product slice
 

@@ -1,5 +1,8 @@
 # Customer shadow-run guide
 
+For environment selection and the CTO access request, start with the
+[first customer pilot profile](first-customer-pilot.md).
+
 The customer shadow fleet is the first real-environment entry point for El
 Capitan. It answers four questions before any remediation authority exists:
 
