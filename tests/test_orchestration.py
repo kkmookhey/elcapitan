@@ -5,7 +5,9 @@ from elcapitan.agents import (
 )
 from elcapitan.cases import CaseState
 from elcapitan.orchestration import PreApprovalOrchestrator
-from elcapitan.preapproval import _AgentStage, _prechange_claim_failures
+from elcapitan.preapproval import (
+    _AgentStage, _prechange_claim_failures, _sre_semantic_failures,
+)
 from elcapitan.agent_prompt import instructions
 
 
@@ -144,6 +146,50 @@ def test_agent_stage_retries_once_when_mandatory_citations_are_omitted(tmp_path)
     assert evidence_id == "EVD-999"
     assert len(runtime.tasks) == 2
     assert "previous response omitted" in runtime.tasks[1].constraints[-1]
+
+
+def test_agent_stage_retries_decision_specific_semantic_failure(tmp_path):
+    task = AgentTask(
+        task_id="TASK-SRE", case_id="CASE-1", role=AgentRole.SRE_REVIEWER,
+        objective="review", output_contract="SREReview.v1",
+        input_record_ids=("PLAN-1",), evidence_ids=("EVD-001",),
+    )
+
+    class Runtime:
+        def __init__(self):
+            self.tasks = []
+
+        def run(self, dispatched):
+            self.tasks.append(dispatched)
+            complete = len(self.tasks) == 2
+            return AgentResult(
+                task_id=dispatched.task_id, case_id=dispatched.case_id,
+                role=dispatched.role, status=AgentResultStatus.SUCCEEDED,
+                output={
+                    "decision": "approve", "risk_level": "low",
+                    "summary": "pre-change review",
+                    "dependencies": [],
+                    "failure_modes": ["access loss"] if complete else [],
+                    "required_controls": ["checkpoint"] if complete else [],
+                    "verification_requirements": ["live validation"] if complete else [],
+                },
+                evidence_cited=("EVD-001",), missing_evidence=(),
+                runtime="test", model="test", started_at="2026-08-27T20:00:00Z",
+                completed_at="2026-08-27T20:00:01Z",
+            )
+
+    runtime = Runtime()
+    stage = _AgentStage(
+        case_store=None, record_store=None, artifact_root=tmp_path,
+        runtime=runtime, now=lambda: "2026-08-27T20:00:02Z",
+        id_factory=lambda prefix: f"{prefix}-999")
+    result, _ = stage._run(
+        task, run_dir=tmp_path / "run",
+        semantic_validator=_sre_semantic_failures)
+
+    assert result.output["verification_requirements"] == ("live validation",)
+    assert len(runtime.tasks) == 2
+    assert "decision-specific semantic failures" in runtime.tasks[1].constraints[-2]
 
 
 def test_prechange_and_rollback_prompts_preserve_phase_semantics():

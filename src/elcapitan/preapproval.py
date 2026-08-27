@@ -60,6 +60,36 @@ def _prechange_claim_failures(summary: str) -> tuple[str, ...]:
     return tuple(phrase for phrase in phrases if phrase in lowered)
 
 
+def _required_array_failures(output: Mapping, names: tuple[str, ...]
+                             ) -> tuple[str, ...]:
+    return tuple(
+        f"{name} must be a non-empty array"
+        for name in names
+        if (not isinstance(output.get(name), (list, tuple))
+            or not output.get(name))
+    )
+
+
+def _sre_semantic_failures(output: Mapping) -> tuple[str, ...]:
+    if output.get("decision") != "approve":
+        return ()
+    return _required_array_failures(
+        output, ("failure_modes", "required_controls", "verification_requirements"))
+
+
+def _rollback_semantic_failures(output: Mapping) -> tuple[str, ...]:
+    decision = output.get("decision")
+    if decision == "approve":
+        failures = list(_required_array_failures(
+            output, ("verified_steps", "trigger_coverage")))
+        if output.get("required_changes"):
+            failures.append("approved rollback review must have no required_changes")
+        return tuple(failures)
+    if decision == "reject":
+        return _required_array_failures(output, ("required_changes",))
+    return ()
+
+
 @dataclass(frozen=True)
 class ReviewOutcome:
     case: RemediationCase
@@ -96,7 +126,9 @@ class _AgentStage:
         )
 
     def _run(self, task: AgentTask, *, run_dir: Path,
-             required_citations: tuple[str, ...] = ()) -> tuple[AgentResult, str]:
+             required_citations: tuple[str, ...] = (),
+             semantic_validator: Callable[[Mapping], tuple[str, ...]] | None = None,
+             ) -> tuple[AgentResult, str]:
         dispatched = task
         if required_citations:
             dispatched = replace(task, constraints=tuple((*task.constraints,
@@ -107,6 +139,20 @@ class _AgentStage:
         failures = validate_result(dispatched, result)
         failures.extend(validate_output(
             dispatched.output_contract, _jsonable(result.output)))
+        semantic_failures = (
+            semantic_validator(result.output) if semantic_validator else ())
+        if semantic_failures and not failures:
+            retry = replace(dispatched, constraints=tuple((*dispatched.constraints,
+                "Correct these decision-specific semantic failures from the previous "
+                "response: " + "; ".join(semantic_failures),
+                "Return a complete strict result without weakening the decision.",
+            )))
+            result = self.runtime.run(retry)
+            failures = validate_result(retry, result)
+            failures.extend(validate_output(
+                retry.output_contract, _jsonable(result.output)))
+            semantic_failures = semantic_validator(result.output)
+        failures.extend(semantic_failures)
         uncited = sorted(set(required_citations) - set(result.evidence_cited))
         if uncited and not failures:
             retry = replace(dispatched, constraints=tuple((*dispatched.constraints,
@@ -117,6 +163,8 @@ class _AgentStage:
             failures = validate_result(retry, result)
             failures.extend(validate_output(
                 retry.output_contract, _jsonable(result.output)))
+            if semantic_validator:
+                failures.extend(semantic_validator(result.output))
             uncited = sorted(
                 set(required_citations) - set(result.evidence_cited))
         if uncited:
@@ -194,7 +242,9 @@ class SREReviewService(_AgentStage):
         )
         result, result_evidence = self._run(
             task, run_dir=run_dir,
-            required_citations=(plan.evidence_ids[0], context_ref.evidence_id))
+            required_citations=(plan.evidence_ids[0], context_ref.evidence_id),
+            semantic_validator=_sre_semantic_failures)
+
         output = result.output
         if service_context.get("evidence_phase") == "pre_change":
             false_claims = _prechange_claim_failures(output["summary"])
@@ -375,7 +425,8 @@ class RollbackReviewService(_AgentStage):
         result, result_evidence = self._run(
             task, run_dir=run_dir,
             required_citations=(plan.evidence_ids[0], sre.evidence_ids[-1],
-                                window.evidence_ids[-1]))
+                                window.evidence_ids[-1]),
+            semantic_validator=_rollback_semantic_failures)
         output, decision = result.output, result.output["decision"]
         if decision == "approve":
             _strings(output, "verified_steps", required=True)
