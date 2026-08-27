@@ -63,6 +63,7 @@ class WindowPolicy:
     allowed_start_hours: tuple[int, ...] = tuple(range(24))
     candidate_count: int = 3
     minimum_profile_samples: int = 2
+    fixed_start_delay_minutes: int | None = None
 
     def __post_init__(self) -> None:
         try:
@@ -83,6 +84,12 @@ class WindowPolicy:
             raise UsageAnalysisError("candidate_count must be between 1 and 10")
         if self.minimum_profile_samples < 1:
             raise UsageAnalysisError("minimum_profile_samples must be positive")
+        if (self.fixed_start_delay_minutes is not None
+                and (isinstance(self.fixed_start_delay_minutes, bool)
+                     or not isinstance(self.fixed_start_delay_minutes, int)
+                     or not 1 <= self.fixed_start_delay_minutes <= 1440)):
+            raise UsageAnalysisError(
+                "fixed_start_delay_minutes must be an integer from 1 through 1440")
         if not self.allowed_weekdays or any(
                 isinstance(day, bool) or not isinstance(day, int) or day not in range(7)
                 for day in self.allowed_weekdays):
@@ -143,6 +150,22 @@ def candidate_windows(samples: tuple[UsageSample, ...], *, policy: WindowPolicy,
     if not samples:
         raise UsageAnalysisError("at least one usage sample is required")
     zone = ZoneInfo(policy.timezone)
+    if policy.fixed_start_delay_minutes is not None:
+        start = parse_timestamp(now).astimezone(zone) + timedelta(
+            minutes=policy.fixed_start_delay_minutes)
+        start = start.replace(second=0, microsecond=0)
+        end = start + timedelta(minutes=policy.duration_minutes)
+        return (WindowCandidate(
+            candidate_id="CAND-FIXED-001",
+            starts_at=utc_text(start), ends_at=utc_text(end),
+            timezone=policy.timezone, local_start=start.isoformat(),
+            historical_samples=len(samples),
+            average_requests=round(mean(sample.requests for sample in samples), 3),
+            average_errors=round(mean(sample.errors for sample in samples), 3),
+            average_p95_latency_ms=round(
+                mean(sample.p95_latency_ms for sample in samples), 3),
+            rank=1,
+        ),)
     profiles: dict[tuple[int, int], list[UsageSample]] = {}
     for sample in samples:
         local = parse_timestamp(sample.timestamp).astimezone(zone)

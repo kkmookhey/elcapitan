@@ -50,6 +50,27 @@ def test_policy_refuses_telemetry_without_an_allowed_profile():
         )
 
 
+def test_explicit_fixed_window_is_future_and_telemetry_summarized():
+    samples = (
+        UsageSample("2026-08-27T19:20:00Z", 0),
+        UsageSample("2026-08-27T19:21:00Z", 1),
+    )
+    policy = WindowPolicy(
+        timezone="UTC", duration_minutes=30,
+        fixed_start_delay_minutes=5,
+    )
+
+    candidates = candidate_windows(
+        samples, policy=policy, now="2026-08-27T19:40:30Z")
+
+    assert len(candidates) == 1
+    assert candidates[0].candidate_id == "CAND-FIXED-001"
+    assert candidates[0].starts_at == "2026-08-27T19:45:00Z"
+    assert candidates[0].ends_at == "2026-08-27T20:15:00Z"
+    assert candidates[0].historical_samples == 2
+    assert candidates[0].average_requests == 0.5
+
+
 def test_azure_monitor_usage_uses_only_the_observer_identity(tmp_path):
     bin_dir = fake_az.install(tmp_path / "bin")
     host_env = {

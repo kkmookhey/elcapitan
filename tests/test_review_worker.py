@@ -118,11 +118,13 @@ def test_review_worker_accepts_an_explicit_validated_window_policy():
         "allowed_weekdays": [0, 1, 2, 3, 4, 5, 6],
         "allowed_start_hours": list(range(24)),
         "candidate_count": 1, "minimum_profile_samples": 2,
+        "fixed_start_delay_minutes": 5,
     }})
 
     assert policy.timezone == "UTC"
     assert policy.duration_minutes == 30
     assert policy.allowed_start_hours == tuple(range(24))
+    assert policy.fixed_start_delay_minutes == 5
 
 
 def test_review_worker_rejects_unknown_window_policy_fields():

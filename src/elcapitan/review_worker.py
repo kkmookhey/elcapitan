@@ -146,6 +146,7 @@ def _window_policy(service_context: Mapping) -> WindowPolicy:
     allowed = {
         "timezone", "duration_minutes", "notice_hours", "allowed_weekdays",
         "allowed_start_hours", "candidate_count", "minimum_profile_samples",
+        "fixed_start_delay_minutes",
     }
     unknown = sorted(set(raw) - allowed)
     if unknown:
@@ -166,6 +167,8 @@ def _window_policy(service_context: Mapping) -> WindowPolicy:
             "candidate_count", defaults.candidate_count),
         "minimum_profile_samples": raw.get(
             "minimum_profile_samples", defaults.minimum_profile_samples),
+        "fixed_start_delay_minutes": raw.get(
+            "fixed_start_delay_minutes", defaults.fixed_start_delay_minutes),
     }
     return WindowPolicy(**values)
 

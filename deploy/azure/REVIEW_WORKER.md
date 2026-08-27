@@ -16,7 +16,7 @@ must not be committed, supplied as container arguments, or printed in deployment
 logs. The non-secret configuration is:
 
 ```text
-image: ca7b25e7d425acr.azurecr.io/elcapitan-demo:20260827-review.17
+image: ca7b25e7d425acr.azurecr.io/elcapitan-demo:20260827-review.18
 trigger: Manual
 retry limit: 0
 timeout: 1800 seconds
@@ -40,3 +40,6 @@ The service-context document may include a strict `window_policy` object for a
 customer or laboratory maintenance policy. Unknown fields and invalid timezone,
 duration, weekday, hour, candidate, or sample constraints fail closed. When it
 is absent, the worker retains the conservative weekday midnight default.
+An explicit `fixed_start_delay_minutes` is available for approved emergency or
+disposable-lab policies; it is bounded to 1–1440 minutes and remains visible in
+the immutable candidate evidence and human review package.
