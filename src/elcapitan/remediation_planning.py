@@ -7,7 +7,13 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
+import urllib.error
+import urllib.parse
+import urllib.request
+from contextlib import contextmanager
 from dataclasses import dataclass
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Callable, Mapping, Protocol
 
@@ -74,6 +80,83 @@ class TerraformRunner(Protocol):
     def check(self, workspace: Path, link: TerraformLink, *,
               state_document: Mapping | None = None
               ) -> tuple[TerraformCheck, ...]: ...
+
+
+@contextmanager
+def _container_apps_identity_proxy(endpoint: str, identity_header: str,
+                                   client_id: str):
+    """Bridge AzureRM's IMDS request to the ACA header-authenticated endpoint."""
+    if not endpoint or not identity_header:
+        yield ""
+        return
+    parsed_endpoint = urllib.parse.urlsplit(endpoint)
+    if (parsed_endpoint.scheme not in {"http", "https"}
+            or parsed_endpoint.hostname not in {"localhost", "127.0.0.1", "::1"}):
+        raise RemediationPlanningError(
+            "Container Apps managed-identity endpoint must be loopback-only")
+    if not client_id:
+        raise RemediationPlanningError(
+            "Container Apps managed-identity proxy requires the planner client ID")
+
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def do_GET(self):  # noqa: N802 - BaseHTTPRequestHandler API
+            query = urllib.parse.parse_qs(
+                urllib.parse.urlsplit(self.path).query, keep_blank_values=True)
+            resource = (query.get("resource") or [""])[0]
+            requested_client = (query.get("client_id") or [client_id])[0]
+            if (resource.rstrip("/") not in {
+                    "https://management.azure.com",
+                    "https://management.core.windows.net",
+                    } or requested_client != client_id):
+                self._send(403, b'{"error":{"code":"IdentityRequestDenied"}}')
+                return
+            upstream_query = urllib.parse.urlencode({
+                "resource": resource,
+                "api-version": "2019-08-01",
+                "client_id": client_id,
+            })
+            separator = "&" if parsed_endpoint.query else "?"
+            request = urllib.request.Request(
+                endpoint + separator + upstream_query,
+                headers={"X-IDENTITY-HEADER": identity_header},
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=15) as response:
+                    body = response.read(1024 * 1024 + 1)
+                    status = response.status
+            except urllib.error.HTTPError as error:
+                body = error.read(1024 * 1024 + 1)
+                status = error.code
+            except (OSError, urllib.error.URLError):
+                self._send(
+                    502, b'{"error":{"code":"IdentityProxyUnavailable"}}')
+                return
+            if len(body) > 1024 * 1024:
+                self._send(502, b'{"error":{"code":"IdentityResponseTooLarge"}}')
+                return
+            self._send(status, body)
+
+        def _send(self, status: int, body: bytes) -> None:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format, *args):  # noqa: A002
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}/msi/token"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
 
 
 class SubprocessTerraformRunner:
@@ -252,7 +335,13 @@ class SubprocessTerraformRunner:
         module = safe_resolve(workspace, link.module_path)
         source = safe_resolve(workspace, link.source_path)
         relative_source = source.relative_to(module).as_posix()
-        with tempfile.TemporaryDirectory(prefix="elcapitan-terraform-") as temporary:
+        identity_endpoint = os.environ.get("IDENTITY_ENDPOINT", "")
+        identity_header = os.environ.get("IDENTITY_HEADER", "")
+        planner_client_id = os.environ.get(
+            "ELCAP_PLANNER_AZURE_MANAGED_IDENTITY_CLIENT_ID", "")
+        with (tempfile.TemporaryDirectory(prefix="elcapitan-terraform-") as temporary,
+              _container_apps_identity_proxy(
+                  identity_endpoint, identity_header, planner_client_id) as proxy_endpoint):
             isolated = Path(temporary)
             environment = {
                 "PATH": os.environ.get("PATH", ""),
@@ -267,11 +356,9 @@ class SubprocessTerraformRunner:
             }
             # Only the explicitly configured planning identity may cross into the
             # provider process. Ambient scanner, observer, and user credentials stay out.
-            identity_endpoint = os.environ.get("IDENTITY_ENDPOINT", "")
             planning_environment = {
                 "ARM_USE_MSI": os.environ.get("ELCAP_PLANNER_AZURE_USE_MSI", ""),
-                "ARM_CLIENT_ID": os.environ.get(
-                    "ELCAP_PLANNER_AZURE_MANAGED_IDENTITY_CLIENT_ID", ""),
+                "ARM_CLIENT_ID": planner_client_id,
                 "ARM_SUBSCRIPTION_ID": os.environ.get(
                     "ELCAP_PLANNER_AZURE_SUBSCRIPTION_ID", ""),
                 "ARM_TENANT_ID": os.environ.get(
@@ -281,7 +368,7 @@ class SubprocessTerraformRunner:
                 # the platform endpoint and rotating header inside the isolated
                 # provider process and use the API version required by ACA.
                 "ARM_MSI_ENDPOINT": os.environ.get(
-                    "ELCAP_PLANNER_AZURE_MSI_ENDPOINT", "") or identity_endpoint,
+                    "ELCAP_PLANNER_AZURE_MSI_ENDPOINT", "") or proxy_endpoint,
                 "ARM_MSI_API_VERSION": os.environ.get(
                     "ELCAP_PLANNER_AZURE_MSI_API_VERSION", "") or (
                         "2019-08-01" if identity_endpoint else ""),

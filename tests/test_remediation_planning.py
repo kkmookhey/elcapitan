@@ -1,4 +1,9 @@
 import json
+import threading
+import urllib.error
+import urllib.parse
+import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -15,6 +20,7 @@ from elcapitan.product_records import SqliteProductRecordStore
 from elcapitan.remediation_planning import (
     RemediationPlanningError, RemediationPlanningService,
     SubprocessTerraformRunner, TerraformCheck, TerraformChecksFailed,
+    _container_apps_identity_proxy,
 )
 from elcapitan.terraform_linker import TerraformLink
 
@@ -232,10 +238,12 @@ def test_repository_symlinks_are_rejected_before_terraform_runs(prepared):
 def test_state_grounded_runner_accepts_only_one_targeted_update(tmp_path, monkeypatch):
     monkeypatch.setenv("IDENTITY_ENDPOINT", "http://localhost:42356/msi/token")
     monkeypatch.setenv("IDENTITY_HEADER", "rotating-platform-header")
+    monkeypatch.setenv(
+        "ELCAP_PLANNER_AZURE_MANAGED_IDENTITY_CLIENT_ID", "planner-client")
     terraform = tmp_path / "terraform"
     terraform.write_text(
         "#!/bin/sh\n"
-        "[ \"$ARM_MSI_ENDPOINT\" = \"$IDENTITY_ENDPOINT\" ] || exit 41\n"
+        "case \"$ARM_MSI_ENDPOINT\" in http://127.0.0.1:*/msi/token) :;; *) exit 41;; esac\n"
         "[ \"$ARM_MSI_API_VERSION\" = \"2019-08-01\" ] || exit 42\n"
         "[ \"$IDENTITY_HEADER\" = \"rotating-platform-header\" ] || exit 43\n"
         "if [ \"$1\" = \"plan\" ]; then for arg in \"$@\"; do "
@@ -283,6 +291,59 @@ def test_state_grounded_runner_accepts_only_one_targeted_update(tmp_path, monkey
     }
     assert "-state=[EPHEMERAL_STATE]" in checks[-2].argv
     assert "-out=[EPHEMERAL_PLAN]" in checks[-2].argv
+
+
+def test_container_apps_identity_proxy_injects_header_and_bounds_request():
+    observed = {}
+
+    class PlatformIdentityHandler(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            observed["header"] = self.headers.get("X-IDENTITY-HEADER")
+            observed["query"] = urllib.parse.parse_qs(
+                urllib.parse.urlsplit(self.path).query)
+            body = b'{"access_token":"opaque","expires_on":"1"}'
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format, *args):  # noqa: A002
+            return
+
+    platform = ThreadingHTTPServer(("127.0.0.1", 0), PlatformIdentityHandler)
+    thread = threading.Thread(target=platform.serve_forever, daemon=True)
+    thread.start()
+    endpoint = f"http://127.0.0.1:{platform.server_port}/msi/token"
+    try:
+        with _container_apps_identity_proxy(
+                endpoint, "rotating-header", "planner-client") as proxy:
+            query = urllib.parse.urlencode({
+                "resource": "https://management.azure.com/",
+                "api-version": "2018-02-01",
+                "client_id": "planner-client",
+            })
+            with urllib.request.urlopen(f"{proxy}?{query}") as response:
+                assert json.load(response)["access_token"] == "opaque"
+            denied = urllib.parse.urlencode({
+                "resource": "https://vault.azure.net/",
+                "client_id": "planner-client",
+            })
+            with pytest.raises(urllib.error.HTTPError) as failure:
+                urllib.request.urlopen(f"{proxy}?{denied}")
+            assert failure.value.code == 403
+    finally:
+        platform.shutdown()
+        platform.server_close()
+        thread.join(timeout=5)
+
+    assert observed == {
+        "header": "rotating-header",
+        "query": {
+            "api-version": ["2019-08-01"],
+            "client_id": ["planner-client"],
+            "resource": ["https://management.azure.com/"],
+        },
+    }
 
 
 def test_plan_scope_rejects_create_or_destroy(tmp_path):
