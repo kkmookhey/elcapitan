@@ -333,6 +333,12 @@ def test_container_apps_identity_proxy_injects_header_and_bounds_request():
             with pytest.raises(urllib.error.HTTPError) as failure:
                 urllib.request.urlopen(f"{proxy}?{denied}")
             assert failure.value.code == 403
+            assert json.load(failure.value)["error"] == {
+                "audience_allowed": False,
+                "client_allowed": True,
+                "code": "IdentityRequestDenied",
+                "query_keys": ["client_id", "resource"],
+            }
     finally:
         platform.shutdown()
         platform.server_close()

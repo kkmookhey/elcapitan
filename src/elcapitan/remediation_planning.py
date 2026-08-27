@@ -106,11 +106,19 @@ def _container_apps_identity_proxy(endpoint: str, identity_header: str,
                 urllib.parse.urlsplit(self.path).query, keep_blank_values=True)
             resource = (query.get("resource") or [""])[0]
             requested_client = (query.get("client_id") or [client_id])[0]
-            if (resource.rstrip("/") not in {
-                    "https://management.azure.com",
-                    "https://management.core.windows.net",
-                    } or requested_client != client_id):
-                self._send(403, b'{"error":{"code":"IdentityRequestDenied"}}')
+            audience_allowed = resource.rstrip("/") in {
+                "https://management.azure.com",
+                "https://management.core.windows.net",
+            }
+            client_allowed = requested_client == client_id
+            if not audience_allowed or not client_allowed:
+                body = json.dumps({"error": {
+                    "code": "IdentityRequestDenied",
+                    "audience_allowed": audience_allowed,
+                    "client_allowed": client_allowed,
+                    "query_keys": sorted(query),
+                }}, sort_keys=True, separators=(",", ":")).encode()
+                self._send(403, body)
                 return
             upstream_query = urllib.parse.urlencode({
                 "resource": resource,
