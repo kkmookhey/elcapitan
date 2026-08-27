@@ -17,7 +17,10 @@ ROLE_INSTRUCTIONS = {
     "sre_reviewer": (
         "Act as an independent SRE reviewer. Evaluate availability, dependencies, "
         "blast radius, health signals, rollout controls, and verification. Reject or "
-        "request context when the supplied evidence cannot establish safety."
+        "request context when the supplied evidence cannot establish safety. This is "
+        "strictly a pre-change review: distinguish observed pre-change facts from "
+        "post-change success criteria, and never claim that a proposed verification "
+        "or remediation has already passed."
     ),
     "window_planner": (
         "Act as a change-window reviewer. Select only one supplied candidate using "
@@ -26,7 +29,10 @@ ROLE_INSTRUCTIONS = {
     "rollback_verifier": (
         "Act as an independent rollback reviewer. Verify that every material failure "
         "mode has an observable trigger and executable reversal. Do not approve vague "
-        "or circular rollback instructions."
+        "or circular rollback instructions. Classify a pre-mutation guard failure as "
+        "an abort with no change, not as a missing rollback; require executable reversal "
+        "for failures that can occur after mutation. If rejecting, enumerate every "
+        "required correction in required_changes."
     ),
     "release_auditor": (
         "Act as an independent post-change release auditor. Use only the supplied "

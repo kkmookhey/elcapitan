@@ -48,6 +48,19 @@ def _strings(document: Mapping, name: str, *, required: bool = False) -> tuple[s
     return tuple(value)
 
 
+def _prechange_claim_failures(summary: str) -> tuple[str, ...]:
+    """Catch explicit claims that future-state proof already exists pre-change."""
+    lowered = " ".join(summary.lower().split())
+    phrases = (
+        "already satisfied", "already verified", "already passed",
+        "post-change health signals confirm",
+        "post-implementation health signals confirm",
+        "verification confirms success", "finding is no longer",
+        "finding has been remediated",
+    )
+    return tuple(phrase for phrase in phrases if phrase in lowered)
+
+
 @dataclass(frozen=True)
 class ReviewOutcome:
     case: RemediationCase
@@ -171,6 +184,11 @@ class SREReviewService(_AgentStage):
             constraints=(
                 "do not change the remediation", "do not approve missing health signals",
                 "evaluate availability, dependencies, rollout, and verification",
+                "this is pre-change: observed_topology contains current facts; "
+                "health_signals are post-change success criteria unless explicitly "
+                "labelled as observed",
+                "do not state or imply that the change, rollback, or post-change "
+                "verification has already run",
             ),
             metadata={"plan": plan.body, "service_context": service_context,
                       "case": case_to_dict(case)},
@@ -179,6 +197,12 @@ class SREReviewService(_AgentStage):
             task, run_dir=run_dir,
             required_citations=(plan.evidence_ids[0], context_ref.evidence_id))
         output = result.output
+        if service_context.get("evidence_phase") == "pre_change":
+            false_claims = _prechange_claim_failures(output["summary"])
+            if false_claims:
+                raise PreApprovalError(
+                    "SRE review claimed future-state evidence during pre-change: "
+                    + ", ".join(false_claims))
         decision = output["decision"]
         if decision == "approve":
             for name in ("failure_modes", "required_controls", "verification_requirements"):
@@ -341,7 +365,11 @@ class RollbackReviewService(_AgentStage):
             evidence_ids=evidence_ids,
             constraints=("do not approve vague rollback steps",
                          "map material failure modes to observable triggers",
-                         "require a reversible path"),
+                         "require a reversible path",
+                         "treat failed pre-mutation scope, tag, state, or permission "
+                         "guards as abort-without-change controls",
+                         "require rollback triggers only for failure modes possible "
+                         "after mutation; if rejecting, list concrete required_changes"),
             metadata={"plan": plan.body, "sre_review": sre.body,
                       "change_window": window.body},
         )

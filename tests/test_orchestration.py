@@ -5,7 +5,8 @@ from elcapitan.agents import (
 )
 from elcapitan.cases import CaseState
 from elcapitan.orchestration import PreApprovalOrchestrator
-from elcapitan.preapproval import _AgentStage
+from elcapitan.preapproval import _AgentStage, _prechange_claim_failures
+from elcapitan.agent_prompt import instructions
 
 
 class Cases:
@@ -104,3 +105,34 @@ def test_agent_stage_retries_once_when_mandatory_citations_are_omitted(tmp_path)
     assert evidence_id == "EVD-999"
     assert len(runtime.tasks) == 2
     assert "previous response omitted" in runtime.tasks[1].constraints[-1]
+
+
+def test_prechange_and_rollback_prompts_preserve_phase_semantics():
+    sre = AgentTask(
+        task_id="TASK-SRE", case_id="CASE-1", role=AgentRole.SRE_REVIEWER,
+        objective="review", output_contract="SREReview.v1",
+        input_record_ids=(), evidence_ids=(),
+    )
+    rollback = AgentTask(
+        task_id="TASK-RBK", case_id="CASE-1",
+        role=AgentRole.ROLLBACK_VERIFIER, objective="review rollback",
+        output_contract="RollbackReview.v1",
+        input_record_ids=(), evidence_ids=(),
+    )
+
+    assert "strictly a pre-change review" in instructions(sre)
+    assert "never claim" in instructions(sre)
+    assert "abort with no change" in instructions(rollback)
+    assert "required_changes" in instructions(rollback)
+
+
+def test_prechange_guard_rejects_explicit_future_state_claims():
+    failures = _prechange_claim_failures(
+        "Post-implementation health signals confirm success and the finding is no "
+        "longer present.")
+
+    assert failures == (
+        "post-implementation health signals confirm", "finding is no longer")
+    assert _prechange_claim_failures(
+        "Post-change verification must confirm the finding is no longer present.") == (
+            "finding is no longer",)

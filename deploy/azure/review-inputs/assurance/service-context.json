@@ -4,11 +4,12 @@
   "owner": "kkmookhey",
   "dependencies": [],
   "health_signals": [
-    "storage account provisioning state remains Succeeded",
-    "publicNetworkAccess reports Disabled after implementation",
-    "Azure Storage Transactions remains at the pre-change zero-traffic baseline",
-    "live vulnerability validation reports the finding is no longer confirmed"
+    "POST-CHANGE SUCCESS CRITERION (not yet observed): storage account provisioning state must remain Succeeded",
+    "POST-CHANGE SUCCESS CRITERION (not yet observed): publicNetworkAccess must report Disabled",
+    "POST-CHANGE SUCCESS CRITERION (not yet observed): Azure Storage Transactions must remain at the pre-change zero-traffic baseline",
+    "POST-CHANGE SUCCESS CRITERION (not yet observed): live vulnerability validation must report that the finding is no longer confirmed"
   ],
+  "evidence_phase": "pre_change",
   "service_tier": "disposable-lab",
   "customer_impact": "none; the account was created solely for this assurance run and contains no containers or blobs",
   "iac_snapshot_provenance": "Exact Terraform owner and imported state snapshot for the newly created disposable account; no keys, connection strings, tokens, or data-plane content are included.",
