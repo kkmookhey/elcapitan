@@ -192,6 +192,27 @@ def _blocks(path: Path) -> tuple[_Block, ...]:
     return tuple(blocks)
 
 
+def terraform_resource_block(path, *, resource_type: str,
+                             resource_name: str) -> str:
+    """Return one exact Terraform resource block from a verified source file.
+
+    Execution drivers use this to bind a provider operation to the same block
+    selected during planning.  Ambiguity is an error; a driver must never
+    infer which of several similarly named resources an approved plan meant.
+    """
+    source = Path(path).resolve(strict=True)
+    matches = [
+        block.text for block in _blocks(source)
+        if block.resource_type == resource_type and block.resource_name == resource_name
+    ]
+    if len(matches) != 1:
+        raise TerraformLinkError(
+            f"expected exactly one {resource_type}.{resource_name} block in {source}; "
+            f"found {len(matches)}"
+        )
+    return matches[0]
+
+
 def _literal_values(block: _Block) -> dict[str, str]:
     return {
         match.group("name"): match.group("value").replace(r'\"', '"').replace(r"\\", "\\")

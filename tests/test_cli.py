@@ -192,3 +192,15 @@ def test_cli_complete_lifecycle_success_and_automatic_rollback(
         assert result["workflow_transitions"][-2:] == [
             "start_verification", "complete_remediation",
         ]
+
+
+def test_azure_lab_lifecycle_requires_exact_double_confirmation(tmp_path):
+    resource_id = (
+        "/subscriptions/sub/resourceGroups/lab/providers/"
+        "Microsoft.Storage/storageAccounts/account")
+    with pytest.raises(ValueError, match="confirm-resource-id"):
+        main([
+            "azure-storage-lifecycle", "--resource-id", resource_id,
+            "--subscription", "sub", "--confirm-resource-id", resource_id + "-wrong",
+            "--confirm-subscription", "sub", "--workdir", str(tmp_path / "lab"),
+        ])

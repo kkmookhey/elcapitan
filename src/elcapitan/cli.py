@@ -20,9 +20,16 @@ from .action_plane import (
 )
 from .agents import AgentRole, AgentTask, RecordedContractRuntime, RoleRoutedRuntime
 from .asff import asff_to_ocsf
+from .azure_action import (
+    AzureStorageAccountClient, AzureStorageHealthMonitor,
+    AzureStoragePublicNetworkDriver, AzureStoragePublicNetworkProbe,
+    SubprocessAzureCommandRunner,
+)
 from .case_store import SqliteCaseStore
 from .case_validation import CaseValidationService
-from .cases import case_to_dict
+from .cases import (
+    CaseState, ChangePlan, ChangeWindow, RemediationCase, case_to_dict,
+)
 from .cloud import CloudState
 from .evidence import Collector
 from .finding_store import SqliteFindingStore
@@ -35,7 +42,9 @@ from .openai_runtime import OpenAIResponsesRuntime
 from .orchestration import PreApprovalOrchestrator
 from .portfolio import PortfolioPolicy, PortfolioService
 from .provider_runtimes import AnthropicMessagesRuntime, GeminiGenerateContentRuntime
-from .product_records import SqliteProductRecordStore, product_record_to_dict
+from .product_records import (
+    ProductRecord, SqliteProductRecordStore, product_record_to_dict,
+)
 from .remediation_planning import (
     RecordedAgentRuntime, RemediationPlanningService, SubprocessTerraformRunner,
     TerraformChecksFailed,
@@ -165,6 +174,34 @@ def _parser() -> argparse.ArgumentParser:
     smoke.add_argument(
         "--gemini-base-url", default="https://generativelanguage.googleapis.com/v1beta")
     smoke.add_argument("--openai-timeout", type=float, default=180)
+    azure_lab = sub.add_parser(
+        "azure-storage-lifecycle",
+        help="exercise scheduled deployment and rollback on an explicitly tagged Azure lab target",
+    )
+    azure_lab.add_argument("--resource-id", required=True)
+    azure_lab.add_argument("--subscription", required=True)
+    azure_lab.add_argument(
+        "--confirm-resource-id", required=True,
+        help="must exactly repeat --resource-id to authorize this lab mutation",
+    )
+    azure_lab.add_argument(
+        "--confirm-subscription", required=True,
+        help="must exactly repeat --subscription to pin the mutation boundary",
+    )
+    azure_lab.add_argument("--originator", default="azure-lab-operator")
+    azure_lab.add_argument("--workdir", type=Path)
+    azure_lab.add_argument("--az-bin", default="az")
+    azure_lab.add_argument("--azure-timeout", type=float, default=180)
+    azure_lab.add_argument("--outcome", choices=("success", "rollback"),
+                           default="rollback")
+    azure_lab.add_argument("--provider", choices=("openai", "anthropic", "gemini"))
+    azure_lab.add_argument("--model")
+    azure_lab.add_argument("--env-file", type=Path)
+    azure_lab.add_argument("--openai-base-url", default="https://api.openai.com/v1")
+    azure_lab.add_argument("--anthropic-base-url", default="https://api.anthropic.com")
+    azure_lab.add_argument(
+        "--gemini-base-url", default="https://generativelanguage.googleapis.com/v1beta")
+    azure_lab.add_argument("--openai-timeout", type=float, default=180)
     return parser
 
 
@@ -598,6 +635,141 @@ def _demo_lifecycle(args) -> int:
     return 0
 
 
+def _azure_storage_lifecycle(args) -> int:
+    """Run the real action plane against one disposable, tagged Azure target."""
+    if args.resource_id != args.confirm_resource_id:
+        raise ValueError("--confirm-resource-id must exactly match --resource-id")
+    if args.subscription != args.confirm_subscription:
+        raise ValueError("--confirm-subscription must exactly match --subscription")
+    root = (args.workdir.resolve() if args.workdir else
+            Path(tempfile.mkdtemp(prefix="elcapitan-azure-lifecycle-")))
+    if args.workdir and root.exists() and any(root.iterdir()):
+        raise ValueError("--workdir must be empty so prior evidence cannot be overwritten")
+    root.mkdir(parents=True, exist_ok=True)
+    db, artifacts = root / "product.db", root / "artifacts"
+    namespace = "cases/CASE-AZURE-LAB/planning/PLAN-AZURE-LAB"
+    source_path = "main.tf"
+    original = f'''resource "azurerm_storage_account" "lab" {{
+  name                          = "{args.resource_id.rsplit('/', 1)[-1]}"
+  resource_group_name           = "{args.resource_id.split('/')[4]}"
+  public_network_access_enabled = true
+}}
+'''
+    replacement = original.replace("= true", "= false")
+    original_path = root / "approved-source" / source_path
+    replacement_path = artifacts / namespace / "workspace" / source_path
+    original_path.parent.mkdir(parents=True)
+    replacement_path.parent.mkdir(parents=True)
+    original_path.write_text(original, encoding="utf-8")
+    replacement_path.write_text(replacement, encoding="utf-8")
+    now_value = datetime.now(UTC).replace(microsecond=0)
+    now = lambda: now_value.isoformat().replace("+00:00", "Z")
+    starts = (now_value - timedelta(minutes=1)).isoformat().replace("+00:00", "Z")
+    ends = (now_value + timedelta(minutes=30)).isoformat().replace("+00:00", "Z")
+    case_id = "CASE-AZURE-LAB"
+    plan_id, link_id, approval_id, window_id = (
+        "PLAN-AZURE-LAB", "LINK-AZURE-LAB", "APPROVAL-AZURE-LAB", "WIN-AZURE-LAB")
+    change_plan = ChangePlan(
+        plan_id=plan_id, objective="disable Azure Storage public network access",
+        change_ref=f"{namespace}/workspace/{source_path}",
+        prerequisites=("target is explicitly tagged as an El Capitan nonproduction lab",),
+        steps=("disable public network access on the pinned storage account",),
+        rollout_steps=("apply one Azure control-plane property update",),
+        verification_steps=("read the live Azure property and control-plane health",),
+        rollback_steps=("restore the exact checkpointed public network access value",),
+        rollback_triggers=("deployment, health, verification, or release audit failure",),
+        blast_radius=(args.resource_id,), evidence_ids=())
+    window = ChangeWindow(
+        window_id, starts, ends, "UTC", ("operator-invoked isolated lab window",), (), 1.0)
+    case = RemediationCase(
+        case_id=case_id, tenant_id="TEN-AZURE-LAB", finding_ids=("FIND-AZURE-PNA",),
+        asset_ids=(args.resource_id,), service_ids=("azure-storage-lab",),
+        state=CaseState.APPROVED, version=0, created_at=now(), updated_at=now(),
+        change_plan=change_plan, change_window=window,
+        record_ids={"change_plan_id": plan_id, "iac_link_id": link_id,
+                    "approval_id": approval_id, "change_window_id": window_id})
+    cases, records = SqliteCaseStore(db), SqliteProductRecordStore(db)
+    cases.create(case)
+    plan = ProductRecord(
+        plan_id, case_id, "RemediationPlan.v1", 1, now(),
+        {"status": "verified", "plan": {"objective": change_plan.objective},
+         "artifact_namespace": namespace,
+         "change": {"source_path": source_path,
+                    "before_sha256": hashlib.sha256(original.encode()).hexdigest(),
+                    "after_sha256": hashlib.sha256(replacement.encode()).hexdigest()}}, ())
+    link = ProductRecord(
+        link_id, case_id, "IaCLink.v1", 1, now(),
+        {"link": {"resource_uid": args.resource_id,
+                  "resource_type": "azurerm_storage_account",
+                  "resource_name": "lab"}}, ())
+    approval = ProductRecord(
+        approval_id, case_id, "ChangeApproval.v1", 1, now(),
+        {"approver": args.originator, "expires_at": ends,
+         "authentication_method": "explicit-azure-lab-cli-confirmation",
+         "statement": "approved only for the pinned tagged lab resource"}, ())
+    window_record = ProductRecord(
+        window_id, case_id, "ChangeWindowRecommendation.v1", 1, now(),
+        {"window_id": window_id, "selected": {"starts_at": starts, "ends_at": ends}}, ())
+    for record in (plan, link, approval, window_record):
+        records.put(record)
+    client = AzureStorageAccountClient(
+        args.resource_id, expected_subscription=args.subscription,
+        required_tags={"elcapitan_scope": "lab", "environment": "nonproduction"},
+        runner=SubprocessAzureCommandRunner(
+            args.az_bin, timeout_seconds=args.azure_timeout))
+    before = client.read().get("publicNetworkAccess")
+    if args.provider or args.model:
+        if not args.provider or not args.model:
+            raise ValueError("--provider and --model must be supplied together")
+        _load_provider_keys(args.env_file)
+        release_runtime = _live_runtime(args.provider, args.model, args)
+    else:
+        release_runtime = RecordedContractRuntime({
+            "PostChangeReview.v1": {"output": {
+                "decision": "accept",
+                "summary": "The pinned Azure lab resource is healthy and remediated.",
+                "validated_outcomes": ["Azure public network access is disabled"],
+                "residual_risks": [],
+                "handoff_notes": ["retain the immutable execution evidence"],
+            }}}, now=now)
+    jobs = SqliteExecutionJobStore(db)
+    scheduled = ExecutionScheduler(
+        case_store=cases, record_store=records, job_store=jobs, now=now).schedule(case_id)
+    probes = [AzureStoragePublicNetworkProbe(client)]
+    if args.outcome == "rollback":
+        probes.append(RecordedVerificationProbe(
+            name="injected-lab-rollback-trigger", target=args.resource_id,
+            passed=False, detail="operator requested automatic rollback-path validation"))
+    service = ExecutionService(
+        case_store=cases, record_store=records, artifact_root=artifacts,
+        driver=AzureStoragePublicNetworkDriver(client),
+        monitor=AzureStorageHealthMonitor(client), probes=tuple(probes),
+        runtime=release_runtime, now=now)
+    dispatched = ScheduledExecutionWorker(
+        job_store=jobs, worker_id="azure-lab-worker",
+        execute=lambda job: service.execute(
+            job.case_id, originator=args.originator, execution_job_id=job.job_id),
+    ).run_once(now=now())
+    if dispatched is None or dispatched.job.job_id != scheduled.job.job_id:
+        raise RuntimeError("Azure lab scheduler did not release the pinned job")
+    outcome = dispatched.result
+    after = client.read().get("publicNetworkAccess")
+    json.dump({
+        "status": outcome.case.state.value, "case_id": case_id,
+        "resource_id": args.resource_id, "subscription": args.subscription,
+        "requested_outcome": args.outcome, "before": before, "after": after,
+        "rolled_back": outcome.rolled_back,
+        "job_state": dispatched.job.state.value,
+        "verification": (product_record_to_dict(outcome.verification_record)
+                         if outcome.verification_record else None),
+        "handoff": (product_record_to_dict(outcome.handoff_record)
+                    if outcome.handoff_record else None),
+        "workdir": str(root),
+    }, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+    return 0
+
+
 def _intake(args) -> int:
     document = json.loads(args.input.read_text())
     documents = document if isinstance(document, list) else [document]
@@ -707,6 +879,8 @@ def main(argv=None) -> int:
         return _portfolio(args)
     if args.command == "model-smoke":
         return _model_smoke(args)
+    if args.command == "azure-storage-lifecycle":
+        return _azure_storage_lifecycle(args)
     raise AssertionError(args.command)
 
 

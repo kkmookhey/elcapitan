@@ -205,15 +205,38 @@ View the fleet queue after validation:
 uv run elcapitan portfolio --tenant TENANT --db /path/to/product.db
 ```
 
-## Current deployment boundary
+## Azure execution connector
 
-The action plane is complete as a provider-neutral, checkpointed vertical
-slice and is executable through the filesystem reference driver. Real cloud
-deployment is intentionally not enabled merely because credentials are
-present. A production connector must implement the same `ChangeDriver`,
-`HealthMonitor`, and `VerificationProbe` contracts with short-lived,
-case-scoped credentials in an isolated worker. The included live cloud reader
-remains read-only.
+The first live connector implements a deliberately narrow remediation:
+disabling public network access on one Azure Storage account. It binds the
+mutation to the exact ARM ID and verified Terraform resource, pins the Azure
+subscription, requires explicit `elcapitan_scope=lab` and
+`environment=nonproduction` tags, fingerprints the relevant configuration at
+checkpoint time, verifies control-plane health and the live property after
+deployment, and restores the checkpoint automatically on any failure.
+
+The guarded lab command requires the resource ID and subscription to be typed
+twice. Its default outcome is rollback, so it exercises a real Azure mutation
+and returns the account to its prior state:
+
+```bash
+uv run elcapitan azure-storage-lifecycle \
+  --resource-id "$AZURE_LAB_STORAGE_ID" \
+  --confirm-resource-id "$AZURE_LAB_STORAGE_ID" \
+  --subscription "$AZURE_LAB_SUBSCRIPTION" \
+  --confirm-subscription "$AZURE_LAB_SUBSCRIPTION" \
+  --outcome rollback
+```
+
+Add `--outcome success` to leave the lab account remediated. An optional live
+release auditor can be selected with `--provider`, `--model`, and `--env-file`.
+The filesystem driver remains available for cloud-free lifecycle tests.
+
+This connector does not make arbitrary Azure changes and cannot target Eiger
+unless its resource were deliberately retagged into the lab scope. Additional
+Azure resource types require separately reviewed drivers, health contracts,
+and rollback implementations. Production workers should replace the ambient
+CLI session with short-lived, case-scoped workload identity credentials.
 
 See [the product architecture](docs/product-architecture.md) for the system
 boundary and first PR-only vertical slice. The retired capability probe is
