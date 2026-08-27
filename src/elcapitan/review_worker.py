@@ -12,7 +12,7 @@ from .agents import AgentRole, RoleRoutedRuntime, validate_result
 from .cases import CaseState, case_to_dict
 from .model_egress import ModelEgressRuntime
 from .observability import WindowPolicy, load_usage_samples
-from .openai_runtime import OpenAIResponsesRuntime
+from .openai_runtime import OpenAIRuntimeError, OpenAIResponsesRuntime
 from .orchestration import PreApprovalOrchestrator
 from .postgres_store import (
     PostgresArtifactStore, PostgresCaseStore, PostgresFindingStore,
@@ -20,7 +20,7 @@ from .postgres_store import (
 )
 from .product_records import product_record_to_dict
 from .promotion import PromotionReadinessService
-from .provider_runtimes import AnthropicMessagesRuntime
+from .provider_runtimes import AnthropicMessagesRuntime, ProviderRuntimeError
 from .remediation_planning import SubprocessTerraformRunner
 
 
@@ -39,7 +39,19 @@ class _SemanticRetryRuntime:
         return f"semantic-retry:{self.runtime.name}"
 
     def run(self, task):
-        result = self.runtime.run(task)
+        try:
+            result = self.runtime.run(task)
+        except (OpenAIRuntimeError, ProviderRuntimeError) as exc:
+            detail = str(exc)
+            if not (detail.startswith("model output violated ")
+                    or detail.startswith("model returned malformed structured JSON")):
+                raise
+            retry = replace(task, constraints=tuple((*task.constraints,
+                "Correct this structured-output contract failure from the previous "
+                f"response: {detail}",
+                "Return every required non-empty field in the strict output contract.",
+            )))
+            return self.runtime.run(retry)
         failures = validate_result(task, result)
         if not failures:
             return result
