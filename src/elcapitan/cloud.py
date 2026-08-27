@@ -38,10 +38,17 @@ import json
 import re
 import subprocess
 import tempfile
+import urllib.error
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
-from .constants import scanner_env_map
+from .constants import (
+    AZURE_MANAGED_IDENTITY_AUTH_MODE,
+    AZURE_SCANNER_MANAGED_IDENTITY_CLIENT_ID,
+    scanner_env_map,
+)
 from .hashing import canonical_json
 
 # Read-only S3 operations, each one measured against the real
@@ -139,6 +146,30 @@ def verification_env(env: dict, *, provider: str) -> dict:
     partially-resolved credential set is a configuration error, not something
     to query with.
     """
+    if provider == "azure" and env.get(AZURE_SCANNER_MANAGED_IDENTITY_CLIENT_ID):
+        service_principal_names = tuple(scanner_env_map("azure"))
+        mixed = sorted(name for name in service_principal_names if env.get(name))
+        if mixed:
+            raise ValueError(
+                "Azure scanner authentication is ambiguous: managed identity "
+                "cannot be combined with " + ", ".join(mixed))
+        required = (
+            AZURE_SCANNER_MANAGED_IDENTITY_CLIENT_ID,
+            "IDENTITY_ENDPOINT",
+            "IDENTITY_HEADER",
+        )
+        missing = [name for name in required if not env.get(name)]
+        if missing:
+            raise ValueError(
+                "Azure managed-identity scanner prerequisites are not set: "
+                + ", ".join(missing))
+        return {
+            "AZURE_CLIENT_ID": env[AZURE_SCANNER_MANAGED_IDENTITY_CLIENT_ID],
+            "ELCAP_AZURE_AUTH_MODE": AZURE_MANAGED_IDENTITY_AUTH_MODE,
+            "IDENTITY_ENDPOINT": env["IDENTITY_ENDPOINT"],
+            "IDENTITY_HEADER": env["IDENTITY_HEADER"],
+        }
+
     mapping = scanner_env_map(provider)
     missing = sorted(name for name in mapping if not env.get(name))
     if missing:
@@ -296,6 +327,9 @@ AZURE_BLOB_SERVICE_ASPECTS = {
 # emits `microsoft.storage/storageaccounts` while ARM ids carry
 # `Microsoft.Storage/storageAccounts`.
 AZURE_SUPPORTED_TYPES = ("microsoft.storage/storageaccounts",)
+AZURE_RESOURCE_MANAGER = "https://management.azure.com"
+AZURE_STORAGE_API_VERSION = "2025-08-01"
+AZURE_BLOB_API_VERSION = "2025-06-01"
 
 
 def _arm_parts(resource_uid: str) -> tuple[str, str, str, str]:
@@ -349,6 +383,97 @@ def _az_json(env: dict, *args: str, what: str) -> dict:
     return document
 
 
+def _http_json(request: urllib.request.Request, *, what: str) -> dict:
+    try:
+        with urllib.request.urlopen(request, timeout=_TIMEOUT_SECONDS) as response:
+            payload = response.read()
+    except urllib.error.HTTPError as exc:
+        detail = exc.read(4096).decode("utf-8", errors="replace").strip()
+        raise ValueError(
+            f"could not read {what}: HTTP {exc.code}: {detail or exc.reason}") from exc
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise ValueError(f"could not read {what}: {exc}") from exc
+    try:
+        document = json.loads(payload)
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
+        raise ValueError(f"could not read {what}: invalid JSON: {exc}") from exc
+    if not isinstance(document, dict):
+        raise ValueError(
+            f"could not read {what}: returned {type(document).__name__}, not an object")
+    return document
+
+
+def _managed_identity_token(env: dict) -> str:
+    endpoint = env.get("IDENTITY_ENDPOINT", "")
+    identity_header = env.get("IDENTITY_HEADER", "")
+    client_id = env.get("AZURE_CLIENT_ID", "")
+    parsed = urllib.parse.urlsplit(endpoint)
+    if (parsed.scheme != "http"
+            or parsed.hostname not in {"localhost", "127.0.0.1", "::1"}
+            or parsed.username
+            or parsed.password or parsed.fragment):
+        raise ValueError("Azure managed identity endpoint is not a valid local HTTP URL")
+    query = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+    query.extend((
+        ("resource", f"{AZURE_RESOURCE_MANAGER}/"),
+        ("api-version", "2019-08-01"),
+        ("client_id", client_id),
+    ))
+    token_url = urllib.parse.urlunsplit(
+        (parsed.scheme, parsed.netloc, parsed.path, urllib.parse.urlencode(query), ""))
+    request = urllib.request.Request(
+        token_url, headers={"X-IDENTITY-HEADER": identity_header})
+    document = _http_json(request, what="the Azure managed identity token")
+    token = document.get("access_token")
+    if not isinstance(token, str) or not token:
+        raise ValueError("Azure managed identity token response has no access_token")
+    return token
+
+
+def _arm_json(resource_path: str, *, api_version: str, token: str,
+              what: str) -> dict:
+    encoded_path = urllib.parse.quote(resource_path, safe="/")
+    url = (f"{AZURE_RESOURCE_MANAGER}{encoded_path}?"
+           + urllib.parse.urlencode({"api-version": api_version}))
+    request = urllib.request.Request(
+        url, headers={"Authorization": f"Bearer {token}"})
+    return _http_json(request, what=what)
+
+
+def _rest_account_document(document: dict) -> dict:
+    properties = document.get("properties")
+    if not isinstance(properties, dict):
+        raise ValueError("Azure storage account response has no properties object")
+    return {
+        "publicNetworkAccess": properties.get("publicNetworkAccess"),
+        "allowBlobPublicAccess": properties.get("allowBlobPublicAccess"),
+        "networkRuleSet": properties.get("networkAcls"),
+        "privateEndpointConnections": properties.get("privateEndpointConnections"),
+        "allowSharedKeyAccess": properties.get("allowSharedKeyAccess"),
+        "defaultToOAuthAuthentication": properties.get(
+            "defaultToOAuthAuthentication"),
+        "enableHttpsTrafficOnly": properties.get("supportsHttpsTrafficOnly"),
+        "minimumTlsVersion": properties.get("minimumTlsVersion"),
+        "allowCrossTenantReplication": properties.get("allowCrossTenantReplication"),
+        "encryption": properties.get("encryption"),
+        "sasPolicy": properties.get("sasPolicy"),
+        "isHnsEnabled": properties.get("isHnsEnabled"),
+        "accessTier": properties.get("accessTier"),
+        "sku": document.get("sku"),
+        "tags": document.get("tags"),
+    }
+
+
+def _rest_blob_document(document: dict) -> dict:
+    properties = document.get("properties")
+    if not isinstance(properties, dict):
+        raise ValueError("Azure blob service response has no properties object")
+    return {
+        key: properties.get(key)
+        for key in AZURE_BLOB_SERVICE_ASPECTS.values()
+    }
+
+
 def _select(document: dict, aspects: dict, *, source: str,
             resource_uid: str) -> list[tuple[str, str]]:
     """Named aspects out of one ARM document. A key that is not there is an
@@ -375,6 +500,23 @@ def _capture_azure(resource_uid: str, region: str, env: dict) -> tuple[tuple[str
             f"{arm_type} (supported: {', '.join(AZURE_SUPPORTED_TYPES)}) — this run's "
             f"cloud state would be UNVERIFIED. Implement the type rather than "
             f"skipping it.")
+
+    if env.get("ELCAP_AZURE_AUTH_MODE") == AZURE_MANAGED_IDENTITY_AUTH_MODE:
+        token = _managed_identity_token(env)
+        account_response = _arm_json(
+            resource_uid, api_version=AZURE_STORAGE_API_VERSION, token=token,
+            what=f"the storage account {resource_uid}")
+        blob_response = _arm_json(
+            f"{resource_uid}/blobServices/default",
+            api_version=AZURE_BLOB_API_VERSION, token=token,
+            what=f"the blob service properties of {resource_uid}")
+        account = _rest_account_document(account_response)
+        blob = _rest_blob_document(blob_response)
+        config = _select(account, AZURE_STORAGE_ACCOUNT_ASPECTS,
+                         source="storage account", resource_uid=resource_uid)
+        config += _select(blob, AZURE_BLOB_SERVICE_ASPECTS,
+                          source="blob service properties", resource_uid=resource_uid)
+        return tuple(sorted(config))
 
     # MEASURED: `az` does not read AZURE_CLIENT_ID/SECRET/TENANT_ID the way
     # Prowler's --sp-env-auth does; it resolves credentials from its own

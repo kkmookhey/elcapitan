@@ -39,7 +39,17 @@ validator makes no cloud request and does not infer its status.
 ## Identity contract
 
 Use a dedicated read-only scanner identity. Ambient AWS and Azure CLI sessions
-are not eligible. Supply exactly the connector-specific variables:
+are not eligible. Azure Container Apps should use a user-assigned managed
+identity and supply its client ID:
+
+```text
+ELCAP_SCANNER_AZURE_MANAGED_IDENTITY_CLIENT_ID
+```
+
+The platform-provided `IDENTITY_ENDPOINT` and `IDENTITY_HEADER` complete that
+credential-free flow. The validator requests an ARM token from the local
+identity endpoint and calls only read operations. For local development or a
+non-Azure host, the explicit service-principal fallback is:
 
 ```text
 ELCAP_SCANNER_AWS_ACCESS_KEY_ID
@@ -52,10 +62,10 @@ ELCAP_SCANNER_AZURE_TENANT_ID
 ```
 
 AWS should use a short-lived session and least-privilege read actions for the
-resource types being validated. Azure should use a service principal or
-workload identity with Reader limited to the in-scope subscriptions or
-resource groups. Keep the scanner identity distinct from the observer used for
-historical metrics and from any future execution worker.
+resource types being validated. Azure should use a managed identity with Reader
+limited to the in-scope resource groups; never mix the managed-identity and
+service-principal variables. Keep the scanner identity distinct from the
+observer used for historical metrics and from any future execution worker.
 
 Before ingestion, verify local prerequisites without making a cloud request:
 

@@ -8,7 +8,11 @@ from dataclasses import asdict, dataclass
 from typing import Mapping
 
 from .cases import RemediationCase
-from .constants import scanner_env_map
+from .constants import (
+    AZURE_MANAGED_IDENTITY_AUTH_MODE,
+    AZURE_SCANNER_MANAGED_IDENTITY_CLIENT_ID,
+    scanner_env_map,
+)
 from .finding_store import FindingStore, StoredFinding
 from .portfolio import PortfolioItem, PortfolioService
 from .product_records import ProductRecordStore
@@ -80,14 +84,15 @@ class ConnectorReadiness:
     executable_available: bool
     required_environment: tuple[str, ...]
     missing_environment: tuple[str, ...]
+    configuration_errors: tuple[str, ...]
     supported_rule_ids: tuple[str, ...]
     prohibitions: tuple[str, ...]
 
     def to_dict(self) -> dict:
         value = asdict(self)
         for name in (
-            "required_environment", "missing_environment", "supported_rule_ids",
-            "prohibitions",
+            "required_environment", "missing_environment", "configuration_errors",
+            "supported_rule_ids", "prohibitions",
         ):
             value[name] = list(value[name])
         return value
@@ -99,27 +104,53 @@ def connector_readiness(provider: str, *, host_env: Mapping[str, str] | None = N
                         ) -> ConnectorReadiness:
     """Check local prerequisites without authenticating or querying customer cloud state."""
     provider = provider.lower()
-    mapping = scanner_env_map(provider)
     environment = dict(os.environ if host_env is None else host_env)
-    executable = {"aws": "aws", "azure": "az"}.get(provider, "")
-    try:
-        resolved = which(executable, path=environment.get("PATH")) if executable else None
-    except TypeError:
-        # Small injected test resolvers may intentionally accept only the name.
-        resolved = which(executable) if executable else None
-    available = bool(resolved)
-    missing = tuple(sorted(name for name in mapping if not environment.get(name)))
+    managed_identity = (
+        provider == "azure"
+        and bool(environment.get(AZURE_SCANNER_MANAGED_IDENTITY_CLIENT_ID)))
+    if managed_identity:
+        executable = "azure-arm-rest"
+        available = True
+        required = (
+            AZURE_SCANNER_MANAGED_IDENTITY_CLIENT_ID,
+            "IDENTITY_ENDPOINT",
+            "IDENTITY_HEADER",
+        )
+        missing = tuple(name for name in required if not environment.get(name))
+        conflicting = tuple(sorted(
+            name for name in scanner_env_map("azure") if environment.get(name)))
+        configuration_errors = (() if not conflicting else (
+            "managed identity cannot be combined with " + ", ".join(conflicting),))
+    else:
+        mapping = scanner_env_map(provider)
+        executable = {"aws": "aws", "azure": "az"}.get(provider, "")
+        try:
+            resolved = (
+                which(executable, path=environment.get("PATH")) if executable else None)
+        except TypeError:
+            # Small injected test resolvers may intentionally accept only the name.
+            resolved = which(executable) if executable else None
+        available = bool(resolved)
+        required = tuple(sorted(mapping))
+        missing = tuple(
+            sorted(name for name in mapping if not environment.get(name)))
+        configuration_errors = ()
     capabilities = (registry or CapabilityRegistry()).list(provider=provider)
     return ConnectorReadiness(
         provider=provider,
-        ready_for_live_validation=available and not missing and bool(capabilities),
+        ready_for_live_validation=(
+            available and not missing and not configuration_errors
+            and bool(capabilities)),
         executable=executable,
         executable_available=available,
-        required_environment=tuple(sorted(mapping)),
+        required_environment=required,
         missing_environment=missing,
+        configuration_errors=configuration_errors,
         supported_rule_ids=tuple(item.rule_id for item in capabilities if item.live_validation),
         prohibitions=(
             "no mutation credentials are accepted by the scanner connector",
+            (f"Azure managed identity mode is {AZURE_MANAGED_IDENTITY_AUTH_MODE}"
+             if managed_identity else "ambient cloud sessions are ignored"),
             "unsupported controls remain unverified",
             "connector preflight performs no cloud API request",
         ),

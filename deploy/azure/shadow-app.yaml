@@ -6,6 +6,7 @@ identity:
   type: UserAssigned
   userAssignedIdentities:
     /subscriptions/8cd2b4cc-c789-466d-a8f7-8f51fb20985d/resourceGroups/elcapitan-remediation-lab-rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/elcapitan-demo-pull: {}
+    /subscriptions/8cd2b4cc-c789-466d-a8f7-8f51fb20985d/resourceGroups/elcapitan-remediation-lab-rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/elcapitan-shadow-scanner: {}
 properties:
   managedEnvironmentId: /subscriptions/8cd2b4cc-c789-466d-a8f7-8f51fb20985d/resourceGroups/elcapitan-remediation-lab-rg/providers/Microsoft.App/managedEnvironments/elcapitan-shadow-private-env
   configuration:
@@ -27,7 +28,7 @@ properties:
   template:
     containers:
       - name: elcapitan-shadow-durable
-        image: ca7b25e7d425acr.azurecr.io/elcapitan-demo:20260827-shadow.6
+        image: ca7b25e7d425acr.azurecr.io/elcapitan-demo:20260827-shadow.8
         command:
           - elcapitan
         args:
@@ -43,6 +44,8 @@ properties:
             secretRef: shadow-access-token
           - name: ELCAPITAN_DATABASE_URL
             secretRef: database-url
+          - name: ELCAP_SCANNER_AZURE_MANAGED_IDENTITY_CLIENT_ID
+            value: fd932571-83dd-44fa-b105-30e4d09f54df
         resources:
           cpu: 0.5
           memory: 1Gi

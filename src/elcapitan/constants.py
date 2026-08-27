@@ -1,5 +1,9 @@
 """Credential names used by scoped, read-only cloud validators."""
 
+AZURE_SCANNER_MANAGED_IDENTITY_CLIENT_ID = (
+    "ELCAP_SCANNER_AZURE_MANAGED_IDENTITY_CLIENT_ID")
+AZURE_MANAGED_IDENTITY_AUTH_MODE = "managed_identity"
+
 # Explicit host-to-tool mappings prevent ambient credentials and accidental
 # provider selection from influencing validation.
 SCANNER_ENV_MAPS = {

@@ -420,6 +420,87 @@ def test_azure_capture_records_the_control_attribute_from_the_blob_service(azure
     assert dict(azure().config)["blob_versioning"] == "false"
 
 
+def test_azure_managed_identity_rest_capture_matches_cli_capture(
+        azure, monkeypatch):
+    account = fake_az.account_document()
+    blob = fake_az.blob_document()
+    rest_account = {
+        "sku": account["sku"],
+        "tags": account["tags"],
+        "properties": {
+            "publicNetworkAccess": account["publicNetworkAccess"],
+            "allowBlobPublicAccess": account["allowBlobPublicAccess"],
+            "networkAcls": account["networkRuleSet"],
+            "privateEndpointConnections": account["privateEndpointConnections"],
+            "allowSharedKeyAccess": account["allowSharedKeyAccess"],
+            "defaultToOAuthAuthentication": account["defaultToOAuthAuthentication"],
+            "supportsHttpsTrafficOnly": account["enableHttpsTrafficOnly"],
+            "minimumTlsVersion": account["minimumTlsVersion"],
+            "allowCrossTenantReplication": account["allowCrossTenantReplication"],
+            "encryption": account["encryption"],
+            "sasPolicy": account["sasPolicy"],
+            "isHnsEnabled": account["isHnsEnabled"],
+            "accessTier": account["accessTier"],
+        },
+    }
+    rest_blob = {"properties": {
+        key: blob.get(key) for key in (
+            "isVersioningEnabled", "changeFeed", "containerDeleteRetentionPolicy",
+            "cors", "deleteRetentionPolicy", "lastAccessTimeTrackingPolicy",
+            "restorePolicy",
+        )
+    }}
+    requests = []
+
+    class Response:
+        def __init__(self, document):
+            self.payload = json.dumps(document).encode()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def read(self):
+            return self.payload
+
+    def urlopen(request, timeout):
+        requests.append(request)
+        if request.full_url.startswith("http://localhost/"):
+            return Response({"access_token": "read-only-token"})
+        assert request.get_header("Authorization") == "Bearer read-only-token"
+        return Response(
+            rest_blob if "/blobServices/default?" in request.full_url
+            else rest_account)
+
+    monkeypatch.setattr("elcapitan.cloud.urllib.request.urlopen", urlopen)
+    managed_env = verification_env({
+        "ELCAP_SCANNER_AZURE_MANAGED_IDENTITY_CLIENT_ID": "scanner-client-id",
+        "IDENTITY_ENDPOINT": "http://localhost/token",
+        "IDENTITY_HEADER": "rotating-platform-header",
+    }, provider="azure")
+    managed = capture_cloud_state(
+        AZ_UID, provider="azure", region=AZ_REGION, env=managed_env)
+
+    assert managed.config == azure().config
+    assert len(requests) == 3
+    assert "client_id=scanner-client-id" in requests[0].full_url
+    assert requests[0].get_header("X-identity-header") == (
+        "rotating-platform-header")
+
+
+def test_azure_managed_identity_refuses_ambiguous_service_principal_values():
+    environment = {
+        "ELCAP_SCANNER_AZURE_MANAGED_IDENTITY_CLIENT_ID": "managed",
+        "IDENTITY_ENDPOINT": "http://localhost/token",
+        "IDENTITY_HEADER": "header",
+        **fake_az.scanner_credentials(),
+    }
+    with pytest.raises(ValueError, match="ambiguous"):
+        verification_env(environment, provider="azure")
+
+
 def test_the_blob_service_document_is_queried_by_name_and_group(azure):
     # MEASURED: `blob-service-properties show` rejects --ids outright. A
     # capture that assumed the aws-style single addressing mode would fail

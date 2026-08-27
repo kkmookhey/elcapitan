@@ -3,6 +3,13 @@ let fleet = null;
 let connectors = {};
 let busy = false;
 
+const controlTitles = {
+  storage_account_public_network_access_disabled: "Storage public network access must be disabled",
+  storage_blob_public_access_level_is_disabled: "Anonymous blob access must be disabled",
+  storage_blob_versioning_is_enabled: "Blob versioning must be enabled",
+  s3_bucket_object_versioning: "S3 object versioning must be enabled",
+};
+
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>'"]/g, char => ({
     "&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"
@@ -20,6 +27,10 @@ function shortId(value, width = 36) {
 
 function tenant() {
   return $("#tenant").value.trim();
+}
+
+function controlTitle(ruleId, sourceTitle) {
+  return controlTitles[ruleId] || sourceTitle || ruleId || "Untitled finding";
 }
 
 function showToast(message, error = false) {
@@ -102,7 +113,7 @@ function renderFleet(document) {
   $("#fleet-body").innerHTML = document.cases.map(item => {
     const [validationTone, validationLabel, validationReason] = validationSummary(item);
     const [scheduleTone, scheduleLabel, scheduleReason] = schedulingSummary(item);
-    const title = item.finding_titles.find(Boolean) || item.rule_ids[0] || "Untitled finding";
+    const title = controlTitle(item.rule_ids[0], item.finding_titles.find(Boolean));
     const rank = item.portfolio_rank ? `#${item.portfolio_rank}` : "—";
     return `<tr>
       <td><span class="risk">${escapeHtml(Math.round(item.risk_score))}</span><span class="urgency">${escapeHtml(item.urgency)} · ${rank}</span></td>
@@ -120,6 +131,8 @@ function renderConnectors(document) {
   $("#connectors").innerHTML = Object.values(document).map(item => {
     const ready = item.ready_for_live_validation;
     const explanation = ready ? "Ready for bounded live configuration reads." :
+      item.configuration_errors?.length ? item.configuration_errors[0] :
+      item.executable === "azure-arm-rest" ? "Managed identity is not available to the validator." :
       item.executable_available ? `Missing ${item.missing_environment.length} scanner credential value(s).` : `${item.executable || "Cloud"} CLI is unavailable.`;
     return `<article class="connector"><header><strong>${escapeHtml(item.provider)}</strong><span class="${ready ? "ready" : "not-ready"}">${ready ? "● READY" : "○ OFFLINE"}</span></header><p>${escapeHtml(explanation)}</p><code>${escapeHtml(item.supported_rule_ids.join(" · ") || "No registered controls")}</code></article>`;
   }).join("");
@@ -156,15 +169,16 @@ async function openCase(caseId) {
   const caseDoc = detail.case;
   const finding = detail.findings[0] || {};
   const ocsf = finding.record?.ocsf || {};
+  const displayTitle = controlTitle(ocsf.rule_id, ocsf.title || item?.finding_titles?.[0]);
   const [tone, validation] = validationSummary(item || {validation_counts:{}, unsupported_findings:0});
   const safety = detail.safety_boundary;
   const promotion = detail.promotion || {};
   $("#detail-content").innerHTML = `
-    <div class="detail-hero"><div><span class="status ${tone}"><i></i>${escapeHtml(validation)}</span><h2>${escapeHtml(ocsf.title || item?.finding_titles?.[0] || "Remediation case")}</h2></div><div class="detail-meta"><strong>${escapeHtml(Math.round(caseDoc.priority?.score || 0))}</strong><span>${escapeHtml(humanize(caseDoc.priority?.urgency || "unassessed"))} risk</span></div></div>
+    <div class="detail-hero"><div><span class="status ${tone}"><i></i>${escapeHtml(validation)}</span><h2>${escapeHtml(displayTitle)}</h2></div><div class="detail-meta"><strong>${escapeHtml(Math.round(caseDoc.priority?.score || 0))}</strong><span>${escapeHtml(humanize(caseDoc.priority?.urgency || "unassessed"))} risk</span></div></div>
     <div class="detail-actions">${item && canValidate(item) ? `<button class="primary" data-validate="${escapeHtml(caseId)}">Validate against live ${escapeHtml(item.provider.toUpperCase())}</button>` : ""}<span class="pill">${escapeHtml(humanize(caseDoc.state))}</span></div>
     <div class="detail-grid">
       <section class="detail-section"><h3>Case identity</h3>${fact("Case", caseDoc.case_id)}${fact("Tenant", caseDoc.tenant_id)}${fact("Provider", finding.provider)}${fact("Account", finding.account)}${fact("Service", (caseDoc.service_ids || []).join(", ") || "Unmapped")}</section>
-      <section class="detail-section"><h3>Control & target</h3>${fact("Rule", ocsf.rule_id)}${fact("Resource", finding.resource_uid)}${fact("Severity", ocsf.severity)}${fact("Findings", caseDoc.finding_ids.length)}</section>
+      <section class="detail-section"><h3>Control & target</h3>${fact("Rule", ocsf.rule_id)}${fact("Resource", finding.resource_uid)}${fact("Severity", finding.record?.severity)}${fact("Findings", caseDoc.finding_ids.length)}</section>
       <section class="detail-section"><h3>Risk rationale</h3>${(caseDoc.priority?.factors || []).map(value => `<div class="record"><p>${escapeHtml(value)}</p></div>`).join("") || '<p class="empty compact">Not assessed.</p>'}</section>
       <section class="detail-section"><h3>Shadow safety boundary</h3>${fact("Live validation", safety.mode === "shadow" ? "Allowed" : "Unknown")}${fact("External models", safety.external_models ? "Allowed" : "Disabled")}${fact("Approval", safety.approval ? "Allowed" : "Unavailable")}${fact("Scheduling", safety.scheduling ? "Allowed" : "Unavailable")}${fact("Execution", safety.execution ? "Allowed" : "Unavailable")}</section>
       <section class="detail-section full"><h3>Pre-approval promotion</h3>${fact("Status", humanize(promotion.status))}${fact("Promotion token", shortId(promotion.promotion_token, 48))}${fact("Confirmed controls", (promotion.confirmed_rule_ids || []).join(", ") || "None")}${(promotion.blockers || []).map(value => `<div class="record"><p>${escapeHtml(value)}</p></div>`).join("")}${promotion.eligible ? (promotion.required_inputs || []).map(value => `<div class="record"><p>${escapeHtml(value)}</p></div>`).join("") : ""}</section>

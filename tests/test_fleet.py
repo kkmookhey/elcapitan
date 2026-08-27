@@ -66,6 +66,35 @@ def test_connector_preflight_reports_supported_scope_with_complete_inputs():
     assert "storage_blob_versioning_is_enabled" in result.supported_rule_ids
 
 
+def test_connector_preflight_accepts_azure_managed_identity_without_cli():
+    environment = {
+        "ELCAP_SCANNER_AZURE_MANAGED_IDENTITY_CLIENT_ID": "scanner-client-id",
+        "IDENTITY_ENDPOINT": "http://localhost/token",
+        "IDENTITY_HEADER": "rotating-platform-header",
+    }
+    result = connector_readiness(
+        "azure", host_env=environment, which=lambda _: None)
+    assert result.ready_for_live_validation is True
+    assert result.executable == "azure-arm-rest"
+    assert result.executable_available is True
+    assert result.missing_environment == ()
+
+
+def test_connector_preflight_rejects_mixed_azure_authentication_modes():
+    environment = {
+        "ELCAP_SCANNER_AZURE_MANAGED_IDENTITY_CLIENT_ID": "scanner-client-id",
+        "IDENTITY_ENDPOINT": "http://localhost/token",
+        "IDENTITY_HEADER": "rotating-platform-header",
+        "ELCAP_SCANNER_AZURE_CLIENT_ID": "client",
+        "ELCAP_SCANNER_AZURE_CLIENT_SECRET": "secret",
+        "ELCAP_SCANNER_AZURE_TENANT_ID": "tenant",
+    }
+    result = connector_readiness("azure", host_env=environment)
+    assert result.ready_for_live_validation is False
+    assert result.configuration_errors
+    assert "cannot be combined" in result.configuration_errors[0]
+
+
 def test_shadow_mode_refuses_approval_scheduling_and_execution():
     assert ShadowModePolicy().allow_external_models is False
     for values in ({"allow_approval": True}, {"allow_scheduling": True},
