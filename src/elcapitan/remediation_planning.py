@@ -690,6 +690,8 @@ class RemediationPlanningService:
                 "resource_uid": resource_uid,
                 "link": link.to_dict(),
                 "source": original_source,
+                "source_evidence_id": source_ref.evidence_id,
+                "link_evidence_id": link_ref.evidence_id,
                 "findings": [finding.record for finding in findings],
                 "validation": validation.body,
             },

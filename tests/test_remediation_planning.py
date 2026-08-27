@@ -176,6 +176,8 @@ def test_verified_agent_change_advances_case_without_mutating_source(prepared):
     task = runtime.tasks[0]
     assert task.output_contract == "TerraformRemediationProposal.v1"
     assert task.metadata["link"]["source_path"] == "infra/storage.tf"
+    assert task.metadata["source_evidence_id"] in task.evidence_ids
+    assert task.metadata["link_evidence_id"] in task.evidence_ids
     assert validated.record_ids["validation_result_id"] in task.input_record_ids
 
 
