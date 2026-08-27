@@ -81,6 +81,41 @@ def test_review_runtime_retries_a_provider_structured_output_violation_once():
     assert "structured-output contract failure" in provider.tasks[1].constraints[-2]
 
 
+def test_review_runtime_retries_a_provider_token_limit_once_with_compact_bounds():
+    dispatched = AgentTask(
+        task_id="TASK-3", case_id="CASE-3",
+        role=AgentRole.ROLLBACK_VERIFIER,
+        objective="review rollback", output_contract="RollbackReview.v1",
+        input_record_ids=("PLAN-1",), evidence_ids=("EVD-1",),
+    )
+
+    class Runtime:
+        name = "provider"
+
+        def __init__(self):
+            self.tasks = []
+
+        def run(self, candidate):
+            self.tasks.append(candidate)
+            if len(self.tasks) == 1:
+                raise ProviderRuntimeError(
+                    "Anthropic response stopped with max_tokens")
+            return AgentResult(
+                task_id=candidate.task_id, case_id=candidate.case_id,
+                role=candidate.role, status=AgentResultStatus.SUCCEEDED,
+                output={"decision": "approve"}, evidence_cited=("EVD-1",),
+                missing_evidence=(), runtime=self.name, model="model",
+                started_at=NOW, completed_at=NOW,
+            )
+
+    provider = Runtime()
+    result = _SemanticRetryRuntime(provider).run(dispatched)
+
+    assert result.status is AgentResultStatus.SUCCEEDED
+    assert len(provider.tasks) == 2
+    assert "at most 5 items per array" in provider.tasks[1].constraints[-2]
+
+
 def test_policy_rejection_is_a_structured_successful_worker_outcome(monkeypatch):
     case = RemediationCase(
         case_id="CASE-1", tenant_id="TENANT-1", finding_ids=("FIND-1",),

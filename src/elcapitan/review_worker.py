@@ -44,6 +44,15 @@ class _SemanticRetryRuntime:
             result = self.runtime.run(task)
         except (OpenAIRuntimeError, ProviderRuntimeError) as exc:
             detail = str(exc)
+            if detail.endswith("stopped with max_tokens"):
+                retry = replace(task, constraints=tuple((*task.constraints,
+                    "The previous response reached the provider output-token limit. "
+                    "Return a compact complete result: summary at most 50 words; "
+                    "at most 5 items per array; at most 25 words per array item; "
+                    "do not repeat supplied evidence or Terraform source.",
+                    "Return every required field and cite the required evidence IDs.",
+                )))
+                return self.runtime.run(retry)
             if not (detail.startswith("model output violated ")
                     or detail.startswith("model returned malformed structured JSON")):
                 raise
