@@ -78,7 +78,7 @@
       <section class="card activity-card">
         <div class="card-heading">
           <div><p class="section-label">Audit stream</p><h2>Live case timeline</h2></div>
-          <span class="record-count" id="record-count">0 records</span>
+          <button class="record-count" id="record-count" data-action="records">0 records</button>
         </div>
         <div class="timeline" id="timeline"><div class="empty-state">No workflow events yet.</div></div>
       </section>
@@ -110,6 +110,14 @@
       <label class="attestation"><input id="attestation" type="checkbox" required> I reviewed the implementation, impact, verification, and rollback plan.</label>
       <div class="dialog-actions"><button class="ghost" value="cancel">Cancel</button><button class="primary" id="confirm-approval" value="default">Approve & schedule</button></div>
     </form>
+  </dialog>
+
+  <dialog id="detail-dialog" class="detail-dialog">
+    <button class="dialog-close" id="detail-close" aria-label="Close">×</button>
+    <p class="section-label" id="detail-label">Stage evidence</p>
+    <h2 id="detail-title">Workflow details</h2>
+    <p class="detail-subtitle" id="detail-subtitle"></p>
+    <div class="detail-content" id="detail-content"></div>
   </dialog>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
