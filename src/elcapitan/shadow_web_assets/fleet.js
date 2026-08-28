@@ -7,6 +7,7 @@ const controlTitles = {
   storage_account_public_network_access_disabled: "Storage public network access must be disabled",
   storage_blob_public_access_level_is_disabled: "Anonymous blob access must be disabled",
   storage_blob_versioning_is_enabled: "Blob versioning must be enabled",
+  sqlserver_tde_encrypted_with_cmk: "SQL Server must use CMK-backed TDE for every user database",
   s3_bucket_object_versioning: "S3 object versioning must be enabled",
 };
 

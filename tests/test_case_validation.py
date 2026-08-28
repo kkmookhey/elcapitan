@@ -54,6 +54,19 @@ def state(public_network_access="Enabled"):
         config=(("public_network_access", json.dumps(public_network_access)),))
 
 
+def sql_state(protector="AzureKeyVault", database_tde=None):
+    return CloudState(
+        provider="azure",
+        resource_uid=("/subscriptions/8cd2b4cc-c789-466d-a8f7-8f51fb20985d/"
+                      "resourceGroups/eiger-rg/providers/Microsoft.Storage/"
+                      "storageAccounts/eigercorpus8dlub3zy"),
+        config=(
+            ("sql_tde_protector_type", json.dumps(protector)),
+            ("sql_user_database_tde", json.dumps(
+                {"application": "Enabled"} if database_tde is None else database_tde)),
+        ))
+
+
 def validator(product, reader):
     tmp_path, cases, findings, records, ids, _ = product
     return CaseValidationService(
@@ -95,6 +108,46 @@ def test_unsupported_rule_blocks_instead_of_guessing(product):
         opened.case.case_id, host_env={})
     assert outcome.case.state is CaseState.BLOCKED
     assert outcome.findings[0].status is FindingValidationStatus.UNSUPPORTED
+
+
+def test_sql_tde_cmk_finding_is_not_confirmed_when_every_user_database_is_encrypted(
+        product):
+    *_, intake = product
+    opened = intake.ingest(raw("sqlserver_tde_encrypted_with_cmk"), tenant_id="TEN-001")
+    outcome = validator(product, lambda finding, env: sql_state()).validate(
+        opened.case.case_id, host_env={})
+    assert outcome.case.state is CaseState.CLOSED_NO_ACTION
+    assert outcome.findings[0].status is FindingValidationStatus.NOT_CONFIRMED
+    assert "every user database" in outcome.findings[0].reason
+
+
+@pytest.mark.parametrize(
+    ("protector", "database_tde", "reason"),
+    [
+        ("ServiceManaged", {"application": "Enabled"}, "not 'AzureKeyVault'"),
+        ("AzureKeyVault", {"application": "Disabled"}, "application"),
+    ],
+)
+def test_sql_tde_cmk_finding_is_confirmed_for_each_exact_failure_mode(
+        product, protector, database_tde, reason):
+    *_, intake = product
+    opened = intake.ingest(raw("sqlserver_tde_encrypted_with_cmk"), tenant_id="TEN-001")
+    outcome = validator(
+        product, lambda finding, env: sql_state(protector, database_tde)).validate(
+            opened.case.case_id, host_env={})
+    assert outcome.case.state is CaseState.VALIDATED
+    assert outcome.findings[0].status is FindingValidationStatus.CONFIRMED
+    assert reason in outcome.findings[0].reason
+
+
+def test_sql_tde_cmk_stale_finding_closes_when_no_user_databases_remain(product):
+    *_, intake = product
+    opened = intake.ingest(raw("sqlserver_tde_encrypted_with_cmk"), tenant_id="TEN-001")
+    outcome = validator(
+        product, lambda finding, env: sql_state("AzureKeyVault", {})).validate(
+            opened.case.case_id, host_env={})
+    assert outcome.case.state is CaseState.CLOSED_NO_ACTION
+    assert "no user databases" in outcome.findings[0].reason
 
 
 def test_cloud_read_failure_is_a_recorded_blocker(product):

@@ -6,12 +6,13 @@ executable named `az` and let the production code find it the production way —
 through PATH, through subprocess, with argv parsed and stdout/stderr/exit code
 produced by a separate process.
 
-**Every default reply below is a REAL document**, captured on 2026-08-21 from
-the live Eiger deployment (`eigercorpus8dlub3zy` in `eiger-rg`, subscription
-`8cd2b4cc-...`) and committed under tests/fixtures/. It is not hand-written
-JSON shaped like what Azure might return. This project's dominant defect class
-is a check that passes against a synthetic artifact and fails against the real
-one, and a fake cloud is precisely where that class breeds.
+Every default Storage reply below is a REAL document, captured on 2026-08-21
+from the live Eiger deployment (`eigercorpus8dlub3zy` in `eiger-rg`,
+subscription `8cd2b4cc-...`) and committed under tests/fixtures/. SQL replies
+are sanitized contract fixtures built from Microsoft's 2023-08-01 REST schema;
+they contain no customer identifiers or observations. Tests label and exercise
+those two evidence origins separately rather than presenting synthetic SQL
+data as a measured cloud response.
 
 Three measured facts drove the design of the code this fake exercises, and
 none of them would have been guessed:
@@ -42,6 +43,12 @@ RESOURCE_GROUP = "eiger-rg"
 SUBSCRIPTION = "8cd2b4cc-c789-466d-a8f7-8f51fb20985d"
 RESOURCE_UID = (f"/subscriptions/{SUBSCRIPTION}/resourceGroups/{RESOURCE_GROUP}"
                 f"/providers/Microsoft.Storage/storageAccounts/{ACCOUNT_NAME}")
+SQL_SERVER_NAME = "elcap-sql-fixture"
+SQL_RESOURCE_GROUP = "elcap-sql-fixture-rg"
+SQL_SUBSCRIPTION = "00000000-0000-0000-0000-000000000001"
+SQL_RESOURCE_UID = (
+    f"/subscriptions/{SQL_SUBSCRIPTION}/resourceGroups/{SQL_RESOURCE_GROUP}"
+    f"/providers/Microsoft.Sql/servers/{SQL_SERVER_NAME}")
 
 # The operation key is the leading run of non-flag argv tokens, which is how
 # `az` itself names a command ("storage account show"). Building it from argv
@@ -78,7 +85,13 @@ if reply is None:
     sys.stderr.write("ERROR: '%s' is misspelled or not recognized by the system.\\n"
                      % operation)
     sys.exit(2)
-if seen and "then" in reply:
+if "sequence" in reply:
+    sequence = reply["sequence"]
+    if seen >= len(sequence):
+        sys.stderr.write("ERROR: no configured response %d for %s.\\n" % (seen, operation))
+        sys.exit(2)
+    reply = sequence[seen]
+elif seen and "then" in reply:
     reply = reply["then"]
 
 if reply.get("sleep"):
@@ -99,6 +112,18 @@ def account_document() -> dict:
 def blob_document() -> dict:
     """The real `az storage account blob-service-properties show` document."""
     return json.loads((FIXTURES / "azure-blob-service-properties.json").read_text())
+
+
+def sql_protector_document() -> dict:
+    return json.loads((FIXTURES / "azure-sql-encryption-protector.json").read_text())
+
+
+def sql_databases_document() -> dict:
+    return json.loads((FIXTURES / "azure-sql-databases.json").read_text())
+
+
+def sql_tde_document() -> dict:
+    return json.loads((FIXTURES / "azure-sql-tde-enabled.json").read_text())
 
 
 def metrics_populated() -> str:
@@ -148,6 +173,22 @@ def default_responses(account: dict | None = None,
             "stdout": metrics_populated() if metrics is None else metrics, "exit": 0},
         "monitor log-analytics query": {
             "stdout": logs_populated() if logs is None else logs, "exit": 0},
+    }
+
+
+def sql_responses(*, protector: dict | None = None,
+                  databases: dict | None = None,
+                  tde: dict | None = None) -> dict:
+    return {
+        "login": {"stdout": "[]", "exit": 0},
+        "rest": {"sequence": [
+            {"stdout": json.dumps(
+                sql_protector_document() if protector is None else protector), "exit": 0},
+            {"stdout": json.dumps(
+                sql_databases_document() if databases is None else databases), "exit": 0},
+            {"stdout": json.dumps(
+                sql_tde_document() if tde is None else tde), "exit": 0},
+        ]},
     }
 
 

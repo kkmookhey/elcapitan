@@ -29,10 +29,10 @@ Three properties are deliberate:
   comparable value that would then match itself before and after and score the
   run green without checking anything.
 
-- **Honestly scoped.** AWS S3 is implemented because it is what Anna is and
-  what can be tested against a real account. Every other provider and resource
-  type raises a named error rather than returning an empty state that would
-  compare equal to itself.
+- **Honestly scoped.** AWS S3, Azure Storage accounts, and the bounded Azure
+  SQL TDE contract are implemented. Every other provider and resource type
+  raises a named error rather than returning an empty state that would compare
+  equal to itself.
 """
 import json
 import re
@@ -321,15 +321,33 @@ AZURE_BLOB_SERVICE_ASPECTS = {
     "blob_restore_policy": "restorePolicy",
 }
 
-# Only what has been measured end to end. Every other ARM type raises rather
-# than returning a state that compares equal to itself — same rule as the
-# provider gate, one level down. Compared case-insensitively because Prowler
-# emits `microsoft.storage/storageaccounts` while ARM ids carry
-# `Microsoft.Storage/storageAccounts`.
-AZURE_SUPPORTED_TYPES = ("microsoft.storage/storageaccounts",)
+# Only explicit, contract-tested types. Storage was measured end to end against
+# the Eiger lab; SQL is pinned to Microsoft's 2023-08-01 REST contract and
+# Prowler's current evaluator semantics, with sanitized fixtures. Every other
+# ARM type raises rather than returning a state that compares equal to itself.
+# Compared case-insensitively because Prowler emits lower-case resource types
+# while ARM ids preserve provider casing.
+AZURE_SUPPORTED_TYPES = (
+    "microsoft.sql/servers",
+    "microsoft.storage/storageaccounts",
+)
 AZURE_RESOURCE_MANAGER = "https://management.azure.com"
 AZURE_STORAGE_API_VERSION = "2025-08-01"
 AZURE_BLOB_API_VERSION = "2025-06-01"
+AZURE_SQL_API_VERSION = "2023-08-01"
+
+# The critical Prowler control `sqlserver_tde_encrypted_with_cmk` is not a
+# single-property check. It requires a CMK-backed server protector and TDE on
+# every user database. Azure's immutable `master` database reports TDE
+# disabled and cannot be changed by the customer, so it is deliberately
+# excluded from the user-database map. Prowler made the same correction in
+# 5.27.1 after the older behaviour produced false failures.
+AZURE_SQL_TDE_ASPECTS = (
+    "sql_tde_protector_type",
+    "sql_database_inventory",
+    "sql_user_database_tde",
+)
+_AZURE_MAX_LIST_PAGES = 100
 
 
 def _arm_parts(resource_uid: str) -> tuple[str, str, str, str]:
@@ -432,12 +450,45 @@ def _managed_identity_token(env: dict) -> str:
 
 def _arm_json(resource_path: str, *, api_version: str, token: str,
               what: str) -> dict:
+    url = _arm_url(resource_path, api_version=api_version)
+    return _arm_url_json(url, token=token, what=what)
+
+
+def _arm_url(resource_path: str, *, api_version: str) -> str:
     encoded_path = urllib.parse.quote(resource_path, safe="/")
-    url = (f"{AZURE_RESOURCE_MANAGER}{encoded_path}?"
-           + urllib.parse.urlencode({"api-version": api_version}))
+    return (f"{AZURE_RESOURCE_MANAGER}{encoded_path}?"
+            + urllib.parse.urlencode({"api-version": api_version}))
+
+
+def _validated_arm_url(url: str, *, scope_path: str) -> str:
+    """Accept only HTTPS ARM pagination links inside the requested resource.
+
+    `nextLink` is remote input. Following an arbitrary URL from a response
+    would turn a read-only validator into an SSRF primitive, so both host and
+    path remain pinned to Azure Resource Manager and the SQL server resource.
+    """
+    parsed = urllib.parse.urlsplit(url)
+    path = parsed.path.lower()
+    scope = scope_path.lower()
+    if (parsed.scheme != "https" or parsed.hostname != "management.azure.com"
+            or parsed.username or parsed.password or parsed.fragment
+            or (path != scope and not path.startswith(scope + "/"))):
+        raise ValueError(
+            "Azure returned an unsafe or out-of-scope pagination URL while "
+            f"reading {scope_path}: {url!r}")
+    return url
+
+
+def _arm_url_json(url: str, *, token: str, what: str) -> dict:
     request = urllib.request.Request(
         url, headers={"Authorization": f"Bearer {token}"})
     return _http_json(request, what=what)
+
+
+def _az_rest_json(env: dict, url: str, *, what: str) -> dict:
+    return _az_json(
+        env, "rest", "--method", "get", "--url", url,
+        "--output", "json", "--only-show-errors", what=what)
 
 
 def _rest_account_document(document: dict) -> dict:
@@ -489,6 +540,104 @@ def _select(document: dict, aspects: dict, *, source: str,
     return selected
 
 
+def _required_property(document: dict, key: str, *, what: str):
+    properties = document.get("properties")
+    if not isinstance(properties, dict):
+        raise ValueError(f"could not read {what}: response has no properties object")
+    if key not in properties:
+        raise ValueError(f"could not read {what}: properties has no {key!r} key")
+    return properties[key]
+
+
+def _read_arm_collection(first_url: str, *, scope_path: str,
+                         read_url, what: str) -> list[dict]:
+    """Read every page of one ARM collection or fail without partial state."""
+    items: list[dict] = []
+    url: str | None = first_url
+    seen: set[str] = set()
+    pages = 0
+    while url is not None:
+        url = _validated_arm_url(url, scope_path=scope_path)
+        if url in seen:
+            raise ValueError(f"could not read {what}: Azure repeated a pagination URL")
+        seen.add(url)
+        pages += 1
+        if pages > _AZURE_MAX_LIST_PAGES:
+            raise ValueError(
+                f"could not read {what}: exceeded {_AZURE_MAX_LIST_PAGES} ARM pages")
+        document = read_url(url, what=f"{what} page {pages}")
+        value = document.get("value")
+        if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
+            raise ValueError(
+                f"could not read {what}: page {pages} has no object-list 'value'")
+        items.extend(value)
+        next_link = document.get("nextLink")
+        if next_link is None:
+            url = None
+        elif not isinstance(next_link, str) or not next_link:
+            raise ValueError(f"could not read {what}: page {pages} has invalid nextLink")
+        else:
+            url = next_link
+    return items
+
+
+def _capture_azure_sql(resource_uid: str, *, read_url) -> tuple[tuple[str, str], ...]:
+    """Capture the complete evidence contract for SQL CMK + TDE validation."""
+    protector_url = _arm_url(
+        f"{resource_uid}/encryptionProtector/current",
+        api_version=AZURE_SQL_API_VERSION)
+    protector = read_url(protector_url, what=f"the SQL encryption protector of {resource_uid}")
+    protector_type = _required_property(
+        protector, "serverKeyType", what=f"the SQL encryption protector of {resource_uid}")
+    if protector_type not in {"AzureKeyVault", "ServiceManaged"}:
+        raise ValueError(
+            f"could not read the SQL encryption protector of {resource_uid}: "
+            f"unknown serverKeyType {protector_type!r}")
+
+    databases_path = f"{resource_uid}/databases"
+    databases = _read_arm_collection(
+        _arm_url(databases_path, api_version=AZURE_SQL_API_VERSION),
+        scope_path=databases_path, read_url=read_url,
+        what=f"the SQL database inventory of {resource_uid}")
+    names: list[str] = []
+    for position, database in enumerate(databases):
+        name = database.get("name")
+        if not isinstance(name, str) or not name:
+            raise ValueError(
+                f"could not read the SQL database inventory of {resource_uid}: "
+                f"database {position} has no name")
+        names.append(name)
+    if len({name.lower() for name in names}) != len(names):
+        raise ValueError(
+            f"could not read the SQL database inventory of {resource_uid}: "
+            "database names are duplicated case-insensitively")
+
+    user_tde: dict[str, str] = {}
+    for name in sorted(names, key=str.lower):
+        if name.lower() == "master":
+            continue
+        tde_url = _arm_url(
+            f"{resource_uid}/databases/{name}/transparentDataEncryption/current",
+            api_version=AZURE_SQL_API_VERSION)
+        tde = read_url(tde_url, what=f"the TDE state of SQL database {name!r}")
+        tde_state = _required_property(
+            tde, "state", what=f"the TDE state of SQL database {name!r}")
+        if tde_state not in {"Enabled", "Disabled"}:
+            raise ValueError(
+                f"could not read the TDE state of SQL database {name!r}: "
+                f"unknown state {tde_state!r}")
+        user_tde[name] = tde_state
+
+    values = {
+        "sql_tde_protector_type": protector_type,
+        "sql_database_inventory": sorted(names, key=str.lower),
+        "sql_user_database_tde": user_tde,
+    }
+    return tuple(
+        (aspect, canonical_json(values[aspect]).decode("utf-8"))
+        for aspect in AZURE_SQL_TDE_ASPECTS)
+
+
 def _capture_azure(resource_uid: str, region: str, env: dict) -> tuple[tuple[str, str], ...]:
     # `region` is accepted for signature symmetry with _capture_aws and
     # deliberately unused: an ARM resource id already names the subscription
@@ -501,8 +650,15 @@ def _capture_azure(resource_uid: str, region: str, env: dict) -> tuple[tuple[str
             f"cloud state would be UNVERIFIED. Implement the type rather than "
             f"skipping it.")
 
-    if env.get("ELCAP_AZURE_AUTH_MODE") == AZURE_MANAGED_IDENTITY_AUTH_MODE:
+    managed_identity = (
+        env.get("ELCAP_AZURE_AUTH_MODE") == AZURE_MANAGED_IDENTITY_AUTH_MODE)
+    if managed_identity:
         token = _managed_identity_token(env)
+        if arm_type.lower() == "microsoft.sql/servers":
+            return _capture_azure_sql(
+                resource_uid,
+                read_url=lambda url, *, what: _arm_url_json(
+                    url, token=token, what=what))
         account_response = _arm_json(
             resource_uid, api_version=AZURE_STORAGE_API_VERSION, token=token,
             what=f"the storage account {resource_uid}")
@@ -538,6 +694,12 @@ def _capture_azure(resource_uid: str, region: str, env: dict) -> tuple[tuple[str
             raise ValueError(
                 f"the read-only scanner principal could not sign in to Azure: "
                 f"az login exited {code}: {stderr.strip()}")
+
+        if arm_type.lower() == "microsoft.sql/servers":
+            return _capture_azure_sql(
+                resource_uid,
+                read_url=lambda url, *, what: _az_rest_json(
+                    az_env, url, what=what))
 
         account = _az_json(az_env, "storage", "account", "show", "--ids", resource_uid,
                            "--output", "json", "--only-show-errors",

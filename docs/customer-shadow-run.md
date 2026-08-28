@@ -34,6 +34,13 @@ Support is explicit and fails closed:
 | Azure | `storage_account_public_network_access_disabled` | yes | separately gated |
 | Azure | `storage_blob_public_access_level_is_disabled` | yes | separately gated |
 | Azure | `storage_blob_versioning_is_enabled` | yes | no |
+| Azure | `sqlserver_tde_encrypted_with_cmk` | yes | no |
+
+The SQL control reads the server encryption protector, every page of the
+database inventory, and the TDE state of every user database. The immutable
+`master` database is excluded to match Azure and current Prowler semantics.
+Incomplete, denied, malformed, or out-of-scope reads block validation rather
+than producing a partial result.
 
 An unknown provider rejects the entire intake batch before persistence. An
 unknown rule may be retained in the portfolio for coverage reporting, but the

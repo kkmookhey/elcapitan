@@ -420,6 +420,48 @@ def test_azure_capture_records_the_control_attribute_from_the_blob_service(azure
     assert dict(azure().config)["blob_versioning"] == "false"
 
 
+def test_azure_sql_capture_reads_complete_cmk_and_user_database_tde_contract(azure):
+    azure.responses(fake_az.sql_responses())
+    state = azure(resource_uid=fake_az.SQL_RESOURCE_UID)
+    config = dict(state.config)
+
+    assert config["sql_tde_protector_type"] == '"AzureKeyVault"'
+    assert json.loads(config["sql_database_inventory"]) == ["application", "master"]
+    assert json.loads(config["sql_user_database_tde"]) == {"application": "Enabled"}
+
+    rest_calls = [call for call in fake_az.calls(azure.bin_dir)
+                  if call["operation"] == "rest"]
+    assert len(rest_calls) == 3
+    urls = [call["argv"][call["argv"].index("--url") + 1] for call in rest_calls]
+    assert "/encryptionProtector/current?" in urls[0]
+    assert "/databases?" in urls[1]
+    assert "/databases/application/transparentDataEncryption/current?" in urls[2]
+    assert all(call["argv"][call["argv"].index("--method") + 1] == "get"
+               for call in rest_calls)
+    assert not any("/databases/master/transparentDataEncryption/" in url for url in urls)
+
+
+def test_azure_sql_missing_tde_state_fails_closed(azure):
+    tde = fake_az.sql_tde_document()
+    del tde["properties"]["state"]
+    azure.responses(fake_az.sql_responses(tde=tde))
+    with pytest.raises(ValueError) as exc:
+        azure(resource_uid=fake_az.SQL_RESOURCE_UID)
+    assert "state" in str(exc.value) and "application" in str(exc.value)
+
+
+def test_azure_sql_denied_child_read_is_not_partial_evidence(azure):
+    responses = fake_az.sql_responses()
+    responses["rest"]["sequence"][2] = {
+        "stdout": "", "exit": 1,
+        "stderr": "ERROR: (AuthorizationFailed) reader cannot access TDE state\n",
+    }
+    azure.responses(responses)
+    with pytest.raises(ValueError) as exc:
+        azure(resource_uid=fake_az.SQL_RESOURCE_UID)
+    assert "AuthorizationFailed" in str(exc.value)
+
+
 def test_azure_managed_identity_rest_capture_matches_cli_capture(
         azure, monkeypatch):
     account = fake_az.account_document()
@@ -488,6 +530,95 @@ def test_azure_managed_identity_rest_capture_matches_cli_capture(
     assert "client_id=scanner-client-id" in requests[0].full_url
     assert requests[0].get_header("X-identity-header") == (
         "rotating-platform-header")
+
+
+def test_azure_sql_managed_identity_follows_every_database_page(monkeypatch):
+    requests = []
+    next_link = (
+        "https://management.azure.com" + fake_az.SQL_RESOURCE_UID
+        + "/databases?$skipToken=next&api-version=2023-08-01")
+    protector = fake_az.sql_protector_document()
+    databases = fake_az.sql_databases_document()["value"]
+
+    class Response:
+        def __init__(self, document):
+            self.payload = json.dumps(document).encode()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def read(self):
+            return self.payload
+
+    def urlopen(request, timeout):
+        requests.append(request)
+        url = request.full_url
+        if url.startswith("http://localhost/"):
+            return Response({"access_token": "read-only-token"})
+        assert request.get_header("Authorization") == "Bearer read-only-token"
+        if "/encryptionProtector/current?" in url:
+            return Response(protector)
+        if "$skipToken=next" in url:
+            return Response({"value": [databases[1]]})
+        if url.endswith("/databases?api-version=2023-08-01"):
+            return Response({"value": [databases[0]], "nextLink": next_link})
+        if "/databases/application/transparentDataEncryption/current?" in url:
+            return Response(fake_az.sql_tde_document())
+        raise AssertionError(f"unexpected ARM request: {url}")
+
+    monkeypatch.setattr("elcapitan.cloud.urllib.request.urlopen", urlopen)
+    managed_env = verification_env({
+        "ELCAP_SCANNER_AZURE_MANAGED_IDENTITY_CLIENT_ID": "scanner-client-id",
+        "IDENTITY_ENDPOINT": "http://localhost/token",
+        "IDENTITY_HEADER": "rotating-platform-header",
+    }, provider="azure")
+    state = capture_cloud_state(
+        fake_az.SQL_RESOURCE_UID, provider="azure", env=managed_env)
+
+    assert json.loads(dict(state.config)["sql_database_inventory"]) == [
+        "application", "master"]
+    assert len(requests) == 5
+
+
+def test_azure_sql_refuses_out_of_scope_pagination_link(monkeypatch):
+    databases = fake_az.sql_databases_document()["value"]
+
+    class Response:
+        def __init__(self, document):
+            self.payload = json.dumps(document).encode()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def read(self):
+            return self.payload
+
+    def urlopen(request, timeout):
+        url = request.full_url
+        if url.startswith("http://localhost/"):
+            return Response({"access_token": "read-only-token"})
+        if "/encryptionProtector/current?" in url:
+            return Response(fake_az.sql_protector_document())
+        return Response({
+            "value": [databases[0]],
+            "nextLink": "https://example.invalid/steal-token",
+        })
+
+    monkeypatch.setattr("elcapitan.cloud.urllib.request.urlopen", urlopen)
+    managed_env = verification_env({
+        "ELCAP_SCANNER_AZURE_MANAGED_IDENTITY_CLIENT_ID": "scanner-client-id",
+        "IDENTITY_ENDPOINT": "http://localhost/token",
+        "IDENTITY_HEADER": "rotating-platform-header",
+    }, provider="azure")
+    with pytest.raises(ValueError, match="unsafe or out-of-scope"):
+        capture_cloud_state(
+            fake_az.SQL_RESOURCE_UID, provider="azure", env=managed_env)
 
 
 def test_azure_managed_identity_refuses_ambiguous_service_principal_values():

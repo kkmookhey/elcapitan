@@ -13,9 +13,11 @@ deployment and one non-production cloud boundary.
 - At least five resources with a useful mixture of true findings, stale
   findings, unsupported controls, shared services, and differing criticality.
 - Two or more findings covered by deterministic El Capitan validators. The
-  strongest current Azure pilot includes Storage public network access, Blob
-  public access, and Blob versioning. The current AWS pilot includes S3 object
-  versioning validation but no AWS mutation authority.
+  current Azure scope includes Storage public network access, Blob public
+  access, Blob versioning, and SQL Server CMK-backed TDE across every user
+  database. SQL validation has no planning or mutation authority. The current
+  AWS pilot includes S3 object versioning validation but no AWS mutation
+  authority.
 - A read-only Terraform repository snapshot and sanitized state JSON for a
   small subset of validated resources. No secrets, provider credentials,
   access keys, connection strings, or data-plane content.

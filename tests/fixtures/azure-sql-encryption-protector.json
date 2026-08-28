@@ -1,0 +1,13 @@
+{
+  "id": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/elcap-sql-fixture-rg/providers/Microsoft.Sql/servers/elcap-sql-fixture/encryptionProtector/current",
+  "name": "current",
+  "type": "Microsoft.Sql/servers/encryptionProtector",
+  "location": "westus2",
+  "kind": "azurekeyvault",
+  "properties": {
+    "serverKeyName": "fixturevault_fixturekey_00000000000000000000000000000001",
+    "serverKeyType": "AzureKeyVault",
+    "uri": "https://fixturevault.vault.azure.net/keys/fixturekey/00000000000000000000000000000001",
+    "autoRotationEnabled": true
+  }
+}

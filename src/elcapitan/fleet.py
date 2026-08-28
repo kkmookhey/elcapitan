@@ -53,6 +53,12 @@ _CAPABILITIES = (
         "azure", "storage_blob_versioning_is_enabled", "storage_account",
         True, True, False, ("blob_versioning",),
     ),
+    ControlCapability(
+        "azure", "sqlserver_tde_encrypted_with_cmk", "sql_server",
+        True, False, False,
+        ("sql_tde_protector_type", "sql_database_inventory",
+         "sql_user_database_tde"),
+    ),
 )
 
 

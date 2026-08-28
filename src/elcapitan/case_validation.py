@@ -85,6 +85,38 @@ def evaluate_finding(finding: StoredFinding, state: CloudState,
         value = _value(state, "blob_versioning")
         confirmed = value is not True
         reason = f"blob versioning is {value!r}"
+    elif rule_id == "sqlserver_tde_encrypted_with_cmk":
+        protector_type = _value(state, "sql_tde_protector_type")
+        database_tde = _value(state, "sql_user_database_tde")
+        if protector_type not in {"AzureKeyVault", "ServiceManaged"}:
+            raise ValueError(
+                f"live SQL state has unknown TDE protector type {protector_type!r}")
+        if not isinstance(database_tde, dict):
+            raise ValueError("live SQL state has no user-database TDE map")
+        invalid = {
+            name: value for name, value in database_tde.items()
+            if (not isinstance(name, str) or not name
+                or value not in {"Enabled", "Disabled"})
+        }
+        if invalid:
+            raise ValueError(
+                f"live SQL state has invalid user-database TDE values: {invalid!r}")
+        disabled = sorted(
+            name for name, value in database_tde.items() if value != "Enabled")
+        confirmed = protector_type != "AzureKeyVault" or bool(disabled)
+        if protector_type != "AzureKeyVault":
+            reason = f"TDE protector type is {protector_type!r}, not 'AzureKeyVault'"
+        elif disabled:
+            reason = "TDE is disabled for user database(s): " + ", ".join(disabled)
+        elif database_tde:
+            reason = (
+                "TDE protector is 'AzureKeyVault' and TDE is enabled for every "
+                "user database")
+        else:
+            # Current Prowler emits no result when a logical server has only
+            # the immutable master database. A stale finding therefore no
+            # longer describes a remediable user-database risk.
+            reason = "SQL server has no user databases; only master is excluded"
     elif rule_id == "s3_bucket_object_versioning":
         value = _value(state, "versioning")
         enabled = isinstance(value, dict) and value.get("Status") == "Enabled"

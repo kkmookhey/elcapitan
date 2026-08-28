@@ -40,6 +40,11 @@ def test_capability_registry_is_explicit_and_fail_closed():
     capability = registry.get("azure", "storage_account_public_network_access_disabled")
     assert capability.live_validation is True
     assert capability.live_execution is True
+    sql = registry.get("azure", "sqlserver_tde_encrypted_with_cmk")
+    assert sql.live_validation is True
+    assert sql.remediation_planning is False
+    assert sql.live_execution is False
+    assert "sql_user_database_tde" in sql.evidence_aspects
     assert registry.get("azure", "invented_control") is None
     assert registry.get("gcp", "anything") is None
 

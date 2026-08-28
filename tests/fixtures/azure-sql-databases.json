@@ -1,0 +1,24 @@
+{
+  "value": [
+    {
+      "id": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/elcap-sql-fixture-rg/providers/Microsoft.Sql/servers/elcap-sql-fixture/databases/master",
+      "name": "master",
+      "type": "Microsoft.Sql/servers/databases",
+      "location": "westus2",
+      "kind": "v12.0,system",
+      "properties": {
+        "status": "Online"
+      }
+    },
+    {
+      "id": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/elcap-sql-fixture-rg/providers/Microsoft.Sql/servers/elcap-sql-fixture/databases/application",
+      "name": "application",
+      "type": "Microsoft.Sql/servers/databases",
+      "location": "westus2",
+      "kind": "v12.0,user",
+      "properties": {
+        "status": "Online"
+      }
+    }
+  ]
+}
