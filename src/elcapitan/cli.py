@@ -222,6 +222,15 @@ def _parser() -> argparse.ArgumentParser:
         help="report every tenant case and its shadow-mode validation coverage")
     snapshot.add_argument("--tenant", required=True)
     snapshot.add_argument("--db", type=Path, required=True)
+    offline = sub.add_parser(
+        "shadow-offline-report",
+        help="ingest a scanner export locally and write a no-cloud portfolio report",
+    )
+    offline.add_argument("input", type=Path)
+    offline.add_argument("--tenant", required=True)
+    offline.add_argument("--workdir", type=Path, required=True)
+    offline.add_argument("--json-output", type=Path, required=True)
+    offline.add_argument("--markdown-output", type=Path, required=True)
     capabilities = sub.add_parser(
         "capabilities", help="report explicitly supported cloud control capabilities")
     capabilities.add_argument("--provider", choices=("aws", "azure"))
@@ -1057,6 +1066,27 @@ def main(argv=None) -> int:
             record_store=SqliteProductRecordStore(args.db),
         ).snapshot(tenant_id=args.tenant)
         json.dump(snapshot.to_dict(), sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 0
+    if args.command == "shadow-offline-report":
+        from .offline_report import write_offline_report
+        report = write_offline_report(
+            input_path=args.input, tenant_id=args.tenant,
+            workdir=args.workdir, json_output=args.json_output,
+            markdown_output=args.markdown_output,
+        )
+        json.dump({
+            "status": "complete",
+            "json_output": str(args.json_output.resolve()),
+            "markdown_output": str(args.markdown_output.resolve()),
+            "summary": {
+                "records": report["source"]["records"],
+                "accepted_failures": report["intake"]["accepted_failures"],
+                "cases": report["intake"]["created_cases"],
+                "supported_findings": report["coverage"]["supported_findings"],
+                "unsupported_findings": report["coverage"]["unsupported_findings"],
+            },
+        }, sys.stdout, indent=2)
         sys.stdout.write("\n")
         return 0
     if args.command == "capabilities":

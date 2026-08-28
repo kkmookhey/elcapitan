@@ -88,6 +88,25 @@ uv run elcapitan capabilities
 
 ## Safe run sequence
 
+Before any upload or connector access, run the same intake and prioritization
+policy entirely locally:
+
+```bash
+uv run elcapitan shadow-offline-report /path/to/prowler.ocsf.json \
+  --tenant CUSTOMER-OFFLINE \
+  --workdir /private/tmp/elcapitan-customer-shadow/work \
+  --json-output /private/tmp/elcapitan-customer-shadow/portfolio.json \
+  --markdown-output /private/tmp/elcapitan-customer-shadow/summary.md
+```
+
+The command starts with an empty local shadow store, accepts only explicit
+Prowler `FAIL` records, and writes both outputs with mode `0600`. It makes no
+cloud or model request. The JSON contains every resource case and deterministic
+risk factor; the Markdown summary highlights intake accounting, control
+coverage, and the bounded live-validation candidates. Its ordering is labeled
+scanner-evidence provisional until customer asset criticality, ownership,
+dependencies, exploitability, and business impact are supplied.
+
 1. Create a customer-specific tenant identifier that contains no secret or
    personal data.
 2. Export findings from the scanner. Keep the source export unchanged for
