@@ -24,7 +24,7 @@ def test_builtin_registry_is_composed_from_service_packs():
         "aws-s3", "azure-app-service", "azure-key-vault", "azure-network", "azure-sql",
         "azure-storage"}
     registry = builtin_registry()
-    assert len(registry.list()) == 26
+    assert len(registry.list()) == 27
     assert registry.get("AZURE", "sqlserver_tde_encrypted_with_cmk").pack_id == (
         "azure-sql")
     assert registry.get(
@@ -101,6 +101,15 @@ def test_pack_rejects_a_definition_owned_by_another_pack():
             "key_policy": {"keyExpirationPeriodInDays": 91}}, True),
         ("storage_key_rotation_90_days", {
             "key_policy": {"keyExpirationPeriodInDays": 90}}, False),
+        ("storage_smb_channel_encryption_with_secure_algorithm", {
+            "file_service_status": "available",
+            "file_smb_channel_encryption": []}, True),
+        ("storage_smb_channel_encryption_with_secure_algorithm", {
+            "file_service_status": "available",
+            "file_smb_channel_encryption": ["AES-256-GCM", "AES-128-GCM"]}, True),
+        ("storage_smb_channel_encryption_with_secure_algorithm", {
+            "file_service_status": "available",
+            "file_smb_channel_encryption": ["AES-256-GCM"]}, False),
     ],
 )
 def test_storage_pack_matches_pinned_prowler_truth_conditions(
@@ -131,6 +140,12 @@ def test_storage_pack_matches_pinned_prowler_truth_conditions(
         ("storage_key_rotation_90_days", {
             "key_policy": {"keyExpirationPeriodInDays": "90"}}),
         ("storage_key_rotation_90_days", {"key_policy": []}),
+        ("storage_smb_channel_encryption_with_secure_algorithm", {
+            "file_service_status": "available",
+            "file_smb_channel_encryption": "AES-256-GCM"}),
+        ("storage_smb_channel_encryption_with_secure_algorithm", {
+            "file_service_status": "unknown",
+            "file_smb_channel_encryption": []}),
     ],
 )
 def test_storage_pack_rejects_malformed_evidence(rule_id, values):

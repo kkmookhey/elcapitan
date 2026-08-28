@@ -173,6 +173,27 @@ def _key_rotation_90_days(values) -> ControlEvaluation:
     return ControlEvaluation(confirmed=not valid, reason=reason)
 
 
+def _secure_smb_channel_encryption(values) -> ControlEvaluation:
+    status = require(values, "file_service_status")
+    if status != "available":
+        if status == "unavailable":
+            raise ValueError("live Azure File Service properties are unavailable")
+        raise ValueError(f"live Azure File Service status is invalid: {status!r}")
+    algorithms = require(values, "file_smb_channel_encryption")
+    if (not isinstance(algorithms, list)
+            or any(not isinstance(value, str) or not value for value in algorithms)):
+        raise ValueError(
+            "live SMB channel encryption algorithms are invalid: expected a string list")
+    secure = bool(algorithms) and all(
+        algorithm == "AES-256-GCM" for algorithm in algorithms)
+    return ControlEvaluation(
+        confirmed=not secure,
+        reason=("SMB channel encryption allows only AES-256-GCM" if secure else
+                "SMB channel encryption does not allow only AES-256-GCM: "
+                + (", ".join(algorithms) if algorithms else "none")),
+    )
+
+
 AZURE_STORAGE_PACK = ControlPack(
     pack_id="azure-storage",
     controls=(
@@ -299,6 +320,17 @@ AZURE_STORAGE_PACK = ControlPack(
             live_validation=True, remediation_planning=False,
             live_execution=False, evidence_aspects=("key_policy",),
             evaluator=_key_rotation_90_days,
+        ),
+        ControlDefinition(
+            pack_id="azure-storage", provider="azure",
+            rule_id="storage_smb_channel_encryption_with_secure_algorithm",
+            resource_family="storage_account",
+            resource_types=("microsoft.storage/storageaccounts",),
+            live_validation=True, remediation_planning=False,
+            live_execution=False,
+            evidence_aspects=(
+                "file_service_status", "file_smb_channel_encryption"),
+            evaluator=_secure_smb_channel_encryption,
         ),
     ),
 )

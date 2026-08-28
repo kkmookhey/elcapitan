@@ -245,7 +245,7 @@ def test_cli_reports_capabilities_connector_preflight_and_full_fleet(
 
     assert main(["capabilities", "--provider", "azure"]) == 0
     capabilities = json.loads(capsys.readouterr().out)
-    assert len(capabilities["capabilities"]) == 25
+    assert len(capabilities["capabilities"]) == 26
     sql = next(item for item in capabilities["capabilities"]
                if item["rule_id"] == "sqlserver_tde_encrypted_with_cmk")
     assert sql["live_validation"] is True
@@ -278,8 +278,9 @@ def test_cli_reports_capabilities_connector_preflight_and_full_fleet(
             "storage_ensure_soft_delete_is_enabled",
             "storage_ensure_azure_services_are_trusted_to_access_is_enabled",
             "storage_key_rotation_90_days",
+            "storage_smb_channel_encryption_with_secure_algorithm",
         }]
-    assert len(expanded_storage) == 10
+    assert len(expanded_storage) == 11
     assert all(item["live_validation"] is True for item in expanded_storage)
     assert all(item["remediation_planning"] is False for item in expanded_storage)
     assert all(item["live_execution"] is False for item in expanded_storage)

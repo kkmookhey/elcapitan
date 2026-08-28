@@ -438,6 +438,7 @@ def test_expanded_storage_controls_evaluate_the_measured_eiger_lab_contract(azur
         # The measured lab account explicitly allows the AzureServices bypass.
         "storage_ensure_azure_services_are_trusted_to_access_is_enabled": False,
         "storage_key_rotation_90_days": True,
+        "storage_smb_channel_encryption_with_secure_algorithm": True,
     }
     registry = builtin_registry()
     assert {
@@ -841,6 +842,7 @@ def test_azure_managed_identity_rest_capture_matches_cli_capture(
         azure, monkeypatch):
     account = fake_az.account_document()
     blob = fake_az.blob_document()
+    file_service = fake_az.file_service_document()
     rest_account = {
         "sku": account["sku"],
         "tags": account["tags"],
@@ -868,6 +870,10 @@ def test_azure_managed_identity_rest_capture_matches_cli_capture(
             "restorePolicy",
         )
     }}
+    rest_file = {"properties": {
+        "protocolSettings": file_service["protocolSettings"],
+        "shareDeleteRetentionPolicy": file_service["shareDeleteRetentionPolicy"],
+    }}
     requests = []
 
     class Response:
@@ -889,8 +895,9 @@ def test_azure_managed_identity_rest_capture_matches_cli_capture(
             return Response({"access_token": "read-only-token"})
         assert request.get_header("Authorization") == "Bearer read-only-token"
         return Response(
-            rest_blob if "/blobServices/default?" in request.full_url
-            else rest_account)
+            rest_blob if "/blobServices/default?" in request.full_url else
+            rest_file if "/fileServices/default?" in request.full_url else
+            rest_account)
 
     monkeypatch.setattr("elcapitan.cloud.urllib.request.urlopen", urlopen)
     managed_env = verification_env({
@@ -902,7 +909,7 @@ def test_azure_managed_identity_rest_capture_matches_cli_capture(
         AZ_UID, provider="azure", region=AZ_REGION, env=managed_env)
 
     assert managed.config == azure().config
-    assert len(requests) == 3
+    assert len(requests) == 4
     assert "client_id=scanner-client-id" in requests[0].full_url
     assert requests[0].get_header("X-identity-header") == (
         "rotating-platform-header")
@@ -1017,6 +1024,48 @@ def test_the_blob_service_document_is_queried_by_name_and_group(azure):
             if c["operation"] == "storage account blob-service-properties show"][0]
     assert "--ids" not in call["argv"]
     assert fake_az.ACCOUNT_NAME in call["argv"] and fake_az.RESOURCE_GROUP in call["argv"]
+
+
+def test_the_file_service_document_is_queried_by_name_and_group(azure):
+    azure()
+    call = [c for c in fake_az.calls(azure.bin_dir)
+            if c["operation"] == "storage account file-service-properties show"][0]
+    assert "--ids" not in call["argv"]
+    assert fake_az.ACCOUNT_NAME in call["argv"]
+    assert fake_az.RESOURCE_GROUP in call["argv"]
+
+
+def test_file_service_denial_is_isolated_from_account_evidence(azure):
+    responses = fake_az.default_responses()
+    responses["storage account file-service-properties show"] = {
+        "stdout": "", "exit": 1,
+        "stderr": "ERROR: (AuthorizationFailed) exact reader denied\n",
+    }
+    azure.responses(responses)
+    values = {key: json.loads(value) for key, value in azure().config}
+    assert values["file_service_status"] == "unavailable"
+    assert values["file_smb_channel_encryption"] is None
+    registry = builtin_registry()
+    assert registry.get(
+        "azure", "storage_key_rotation_90_days").evaluator(values).confirmed
+    with pytest.raises(ValueError, match="File Service properties are unavailable"):
+        registry.get(
+            "azure",
+            "storage_smb_channel_encryption_with_secure_algorithm").evaluator(values)
+
+
+def test_file_service_algorithms_are_normalized_and_drift_is_visible(azure):
+    before = azure()
+    file_service = fake_az.file_service_document()
+    file_service["protocolSettings"]["smb"]["channelEncryption"] = (
+        "AES-256-GCM;AES-128-GCM;")
+    azure.responses(fake_az.default_responses(file_service=file_service))
+    after = azure()
+    assert json.loads(dict(after.config)["file_smb_channel_encryption"]) == [
+        "AES-256-GCM", "AES-128-GCM"]
+    failures = assert_unchanged(before, env=azure.env())
+    assert len(failures) == 1
+    assert "file_smb_channel_encryption" in failures[0]
 
 
 def test_the_trap_attribute_change_is_reported_with_both_values(azure):

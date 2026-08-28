@@ -132,6 +132,11 @@ def blob_document() -> dict:
     return json.loads((FIXTURES / "azure-blob-service-properties.json").read_text())
 
 
+def file_service_document() -> dict:
+    """Sanitized File Service response measured on the Eiger lab."""
+    return json.loads((FIXTURES / "azure-file-service-properties.json").read_text())
+
+
 def sql_protector_document() -> dict:
     return json.loads((FIXTURES / "azure-sql-encryption-protector.json").read_text())
 
@@ -238,6 +243,7 @@ def logs_empty() -> str:
 
 def default_responses(account: dict | None = None,
                       blob: dict | None = None,
+                      file_service: dict | None = None,
                       metrics: str | None = None,
                       logs: str | None = None) -> dict:
     return {
@@ -251,6 +257,10 @@ def default_responses(account: dict | None = None,
             "exit": 0},
         "storage account blob-service-properties show": {
             "stdout": json.dumps(blob_document() if blob is None else blob),
+            "exit": 0},
+        "storage account file-service-properties show": {
+            "stdout": json.dumps(
+                file_service_document() if file_service is None else file_service),
             "exit": 0},
         "monitor metrics list": {
             "stdout": metrics_populated() if metrics is None else metrics, "exit": 0},

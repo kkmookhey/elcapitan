@@ -1,0 +1,21 @@
+{
+  "id": "/subscriptions/8cd2b4cc-c789-466d-a8f7-8f51fb20985d/resourceGroups/eiger-rg/providers/Microsoft.Storage/storageAccounts/eigercorpus8dlub3zy/fileServices/default",
+  "name": "default",
+  "protocolSettings": {
+    "nfs": null,
+    "smb": {
+      "authenticationMethods": null,
+      "channelEncryption": null,
+      "encryptionInTransit": null,
+      "kerberosTicketEncryption": null,
+      "multichannel": null,
+      "versions": null
+    }
+  },
+  "shareDeleteRetentionPolicy": {
+    "allowPermanentDelete": null,
+    "days": 7,
+    "enabled": true
+  },
+  "type": "Microsoft.Storage/storageAccounts/fileServices"
+}

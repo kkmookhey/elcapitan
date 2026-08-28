@@ -50,15 +50,30 @@ These controls add no cloud calls and no permissions. Their evaluators pin
 Prowler's current defaults, including null Shared Key state behaving as enabled
 and only `Standard_GRS`, `Standard_GZRS`, `Standard_RAGRS`, and
 `Standard_RAGZRS` satisfying geo redundancy. The real sanitized Eiger lab
-account and blob-service fixtures are passed through all nine evaluators as one
+account and blob-service fixtures are passed through all ten evaluators as one
 regression contract. Planning and execution remain disabled for the new
 controls; existing storage remediation authority is not inherited by sibling
 checks.
+
+The File Service extension adds
+`storage_smb_channel_encryption_with_secure_algorithm` from one bounded
+management-plane GET of `fileServices/default`. Its evidence is only File
+Service availability plus the normalized SMB channel-encryption algorithm
+list. Prowler's current default is pinned exactly: the list must be non-empty
+and every entry must be `AES-256-GCM`; mixed 128/256-bit lists fail. A denied,
+unsupported, or malformed File Service read marks only this control
+unavailable, so it cannot suppress independently complete account/blob
+validations. The response shape was measured read-only on 2026-08-28 against
+the Eiger lab account; `channelEncryption` was null and correctly normalized
+to an empty failing list. Planning and execution are disabled.
 
 Semantics are pinned to Prowler's [Azure Storage check
 implementations](https://github.com/prowler-cloud/prowler/tree/master/prowler/providers/azure/services/storage)
 and Microsoft's [Storage Accounts - Get REST
 contract](https://learn.microsoft.com/rest/api/storagerp/storage-accounts/get-properties?view=rest-storagerp-2025-06-01).
+The File Service field is pinned to Microsoft's [File Services - Get Service
+Properties REST
+contract](https://learn.microsoft.com/rest/api/storagerp/file-services/get-service-properties?view=rest-storagerp-2025-06-01).
 
 The Azure Key Vault pack pins the current Prowler truth conditions for
 `keyvault_rbac_enabled`, `keyvault_private_endpoints`, and

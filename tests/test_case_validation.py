@@ -92,6 +92,8 @@ def storage_security_state(**overrides):
         "default_to_oauth_authentication": False,
         "blob_container_delete_retention_policy": {"enabled": False},
         "key_policy": None,
+        "file_service_status": "available",
+        "file_smb_channel_encryption": [],
     }
     values.update(overrides)
     return CloudState(
@@ -380,6 +382,7 @@ def test_cloud_read_failure_is_a_recorded_blocker(product):
         "storage_ensure_soft_delete_is_enabled",
         "storage_ensure_azure_services_are_trusted_to_access_is_enabled",
         "storage_key_rotation_90_days",
+        "storage_smb_channel_encryption_with_secure_algorithm",
     ],
 )
 def test_expanded_storage_findings_use_registered_evaluators(

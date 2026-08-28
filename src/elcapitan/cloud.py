@@ -339,6 +339,7 @@ AZURE_SUPPORTED_TYPES = (
 AZURE_RESOURCE_MANAGER = "https://management.azure.com"
 AZURE_STORAGE_API_VERSION = "2025-08-01"
 AZURE_BLOB_API_VERSION = "2025-06-01"
+AZURE_FILE_API_VERSION = "2025-06-01"
 AZURE_SQL_API_VERSION = "2023-08-01"
 AZURE_KEY_VAULT_API_VERSION = "2024-11-01"
 AZURE_NETWORK_API_VERSION = "2025-05-01"
@@ -548,6 +549,53 @@ def _rest_account_document(document: dict) -> dict:
         "sku": document.get("sku"),
         "tags": document.get("tags"),
     }
+
+
+def _file_service_config(document: dict, *, resource_uid: str
+                         ) -> tuple[tuple[str, str], ...]:
+    """Normalize the bounded File Service evidence used by SMB controls."""
+    properties = document.get("properties", document)
+    if not isinstance(properties, dict):
+        raise ValueError(
+            f"could not read File Service properties of {resource_uid}: "
+            "properties is not an object")
+    protocol = properties.get("protocolSettings")
+    if not isinstance(protocol, dict):
+        raise ValueError(
+            f"could not read File Service properties of {resource_uid}: "
+            "protocolSettings is not an object")
+    smb = protocol.get("smb")
+    if not isinstance(smb, dict):
+        raise ValueError(
+            f"could not read File Service properties of {resource_uid}: "
+            "protocolSettings.smb is not an object")
+    raw = smb.get("channelEncryption")
+    if raw is None or raw == "":
+        algorithms: list[str] = []
+    elif isinstance(raw, str):
+        algorithms = raw.rstrip(";").split(";")
+        if not algorithms or any(not value for value in algorithms):
+            raise ValueError(
+                f"could not read File Service properties of {resource_uid}: "
+                "channelEncryption contains an empty algorithm")
+    else:
+        raise ValueError(
+            f"could not read File Service properties of {resource_uid}: "
+            "channelEncryption is not a string or null")
+    values = {
+        "file_service_status": "available",
+        "file_smb_channel_encryption": algorithms,
+    }
+    return tuple(
+        (aspect, canonical_json(value).decode("utf-8"))
+        for aspect, value in values.items())
+
+
+def _unavailable_file_service_config() -> tuple[tuple[str, str], ...]:
+    return (
+        ("file_service_status", '"unavailable"'),
+        ("file_smb_channel_encryption", "null"),
+    )
 
 
 def _rest_blob_document(document: dict) -> dict:
@@ -985,12 +1033,22 @@ def _capture_azure(resource_uid: str, region: str, env: dict) -> tuple[tuple[str
             f"{resource_uid}/blobServices/default",
             api_version=AZURE_BLOB_API_VERSION, token=token,
             what=f"the blob service properties of {resource_uid}")
+        try:
+            file_response = _arm_json(
+                f"{resource_uid}/fileServices/default",
+                api_version=AZURE_FILE_API_VERSION, token=token,
+                what=f"the File Service properties of {resource_uid}")
+            file_config = _file_service_config(
+                file_response, resource_uid=resource_uid)
+        except (OSError, ValueError):
+            file_config = _unavailable_file_service_config()
         account = _rest_account_document(account_response)
         blob = _rest_blob_document(blob_response)
         config = _select(account, AZURE_STORAGE_ACCOUNT_ASPECTS,
                          source="storage account", resource_uid=resource_uid)
         config += _select(blob, AZURE_BLOB_SERVICE_ASPECTS,
                           source="blob service properties", resource_uid=resource_uid)
+        config += file_config
         return tuple(sorted(config))
 
     # MEASURED: `az` does not read AZURE_CLIENT_ID/SECRET/TENANT_ID the way
@@ -1048,11 +1106,24 @@ def _capture_azure(resource_uid: str, region: str, env: dict) -> tuple[tuple[str
                         "--subscription", subscription,
                         "--output", "json", "--only-show-errors",
                         what=f"the blob service properties of {resource_uid}")
+        try:
+            file_service = _az_json(
+                az_env, "storage", "account", "file-service-properties", "show",
+                "--account-name", name,
+                "--resource-group", resource_group,
+                "--subscription", subscription,
+                "--output", "json", "--only-show-errors",
+                what=f"the File Service properties of {resource_uid}")
+            file_config = _file_service_config(
+                file_service, resource_uid=resource_uid)
+        except (OSError, ValueError):
+            file_config = _unavailable_file_service_config()
 
     config = _select(account, AZURE_STORAGE_ACCOUNT_ASPECTS,
                      source="storage account", resource_uid=resource_uid)
     config += _select(blob, AZURE_BLOB_SERVICE_ASPECTS,
                       source="blob service properties", resource_uid=resource_uid)
+    config += file_config
     return tuple(sorted(config))
 
 
