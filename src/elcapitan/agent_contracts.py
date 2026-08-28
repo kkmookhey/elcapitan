@@ -12,7 +12,16 @@ _STRING_ARRAY = {"type": "array", "items": {"type": "string", "minLength": 1}}
 def _review_string_array() -> dict:
     return {
         "type": "array", "maxItems": 6,
-        "items": {"type": "string", "minLength": 1, "maxLength": 500},
+        "description": (
+            "Concrete evidence-grounded review statements; never placeholders."
+        ),
+        "items": {
+            "type": "string", "minLength": 1, "maxLength": 500,
+            "description": (
+                "A concrete evidence-grounded statement; never placeholder, TBD, "
+                "TODO, N/A, none, or unknown."
+            ),
+        },
     }
 
 

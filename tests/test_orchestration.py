@@ -197,6 +197,53 @@ def test_agent_stage_retries_decision_specific_semantic_failure(tmp_path):
     assert "never use placeholder" in runtime.tasks[1].constraints[-2]
 
 
+def test_agent_stage_allows_two_bounded_semantic_corrections(tmp_path):
+    task = AgentTask(
+        task_id="TASK-SRE", case_id="CASE-1", role=AgentRole.SRE_REVIEWER,
+        objective="review", output_contract="SREReview.v1",
+        input_record_ids=("PLAN-1",), evidence_ids=("EVD-001",),
+    )
+
+    class Runtime:
+        def __init__(self):
+            self.tasks = []
+
+        def run(self, dispatched):
+            self.tasks.append(dispatched)
+            attempt = len(self.tasks)
+            return AgentResult(
+                task_id=dispatched.task_id, case_id=dispatched.case_id,
+                role=dispatched.role, status=AgentResultStatus.SUCCEEDED,
+                output={
+                    "decision": "approve", "risk_level": "low",
+                    "summary": "concrete pre-change review",
+                    "dependencies": [],
+                    "failure_modes": (
+                        ["placeholder"] if attempt == 1 else ["access loss"]),
+                    "required_controls": ["checkpoint"],
+                    "verification_requirements": (
+                        ["placeholder"] if attempt == 2 else ["live validation"]),
+                },
+                evidence_cited=("EVD-001",), missing_evidence=(),
+                runtime="test", model="test", started_at="2026-08-27T20:00:00Z",
+                completed_at="2026-08-27T20:00:01Z",
+            )
+
+    runtime = Runtime()
+    stage = _AgentStage(
+        case_store=None, record_store=None, artifact_root=tmp_path,
+        runtime=runtime, now=lambda: "2026-08-27T20:00:02Z",
+        id_factory=lambda prefix: f"{prefix}-999")
+    result, _ = stage._run(
+        task, run_dir=tmp_path / "run",
+        semantic_validator=_sre_semantic_failures)
+
+    assert result.output["verification_requirements"] == ("live validation",)
+    assert len(runtime.tasks) == 3
+    assert "failure_modes contains" in runtime.tasks[1].constraints[-3]
+    assert "verification_requirements contains" in runtime.tasks[2].constraints[-3]
+
+
 def test_prechange_and_rollback_prompts_preserve_phase_semantics():
     sre = AgentTask(
         task_id="TASK-SRE", case_id="CASE-1", role=AgentRole.SRE_REVIEWER,
@@ -214,6 +261,7 @@ def test_prechange_and_rollback_prompts_preserve_phase_semantics():
     assert "never claim" in instructions(sre)
     assert "abort with no change" in instructions(rollback)
     assert "not triggers to recreate the vulnerable" in instructions(rollback)
+    assert "verified_steps and trigger_coverage" in instructions(rollback)
     assert "required_changes" in instructions(rollback)
 
 

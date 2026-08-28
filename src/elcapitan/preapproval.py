@@ -140,14 +140,16 @@ class _AgentStage:
                 "Cite every mandatory evidence ID exactly: "
                 + ", ".join(required_citations),
             )))
-        result = self.runtime.run(dispatched)
-        failures = validate_result(dispatched, result)
+        current_task = dispatched
+        result = self.runtime.run(current_task)
+        retry_count = 0
+        failures = validate_result(current_task, result)
         failures.extend(validate_output(
-            dispatched.output_contract, _jsonable(result.output)))
+            current_task.output_contract, _jsonable(result.output)))
         semantic_failures = (
             semantic_validator(result.output) if semantic_validator else ())
-        if semantic_failures and not failures:
-            retry = replace(dispatched, constraints=tuple((*dispatched.constraints,
+        while semantic_failures and not failures and retry_count < 2:
+            current_task = replace(current_task, constraints=tuple((*current_task.constraints,
                 "Correct these decision-specific semantic failures from the previous "
                 "response: " + "; ".join(semantic_failures),
                 "Preserve every already-valid required field. Every required string, "
@@ -156,22 +158,24 @@ class _AgentStage:
                 "never use placeholder, TBD, TODO, N/A, none, or unknown.",
                 "Return a complete strict result without weakening the decision.",
             )))
-            result = self.runtime.run(retry)
-            failures = validate_result(retry, result)
+            result = self.runtime.run(current_task)
+            retry_count += 1
+            failures = validate_result(current_task, result)
             failures.extend(validate_output(
-                retry.output_contract, _jsonable(result.output)))
+                current_task.output_contract, _jsonable(result.output)))
             semantic_failures = semantic_validator(result.output)
         failures.extend(semantic_failures)
         uncited = sorted(set(required_citations) - set(result.evidence_cited))
-        if uncited and not failures:
-            retry = replace(dispatched, constraints=tuple((*dispatched.constraints,
+        if uncited and not failures and retry_count < 2:
+            current_task = replace(current_task, constraints=tuple((*current_task.constraints,
                 "The previous response omitted mandatory citations. Return a corrected "
                 "response citing all of these evidence IDs: " + ", ".join(uncited),
             )))
-            result = self.runtime.run(retry)
-            failures = validate_result(retry, result)
+            result = self.runtime.run(current_task)
+            retry_count += 1
+            failures = validate_result(current_task, result)
             failures.extend(validate_output(
-                retry.output_contract, _jsonable(result.output)))
+                current_task.output_contract, _jsonable(result.output)))
             if semantic_validator:
                 failures.extend(semantic_validator(result.output))
             uncited = sorted(

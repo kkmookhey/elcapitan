@@ -38,8 +38,9 @@ ROLE_INSTRUCTIONS = {
         "for operational failures caused by the mutation. Treat failure to remediate, "
         "recurrence of the original finding, policy drift, and rollback failure as "
         "retry/containment/escalation paths, not triggers to recreate the vulnerable "
-        "pre-change state. If rejecting, enumerate every required correction in "
-        "required_changes."
+        "pre-change state. The verified_steps and trigger_coverage arrays must contain "
+        "concrete evidence-grounded statements and never placeholders. If rejecting, "
+        "enumerate every required correction in required_changes."
     ),
     "release_auditor": (
         "Act as an independent post-change release auditor. Use only the supplied "

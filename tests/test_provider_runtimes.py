@@ -69,6 +69,10 @@ def test_anthropic_schema_compiles_size_limits_but_local_contract_keeps_them():
         "summary"]
     assert "maxItems" not in provider["properties"]["output"]["properties"][
         "verified_steps"]
+    assert "never placeholders" in provider["properties"]["output"]["properties"][
+        "verified_steps"]["description"]
+    assert "never placeholder" in provider["properties"]["output"]["properties"][
+        "verified_steps"]["items"]["description"]
 
 
 def test_gemini_runtime_uses_current_response_format_and_disables_storage():
