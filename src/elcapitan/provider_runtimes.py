@@ -57,6 +57,23 @@ def _now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _anthropic_schema(contract: str) -> dict:
+    """Compile the strict local contract to Anthropic's supported subset."""
+    unsupported = {"maxItems", "maxLength"}
+
+    def compile_value(value):
+        if isinstance(value, Mapping):
+            return {
+                key: compile_value(item)
+                for key, item in value.items() if key not in unsupported
+            }
+        if isinstance(value, list):
+            return [compile_value(item) for item in value]
+        return value
+
+    return compile_value(agent_result_schema(contract))
+
+
 def _parse_result(task: AgentTask, *, text: str, runtime: str, model: str,
                   started_at: str, completed_at: str, usage: Mapping) -> AgentResult:
     try:
@@ -125,7 +142,8 @@ class AnthropicMessagesRuntime:
             "messages": [{"role": "user", "content": canonical_json(
                 task_document(task)).decode("utf-8")}],
             "output_config": {"format": {
-                "type": "json_schema", "schema": agent_result_schema(task.output_contract)}},
+                "type": "json_schema",
+                "schema": _anthropic_schema(task.output_contract)}},
         }
         started_at = self.now()
         response = self.transport.create(payload)

@@ -4,8 +4,10 @@ import pytest
 
 from elcapitan.agents import AgentRole, AgentTask
 from elcapitan.provider_runtimes import (
-    AnthropicMessagesRuntime, GeminiGenerateContentRuntime, ProviderRuntimeError,
+    _anthropic_schema, AnthropicMessagesRuntime, GeminiGenerateContentRuntime,
+    ProviderRuntimeError,
 )
+from elcapitan.agent_contracts import agent_result_schema
 
 
 NOW = "2026-08-26T12:00:00Z"
@@ -54,6 +56,19 @@ def test_anthropic_runtime_uses_current_structured_output_contract():
     payload = transport.payloads[0]
     assert payload["output_config"]["format"]["type"] == "json_schema"
     assert payload["system"].startswith("Act as an independent post-change")
+
+
+def test_anthropic_schema_compiles_size_limits_but_local_contract_keeps_them():
+    local = agent_result_schema("RollbackReview.v1")
+    provider = _anthropic_schema("RollbackReview.v1")
+
+    assert local["properties"]["output"]["properties"]["summary"]["maxLength"]
+    assert local["properties"]["output"]["properties"]["verified_steps"][
+        "maxItems"]
+    assert "maxLength" not in provider["properties"]["output"]["properties"][
+        "summary"]
+    assert "maxItems" not in provider["properties"]["output"]["properties"][
+        "verified_steps"]
 
 
 def test_gemini_runtime_uses_current_response_format_and_disables_storage():
