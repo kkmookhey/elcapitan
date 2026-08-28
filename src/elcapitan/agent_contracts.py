@@ -9,6 +9,13 @@ from jsonschema import Draft202012Validator
 _STRING_ARRAY = {"type": "array", "items": {"type": "string", "minLength": 1}}
 
 
+def _review_string_array() -> dict:
+    return {
+        "type": "array", "maxItems": 6,
+        "items": {"type": "string", "minLength": 1, "maxLength": 500},
+    }
+
+
 TERRAFORM_REMEDIATION_PROPOSAL = {
     "type": "object",
     "additionalProperties": False,
@@ -54,16 +61,16 @@ SRE_REVIEW = {
             "type": "string", "enum": ["low", "medium", "high", "critical"],
         },
         "summary": {
-            "type": "string", "minLength": 1,
+            "type": "string", "minLength": 1, "maxLength": 1500,
             "description": (
                 "Required concise, concrete, evidence-based review rationale. "
                 "Never empty and never a placeholder."
             ),
         },
-        "dependencies": _STRING_ARRAY,
-        "failure_modes": _STRING_ARRAY,
-        "required_controls": _STRING_ARRAY,
-        "verification_requirements": _STRING_ARRAY,
+        "dependencies": _review_string_array(),
+        "failure_modes": _review_string_array(),
+        "required_controls": _review_string_array(),
+        "verification_requirements": _review_string_array(),
     },
     "required": [
         "decision", "risk_level", "summary", "dependencies", "failure_modes",
@@ -92,16 +99,16 @@ ROLLBACK_REVIEW = {
             "enum": ["approve", "reject", "needs_human_context"],
         },
         "summary": {
-            "type": "string", "minLength": 1,
+            "type": "string", "minLength": 1, "maxLength": 1500,
             "description": (
                 "Required concise, concrete, evidence-based review rationale. "
                 "Never empty and never a placeholder."
             ),
         },
-        "verified_steps": _STRING_ARRAY,
-        "trigger_coverage": _STRING_ARRAY,
-        "failure_modes": _STRING_ARRAY,
-        "required_changes": _STRING_ARRAY,
+        "verified_steps": _review_string_array(),
+        "trigger_coverage": _review_string_array(),
+        "failure_modes": _review_string_array(),
+        "required_changes": _review_string_array(),
     },
     "required": [
         "decision", "summary", "verified_steps", "trigger_coverage",

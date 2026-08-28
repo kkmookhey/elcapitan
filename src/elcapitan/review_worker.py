@@ -30,7 +30,7 @@ class ReviewWorkerError(RuntimeError):
 
 
 class _SemanticRetryRuntime:
-    """Retry once when a provider satisfies JSON schema but violates semantics."""
+    """Apply at most two bounded corrections to a provider response."""
 
     def __init__(self, runtime) -> None:
         self.runtime = runtime
@@ -40,40 +40,53 @@ class _SemanticRetryRuntime:
         return f"semantic-retry:{self.runtime.name}"
 
     def run(self, task):
-        try:
-            result = self.runtime.run(task)
-        except (OpenAIRuntimeError, ProviderRuntimeError) as exc:
-            detail = str(exc)
-            if detail.endswith("stopped with max_tokens"):
-                retry = replace(task, constraints=tuple((*task.constraints,
-                    "The previous response reached the provider output-token limit. "
-                    "Return a compact complete result: summary at most 50 words; "
-                    "at most 5 items per array; at most 25 words per array item; "
-                    "do not repeat supplied evidence or Terraform source.",
-                    "Return every required field and cite the required evidence IDs.",
+        dispatched = task
+        for attempt in range(3):
+            try:
+                result = self.runtime.run(dispatched)
+            except (OpenAIRuntimeError, ProviderRuntimeError) as exc:
+                if attempt == 2:
+                    raise
+                detail = str(exc)
+                if detail.endswith("stopped with max_tokens"):
+                    dispatched = replace(
+                        dispatched, constraints=tuple((*dispatched.constraints,
+                            "The previous response reached the provider output-token "
+                            "limit. Return a compact complete result: summary at most "
+                            "50 words; at most 5 items per array; at most 25 words per "
+                            "array item; do not repeat supplied evidence or Terraform "
+                            "source.",
+                            "Return every required field and cite the required "
+                            "evidence IDs.",
+                        )))
+                    continue
+                if not (detail.startswith("model output violated ")
+                        or detail.startswith(
+                            "model returned malformed structured JSON")):
+                    raise
+                dispatched = replace(
+                    dispatched, constraints=tuple((*dispatched.constraints,
+                        "Correct this structured-output contract failure from the "
+                        f"previous response: {detail}",
+                        "Return every required non-empty field in the strict output "
+                        "contract. Every required string, especially output.summary, "
+                        "must contain concrete text. Preserve valid fields while "
+                        "correcting the invalid field; never replace them with empty "
+                        "strings or placeholders. Keep the complete response compact: "
+                        "summary at most 50 words, at most 5 items per array, and at "
+                        "most 25 words per array item.",
+                    )))
+                continue
+            failures = validate_result(dispatched, result)
+            if not failures or attempt == 2:
+                return result
+            dispatched = replace(
+                dispatched, constraints=tuple((*dispatched.constraints,
+                    "Correct these semantic contract failures from the previous "
+                    "response: " + "; ".join(failures),
+                    "If status is succeeded, missing_evidence must be empty.",
                 )))
-                return self.runtime.run(retry)
-            if not (detail.startswith("model output violated ")
-                    or detail.startswith("model returned malformed structured JSON")):
-                raise
-            retry = replace(task, constraints=tuple((*task.constraints,
-                "Correct this structured-output contract failure from the previous "
-                f"response: {detail}",
-                "Return every required non-empty field in the strict output contract. "
-                "Every required string, especially output.summary, must contain "
-                "concrete text. Preserve valid fields while correcting the invalid "
-                "field; never replace them with empty strings or placeholders.",
-            )))
-            return self.runtime.run(retry)
-        failures = validate_result(task, result)
-        if not failures:
-            return result
-        retry = replace(task, constraints=tuple((*task.constraints,
-            "Correct these semantic contract failures from the previous response: "
-            + "; ".join(failures),
-            "If status is succeeded, missing_evidence must be empty.",
-        )))
-        return self.runtime.run(retry)
+        raise AssertionError("bounded provider retry loop exhausted unexpectedly")
 
 
 def _now() -> str:
