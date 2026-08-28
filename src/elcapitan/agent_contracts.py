@@ -53,7 +53,13 @@ SRE_REVIEW = {
         "risk_level": {
             "type": "string", "enum": ["low", "medium", "high", "critical"],
         },
-        "summary": {"type": "string", "minLength": 1},
+        "summary": {
+            "type": "string", "minLength": 1,
+            "description": (
+                "Required concise, concrete, evidence-based review rationale. "
+                "Never empty and never a placeholder."
+            ),
+        },
         "dependencies": _STRING_ARRAY,
         "failure_modes": _STRING_ARRAY,
         "required_controls": _STRING_ARRAY,
@@ -85,7 +91,13 @@ ROLLBACK_REVIEW = {
             "type": "string",
             "enum": ["approve", "reject", "needs_human_context"],
         },
-        "summary": {"type": "string", "minLength": 1},
+        "summary": {
+            "type": "string", "minLength": 1,
+            "description": (
+                "Required concise, concrete, evidence-based review rationale. "
+                "Never empty and never a placeholder."
+            ),
+        },
         "verified_steps": _STRING_ARRAY,
         "trigger_coverage": _STRING_ARRAY,
         "failure_modes": _STRING_ARRAY,

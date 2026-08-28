@@ -59,7 +59,10 @@ class _SemanticRetryRuntime:
             retry = replace(task, constraints=tuple((*task.constraints,
                 "Correct this structured-output contract failure from the previous "
                 f"response: {detail}",
-                "Return every required non-empty field in the strict output contract.",
+                "Return every required non-empty field in the strict output contract. "
+                "Every required string, especially output.summary, must contain "
+                "concrete text. Preserve valid fields while correcting the invalid "
+                "field; never replace them with empty strings or placeholders.",
             )))
             return self.runtime.run(retry)
         failures = validate_result(task, result)

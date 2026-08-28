@@ -79,6 +79,8 @@ def test_review_runtime_retries_a_provider_structured_output_violation_once():
     assert result.status is AgentResultStatus.SUCCEEDED
     assert len(provider.tasks) == 2
     assert "structured-output contract failure" in provider.tasks[1].constraints[-2]
+    assert "output.summary" in provider.tasks[1].constraints[-1]
+    assert "never replace them with empty strings" in provider.tasks[1].constraints[-1]
 
 
 def test_review_runtime_retries_a_provider_token_limit_once_with_compact_bounds():

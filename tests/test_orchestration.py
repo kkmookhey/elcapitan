@@ -192,7 +192,9 @@ def test_agent_stage_retries_decision_specific_semantic_failure(tmp_path):
 
     assert result.output["verification_requirements"] == ("live validation",)
     assert len(runtime.tasks) == 2
-    assert "decision-specific semantic failures" in runtime.tasks[1].constraints[-2]
+    assert "decision-specific semantic failures" in runtime.tasks[1].constraints[-3]
+    assert "output.summary" in runtime.tasks[1].constraints[-2]
+    assert "never use placeholder" in runtime.tasks[1].constraints[-2]
 
 
 def test_prechange_and_rollback_prompts_preserve_phase_semantics():

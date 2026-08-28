@@ -150,6 +150,10 @@ class _AgentStage:
             retry = replace(dispatched, constraints=tuple((*dispatched.constraints,
                 "Correct these decision-specific semantic failures from the previous "
                 "response: " + "; ".join(semantic_failures),
+                "Preserve every already-valid required field. Every required string, "
+                "especially output.summary, must remain concrete and non-empty. "
+                "Replace each identified bad field with evidence-grounded content; "
+                "never use placeholder, TBD, TODO, N/A, none, or unknown.",
                 "Return a complete strict result without weakening the decision.",
             )))
             result = self.runtime.run(retry)
