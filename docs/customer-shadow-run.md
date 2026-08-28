@@ -39,6 +39,14 @@ An unknown provider rejects the entire intake batch before persistence. An
 unknown rule may be retained in the portfolio for coverage reporting, but the
 validator makes no cloud request and does not infer its status.
 
+Several controls on one resource correlate into one case. When such a case
+contains both supported and unsupported controls, live validation evaluates
+the supported subset and records every unsupported sibling explicitly. One or
+more live-confirmed controls may advance the case to validated; promotion is
+bound only to the exact confirmed finding and evidence set. A case containing
+no supported control is rejected before any cloud request, and a case with no
+confirmation plus unavailable or unsupported evidence remains blocked.
+
 ## Identity contract
 
 Use a dedicated read-only scanner identity. Ambient AWS and Azure CLI sessions

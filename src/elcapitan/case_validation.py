@@ -207,12 +207,20 @@ class CaseValidationService:
             event_id=self.id_factory("EVT"), occurred_at=now,
             actor="live-validator", record_ids={"validation_result_id": validation_id},
             evidence_ids=all_evidence)
-        if incomplete:
+        if confirmed:
+            # A resource case may contain both supported and unsupported
+            # scanner controls. Confirmed controls are independently useful
+            # and remain promotion-bound by their exact finding/evidence set;
+            # unsupported siblings stay explicit in the validation record.
+            case = self.workflow.advance(
+                case_id, CaseTransition.VALIDATE,
+                detail=(f"{len(confirmed)} finding(s) confirmed; "
+                        f"{len(incomplete)} finding(s) unavailable or unsupported"),
+                **common)
+        elif incomplete:
             detail = "; ".join(result.reason for result in incomplete)
             case = self.workflow.advance(
                 case_id, CaseTransition.BLOCK, detail=detail, **common)
-        elif confirmed:
-            case = self.workflow.advance(case_id, CaseTransition.VALIDATE, **common)
         else:
             case = self.workflow.advance(
                 case_id, CaseTransition.CLOSE_NO_ACTION,

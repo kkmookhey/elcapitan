@@ -190,6 +190,29 @@ def test_shadow_validation_rejects_unsupported_control_before_cloud_access(tmp_p
     document["finding_info"]["analytic"]["uid"] = "unknown_customer_control"
     case_id = control.intake(tenant_id="TEN", documents=[document]).case_ids[0]
 
-    with pytest.raises(ShadowControlError, match="without deterministic"):
+    with pytest.raises(ShadowControlError, match="no controls with deterministic"):
         control.validate(tenant_id="TEN", case_id=case_id)
     assert fake_az.calls(bin_dir) == []
+
+
+def test_shadow_validation_confirms_supported_control_in_mixed_case(
+        tmp_path, monkeypatch):
+    bin_dir = fake_az.install(tmp_path / "bin")
+    environment = {"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+                   "HOME": str(tmp_path / "home"), **fake_az.scanner_credentials()}
+    control = ShadowFleetControlPlane(tmp_path / "fleet", host_env=environment)
+    supported = findings()[0]
+    unsupported = json.loads(json.dumps(supported))
+    unsupported["finding_info"]["uid"] += "-UNKNOWN"
+    unsupported["finding_info"]["analytic"]["uid"] = "unknown_customer_control"
+    case_id = control.intake(
+        tenant_id="TEN", documents=[supported, unsupported]).case_ids[0]
+
+    result = control.validate(tenant_id="TEN", case_id=case_id)
+
+    assert result["case"]["state"] == "validated"
+    assert {item["status"] for item in result["findings"]} == {
+        "confirmed", "unsupported"}
+    fleet_case = result["fleet"]["cases"][0]
+    assert fleet_case["validation_counts"] == {
+        "confirmed": 1, "unsupported": 1}

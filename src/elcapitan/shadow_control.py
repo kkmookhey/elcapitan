@@ -284,16 +284,19 @@ class ShadowFleetControlPlane:
         if len(providers) != 1:
             raise ShadowControlError("a validation case must contain exactly one provider")
         provider = next(iter(providers))
-        unsupported = sorted({
-            str(item.record["ocsf"].get("rule_id", ""))
-            for item in findings
-            if not (capability := self.registry.get(
+        supported = [
+            item for item in findings
+            if (capability := self.registry.get(
                 item.provider, str(item.record["ocsf"].get("rule_id", ""))))
-            or not capability.live_validation
-        })
-        if unsupported:
+            and capability.live_validation
+        ]
+        if not supported:
+            unsupported = sorted({
+                str(item.record["ocsf"].get("rule_id", ""))
+                for item in findings
+            })
             raise ShadowControlError(
-                "case contains controls without deterministic live validation: "
+                "case contains no controls with deterministic live validation: "
                 + ", ".join(unsupported))
         readiness = connector_readiness(
             provider, host_env=self.host_env, registry=self.registry)
