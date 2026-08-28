@@ -283,12 +283,19 @@ def transition_case(case: RemediationCase, transition: CaseTransition, *,
         raise ValueError(f"{transition} requires record {required}")
 
     finding_ids = case.finding_ids
+    reopened_for_validation = False
     if transition is CaseTransition.ADD_FINDING:
         additions = tuple(fid for fid in new_finding_ids if fid not in case.finding_ids)
         if not additions:
             raise ValueError("add_finding requires at least one new finding id")
-        to_state = case.state
-        blocked_from = case.blocked_from
+        reopened_for_validation = case.state in {
+            CaseState.VALIDATED, CaseState.PLAN_READY, CaseState.SRE_APPROVED,
+            CaseState.WINDOW_SELECTED, CaseState.ROLLBACK_READY,
+            CaseState.AWAITING_APPROVAL, CaseState.APPROVED,
+        }
+        to_state = (CaseState.PRIORITIZED if reopened_for_validation
+                    else case.state)
+        blocked_from = None if reopened_for_validation else case.blocked_from
         finding_ids = case.finding_ids + additions
     elif transition is CaseTransition.REPRIORITIZE:
         if priority is None:
@@ -387,6 +394,14 @@ def transition_case(case: RemediationCase, transition: CaseTransition, *,
         raise ValueError("new_finding_ids may be attached only during add_finding")
 
     merged_records = dict(case.record_ids)
+    if transition is CaseTransition.ADD_FINDING and reopened_for_validation:
+        for name in (
+            "validation_result_id", "iac_link_id", "change_plan_id",
+            "sre_review_id", "change_window_id", "rollback_review_id",
+            "policy_decision_id", "human_review_package_id", "approval_id",
+            "schedule_id",
+        ):
+            merged_records.pop(name, None)
     if transition is CaseTransition.RETRY_SRE:
         merged_records.pop("sre_review_id", None)
         merged_records.pop("change_window_id", None)
@@ -424,9 +439,11 @@ def transition_case(case: RemediationCase, transition: CaseTransition, *,
         version=event.sequence,
         updated_at=occurred_at,
         priority=priority or case.priority,
-        change_plan=(None if transition is CaseTransition.REQUEST_REWORK
+        change_plan=(None if (
+                         transition is CaseTransition.REQUEST_REWORK
+                         or reopened_for_validation)
                      else change_plan or case.change_plan),
-        change_window=(None if transition in {
+        change_window=(None if reopened_for_validation or transition in {
                            CaseTransition.RETRY_SRE,
                            CaseTransition.RESELECT_WINDOW,
                            CaseTransition.REQUEST_REWORK,

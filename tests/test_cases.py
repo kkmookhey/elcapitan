@@ -275,6 +275,42 @@ def test_new_finding_is_an_audited_same_state_transition():
     assert event.from_state is event.to_state is CaseState.PRIORITIZED
 
 
+def test_new_finding_after_planning_revokes_stale_validation_and_approvals():
+    current = case()
+    current = advance(current, CaseTransition.PRIORITIZE, 1,
+                      record_ids={"risk_assessment_id": "RISK-001"}, priority=risk())
+    current = advance(current, CaseTransition.VALIDATE, 2,
+                      record_ids={"validation_result_id": "VAL-001"})
+    current = advance(current, CaseTransition.PREPARE_PLAN, 3,
+                      record_ids={"change_plan_id": "PLAN-001",
+                                  "iac_link_id": "LINK-001"}, change_plan=plan())
+    current = advance(current, CaseTransition.APPROVE_SRE, 4,
+                      record_ids={"sre_review_id": "SRE-001"})
+    current = advance(current, CaseTransition.SELECT_WINDOW, 5,
+                      record_ids={"change_window_id": "WIN-001"},
+                      change_window=window())
+    current = advance(current, CaseTransition.REVIEW_ROLLBACK, 6,
+                      record_ids={"rollback_review_id": "RBK-001"})
+
+    refreshed, event = transition_case(
+        current, CaseTransition.ADD_FINDING, event_id="EVT-007",
+        occurred_at=NOW, actor="intake", new_finding_ids=("FIND-002",),
+        record_ids={"finding_id": "FIND-002"}, evidence_ids=("EVD-004",))
+
+    assert refreshed.state is CaseState.PRIORITIZED
+    assert refreshed.finding_ids == ("FIND-001", "FIND-002")
+    assert refreshed.change_plan is None
+    assert refreshed.change_window is None
+    assert refreshed.record_ids["risk_assessment_id"] == "RISK-001"
+    assert "validation_result_id" not in refreshed.record_ids
+    assert "change_plan_id" not in refreshed.record_ids
+    assert "sre_review_id" not in refreshed.record_ids
+    assert "change_window_id" not in refreshed.record_ids
+    assert "rollback_review_id" not in refreshed.record_ids
+    assert event.from_state is CaseState.ROLLBACK_READY
+    assert event.to_state is CaseState.PRIORITIZED
+
+
 def test_duplicate_finding_does_not_create_a_fake_event():
     with pytest.raises(ValueError, match="new finding"):
         transition_case(
