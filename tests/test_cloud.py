@@ -447,6 +447,47 @@ def test_expanded_storage_controls_evaluate_the_measured_eiger_lab_contract(azur
     } == expected
 
 
+def test_container_registry_capture_evaluates_measured_lab_contract(azure):
+    azure.responses(fake_az.container_registry_responses())
+    state = azure(resource_uid=fake_az.CONTAINER_REGISTRY_RESOURCE_UID)
+    values = {aspect: json.loads(value) for aspect, value in state.config}
+    assert values == {
+        "acr_admin_user_enabled": True,
+        "acr_private_endpoint_connection_count": 0,
+        "acr_public_network_access": "Enabled",
+    }
+    registry = builtin_registry()
+    assert all(registry.get("azure", rule_id).evaluator(values).confirmed for rule_id in (
+        "containerregistry_admin_user_disabled",
+        "containerregistry_not_publicly_accessible",
+        "containerregistry_uses_private_link",
+    ))
+
+
+def test_container_registry_documented_defaults_are_explicit(azure):
+    document = fake_az.container_registry_document()
+    document["properties"] = {}
+    azure.responses(fake_az.container_registry_responses(registry=document))
+    values = {
+        aspect: json.loads(value)
+        for aspect, value in azure(
+            resource_uid=fake_az.CONTAINER_REGISTRY_RESOURCE_UID).config
+    }
+    assert values == {
+        "acr_admin_user_enabled": False,
+        "acr_private_endpoint_connection_count": 0,
+        "acr_public_network_access": "Enabled",
+    }
+
+
+def test_container_registry_rejects_malformed_private_endpoint_list(azure):
+    document = fake_az.container_registry_document()
+    document["properties"]["privateEndpointConnections"] = ["bad"]
+    azure.responses(fake_az.container_registry_responses(registry=document))
+    with pytest.raises(ValueError, match="privateEndpointConnections"):
+        azure(resource_uid=fake_az.CONTAINER_REGISTRY_RESOURCE_UID)
+
+
 def test_azure_sql_capture_reads_complete_cmk_and_user_database_tde_contract(azure):
     azure.responses(fake_az.sql_responses())
     state = azure(resource_uid=fake_az.SQL_RESOURCE_UID)
@@ -913,6 +954,44 @@ def test_azure_managed_identity_rest_capture_matches_cli_capture(
     assert "client_id=scanner-client-id" in requests[0].full_url
     assert requests[0].get_header("X-identity-header") == (
         "rotating-platform-header")
+
+
+def test_container_registry_managed_identity_matches_cli_capture(
+        azure, monkeypatch):
+    document = fake_az.container_registry_document()
+    requests = []
+
+    class Response:
+        def __init__(self, payload):
+            self.payload = json.dumps(payload).encode()
+
+        def __enter__(self): return self
+        def __exit__(self, *_): return False
+        def read(self): return self.payload
+
+    def urlopen(request, timeout):
+        requests.append(request)
+        if request.full_url.startswith("http://localhost/"):
+            return Response({"access_token": "read-only-token"})
+        assert request.get_header("Authorization") == "Bearer read-only-token"
+        assert request.full_url.startswith(
+            "https://management.azure.com" +
+            fake_az.CONTAINER_REGISTRY_RESOURCE_UID + "?")
+        return Response(document)
+
+    monkeypatch.setattr("elcapitan.cloud.urllib.request.urlopen", urlopen)
+    managed_env = verification_env({
+        "ELCAP_SCANNER_AZURE_MANAGED_IDENTITY_CLIENT_ID": "scanner-client-id",
+        "IDENTITY_ENDPOINT": "http://localhost/token",
+        "IDENTITY_HEADER": "rotating-platform-header",
+    }, provider="azure")
+    managed = capture_cloud_state(
+        fake_az.CONTAINER_REGISTRY_RESOURCE_UID,
+        provider="azure", env=managed_env)
+    azure.responses(fake_az.container_registry_responses())
+    assert managed.config == azure(
+        resource_uid=fake_az.CONTAINER_REGISTRY_RESOURCE_UID).config
+    assert len(requests) == 2
 
 
 def test_azure_sql_managed_identity_follows_every_database_page(monkeypatch):

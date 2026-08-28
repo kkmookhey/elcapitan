@@ -329,6 +329,7 @@ AZURE_BLOB_SERVICE_ASPECTS = {
 # Compared case-insensitively because Prowler emits lower-case resource types
 # while ARM ids preserve provider casing.
 AZURE_SUPPORTED_TYPES = (
+    "microsoft.containerregistry/registries",
     "microsoft.keyvault/vaults",
     "microsoft.network/virtualnetworks/subnets",
     "microsoft.sql/servers",
@@ -345,6 +346,7 @@ AZURE_KEY_VAULT_API_VERSION = "2024-11-01"
 AZURE_NETWORK_API_VERSION = "2025-05-01"
 AZURE_APP_SERVICE_API_VERSION = "2024-11-01"
 AZURE_DIAGNOSTIC_SETTINGS_API_VERSION = "2021-05-01-preview"
+AZURE_CONTAINER_REGISTRY_API_VERSION = "2025-11-01"
 
 # The critical Prowler control `sqlserver_tde_encrypted_with_cmk` is not a
 # single-property check. It requires a CMK-backed server protector and TDE on
@@ -721,6 +723,46 @@ def _capture_azure_sql(resource_uid: str, *, read_url) -> tuple[tuple[str, str],
         for aspect in AZURE_SQL_TDE_ASPECTS)
 
 
+def _capture_azure_container_registry(
+        resource_uid: str, *, read_url) -> tuple[tuple[str, str], ...]:
+    """Capture the one-document ACR contract used by three Prowler checks."""
+    document = read_url(
+        _arm_url(resource_uid, api_version=AZURE_CONTAINER_REGISTRY_API_VERSION),
+        what=f"the Container Registry {resource_uid}")
+    properties = document.get("properties")
+    if not isinstance(properties, dict):
+        raise ValueError(
+            f"could not read Container Registry {resource_uid}: "
+            "properties is not an object")
+
+    # These are documented Azure defaults and match Prowler's SDK fallbacks.
+    admin_user_enabled = properties.get("adminUserEnabled", False)
+    public_network_access = properties.get("publicNetworkAccess", "Enabled")
+    private_connections = properties.get("privateEndpointConnections", [])
+    if not isinstance(admin_user_enabled, bool):
+        raise ValueError(
+            f"could not read Container Registry {resource_uid}: "
+            "adminUserEnabled is not boolean")
+    if public_network_access not in {"Enabled", "Disabled"}:
+        raise ValueError(
+            f"could not read Container Registry {resource_uid}: "
+            f"publicNetworkAccess is invalid: {public_network_access!r}")
+    if (not isinstance(private_connections, list)
+            or any(not isinstance(item, dict) for item in private_connections)):
+        raise ValueError(
+            f"could not read Container Registry {resource_uid}: "
+            "privateEndpointConnections is not an object list")
+
+    values = {
+        "acr_admin_user_enabled": admin_user_enabled,
+        "acr_public_network_access": public_network_access,
+        "acr_private_endpoint_connection_count": len(private_connections),
+    }
+    return tuple(
+        (aspect, canonical_json(value).decode("utf-8"))
+        for aspect, value in sorted(values.items()))
+
+
 def _capture_azure_key_vault(
         resource_uid: str, *, read_url) -> tuple[tuple[str, str], ...]:
     """Capture the management-plane evidence shared by three Prowler checks."""
@@ -1005,6 +1047,11 @@ def _capture_azure(resource_uid: str, region: str, env: dict) -> tuple[tuple[str
         env.get("ELCAP_AZURE_AUTH_MODE") == AZURE_MANAGED_IDENTITY_AUTH_MODE)
     if managed_identity:
         token = _managed_identity_token(env)
+        if arm_type.lower() == "microsoft.containerregistry/registries":
+            return _capture_azure_container_registry(
+                resource_uid,
+                read_url=lambda url, *, what: _arm_url_json(
+                    url, token=token, what=what))
         if arm_type.lower() in {
                 "microsoft.web/sites", "microsoft.web/sites/config"}:
             return _capture_azure_app_service(
@@ -1074,6 +1121,12 @@ def _capture_azure(resource_uid: str, region: str, env: dict) -> tuple[tuple[str
 
         if arm_type.lower() == "microsoft.keyvault/vaults":
             return _capture_azure_key_vault(
+                resource_uid,
+                read_url=lambda url, *, what: _az_rest_json(
+                    az_env, url, what=what))
+
+        if arm_type.lower() == "microsoft.containerregistry/registries":
+            return _capture_azure_container_registry(
                 resource_uid,
                 read_url=lambda url, *, what: _az_rest_json(
                     az_env, url, what=what))

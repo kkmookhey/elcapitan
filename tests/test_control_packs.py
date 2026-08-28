@@ -21,10 +21,10 @@ def definition(*, pack_id="fixture", provider="azure", rule_id="fixture_rule"):
 
 def test_builtin_registry_is_composed_from_service_packs():
     assert {pack.pack_id for pack in BUILTIN_CONTROL_PACKS} == {
-        "aws-s3", "azure-app-service", "azure-key-vault", "azure-network", "azure-sql",
-        "azure-storage"}
+        "aws-s3", "azure-app-service", "azure-container-registry",
+        "azure-key-vault", "azure-network", "azure-sql", "azure-storage"}
     registry = builtin_registry()
-    assert len(registry.list()) == 27
+    assert len(registry.list()) == 30
     assert registry.get("AZURE", "sqlserver_tde_encrypted_with_cmk").pack_id == (
         "azure-sql")
     assert registry.get(
@@ -150,6 +150,45 @@ def test_storage_pack_matches_pinned_prowler_truth_conditions(
 )
 def test_storage_pack_rejects_malformed_evidence(rule_id, values):
     with pytest.raises(ValueError, match="invalid|no keySource|no name|not an"):
+        builtin_registry().get("azure", rule_id).evaluator(values)
+
+
+@pytest.mark.parametrize(
+    ("rule_id", "values", "confirmed"),
+    [
+        ("containerregistry_admin_user_disabled",
+         {"acr_admin_user_enabled": True}, True),
+        ("containerregistry_admin_user_disabled",
+         {"acr_admin_user_enabled": False}, False),
+        ("containerregistry_not_publicly_accessible",
+         {"acr_public_network_access": "Enabled"}, True),
+        ("containerregistry_not_publicly_accessible",
+         {"acr_public_network_access": "Disabled"}, False),
+        ("containerregistry_uses_private_link",
+         {"acr_private_endpoint_connection_count": 0}, True),
+        ("containerregistry_uses_private_link",
+         {"acr_private_endpoint_connection_count": 1}, False),
+    ],
+)
+def test_container_registry_pack_matches_pinned_prowler_truth_conditions(
+        rule_id, values, confirmed):
+    assert builtin_registry().get("azure", rule_id).evaluator(values).confirmed is (
+        confirmed)
+
+
+@pytest.mark.parametrize(
+    ("rule_id", "values"),
+    [
+        ("containerregistry_admin_user_disabled",
+         {"acr_admin_user_enabled": "false"}),
+        ("containerregistry_not_publicly_accessible",
+         {"acr_public_network_access": "Unknown"}),
+        ("containerregistry_uses_private_link",
+         {"acr_private_endpoint_connection_count": -1}),
+    ],
+)
+def test_container_registry_pack_rejects_malformed_evidence(rule_id, values):
+    with pytest.raises(ValueError, match="invalid|not an"):
         builtin_registry().get("azure", rule_id).evaluator(values)
 
 

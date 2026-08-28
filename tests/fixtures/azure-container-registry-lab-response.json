@@ -1,0 +1,14 @@
+{
+  "id": "/subscriptions/8cd2b4cc-c789-466d-a8f7-8f51fb20985d/resourceGroups/elcapitan-remediation-lab-rg/providers/Microsoft.ContainerRegistry/registries/ca7b25e7d425acr",
+  "name": "ca7b25e7d425acr",
+  "properties": {
+    "adminUserEnabled": true,
+    "privateEndpointConnections": [],
+    "publicNetworkAccess": "Enabled"
+  },
+  "sku": {
+    "name": "Basic",
+    "tier": "Basic"
+  },
+  "type": "Microsoft.ContainerRegistry/registries"
+}

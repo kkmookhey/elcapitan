@@ -22,7 +22,8 @@ Each installed pack registers explicit definitions containing:
 - separate validation, planning, and execution capability flags.
 
 The built-in v1 packs are currently `aws-s3`, `azure-storage`, `azure-sql`,
-`azure-key-vault`, `azure-network`, and `azure-app-service`. Registration is fail-closed: duplicate
+`azure-key-vault`, `azure-network`, `azure-app-service`, and
+`azure-container-registry`. Registration is fail-closed: duplicate
 provider/rule keys,
 mismatched pack ownership, missing evidence contracts, and mismatched resource
 types are rejected.
@@ -74,6 +75,31 @@ contract](https://learn.microsoft.com/rest/api/storagerp/storage-accounts/get-pr
 The File Service field is pinned to Microsoft's [File Services - Get Service
 Properties REST
 contract](https://learn.microsoft.com/rest/api/storagerp/file-services/get-service-properties?view=rest-storagerp-2025-06-01).
+
+The Azure Container Registry pack validates
+`containerregistry_admin_user_disabled`,
+`containerregistry_not_publicly_accessible`, and
+`containerregistry_uses_private_link` from one management-plane GET of the
+exact registry. It persists only the admin-user boolean, public-network enum,
+and private-endpoint connection count. Missing values follow Microsoft's
+documented defaults and Prowler's SDK fallbacks: admin user disabled, public
+network enabled, and no private endpoints. The private-link evaluator mirrors
+Prowler's current existence check; it does not invent approval-state semantics
+that the producer does not apply. Planning and execution are disabled.
+
+The response contract was measured read-only on 2026-08-28 against the
+existing El Capitan lab registry. It returned all three failing branches:
+admin user enabled, public network enabled, and an empty private-endpoint
+connection list. The same collector then ran in a no-ingress Container Apps
+job whose scanner identity held `Reader` at only that registry; a separate
+identity held only `AcrPull` for the candidate image. The execution succeeded
+and emitted only the three normalized aspects. The temporary job, exact Reader
+assignment, candidate image tag, and local job definition were deleted and
+independently confirmed absent. The sanitized response is a regression
+fixture. Semantics are pinned to Prowler's [Container Registry check
+implementations](https://github.com/prowler-cloud/prowler/tree/master/prowler/providers/azure/services/containerregistry)
+and Microsoft's [Registries - Get REST
+contract](https://learn.microsoft.com/rest/api/container-registry/registries/get?view=rest-container-registry-2025-11-01).
 
 The Azure Key Vault pack pins the current Prowler truth conditions for
 `keyvault_rbac_enabled`, `keyvault_private_endpoints`, and

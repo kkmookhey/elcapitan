@@ -67,6 +67,9 @@ APP_SERVICE_CONFIG_RESOURCE_UID = APP_SERVICE_RESOURCE_UID + "/config/web"
 FUNCTION_APP_RESOURCE_UID = (
     f"/subscriptions/{SQL_SUBSCRIPTION}/resourceGroups/elcap-app-fixture-rg"
     "/providers/Microsoft.Web/sites/elcap-function-fixture")
+CONTAINER_REGISTRY_RESOURCE_UID = (
+    f"/subscriptions/{SUBSCRIPTION}/resourceGroups/elcapitan-remediation-lab-rg"
+    "/providers/Microsoft.ContainerRegistry/registries/ca7b25e7d425acr")
 
 # The operation key is the leading run of non-flag argv tokens, which is how
 # `az` itself names a command ("storage account show"). Building it from argv
@@ -135,6 +138,12 @@ def blob_document() -> dict:
 def file_service_document() -> dict:
     """Sanitized File Service response measured on the Eiger lab."""
     return json.loads((FIXTURES / "azure-file-service-properties.json").read_text())
+
+
+def container_registry_document() -> dict:
+    """Sanitized response measured from the existing El Capitan lab ACR."""
+    return json.loads(
+        (FIXTURES / "azure-container-registry-lab-response.json").read_text())
 
 
 def sql_protector_document() -> dict:
@@ -340,6 +349,15 @@ def function_app_lab_responses() -> dict:
         web_config=function_web_config_lab_document(),
         auth=function_auth_v2_lab_document(),
     )
+
+
+def container_registry_responses(*, registry: dict | None = None) -> dict:
+    return {
+        "login": {"stdout": "[]", "exit": 0},
+        "rest": {"stdout": json.dumps(
+            container_registry_document() if registry is None else registry),
+            "exit": 0},
+    }
 
 
 def observer_credentials() -> dict:

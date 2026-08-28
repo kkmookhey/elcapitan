@@ -55,6 +55,13 @@ def raw(rule_id="storage_account_public_network_access_disabled", *, resource_ty
         document["resources"][0]["type"] = "microsoft.sql/servers"
     elif rule_id.startswith("keyvault_"):
         document["resources"][0]["type"] = "microsoft.keyvault/vaults"
+    elif rule_id.startswith("containerregistry_"):
+        document["resources"][0]["type"] = (
+            "microsoft.containerregistry/registries")
+        document["resources"][0]["uid"] = (
+            "/subscriptions/8cd2b4cc-c789-466d-a8f7-8f51fb20985d/"
+            "resourceGroups/elcapitan-remediation-lab-rg/providers/"
+            "Microsoft.ContainerRegistry/registries/ca7b25e7d425acr")
     elif rule_id.startswith("network_subnet_"):
         document["resources"][0]["type"] = (
             "microsoft.network/virtualnetworks/subnets")
@@ -101,6 +108,22 @@ def storage_security_state(**overrides):
         resource_uid=("/subscriptions/8cd2b4cc-c789-466d-a8f7-8f51fb20985d/"
                       "resourceGroups/eiger-rg/providers/Microsoft.Storage/"
                       "storageAccounts/eigercorpus8dlub3zy"),
+        config=tuple((key, json.dumps(value)) for key, value in values.items()),
+    )
+
+
+def container_registry_state(**overrides):
+    values = {
+        "acr_admin_user_enabled": True,
+        "acr_public_network_access": "Enabled",
+        "acr_private_endpoint_connection_count": 0,
+    }
+    values.update(overrides)
+    return CloudState(
+        provider="azure",
+        resource_uid=("/subscriptions/8cd2b4cc-c789-466d-a8f7-8f51fb20985d/"
+                      "resourceGroups/elcapitan-remediation-lab-rg/providers/"
+                      "Microsoft.ContainerRegistry/registries/ca7b25e7d425acr"),
         config=tuple((key, json.dumps(value)) for key, value in values.items()),
     )
 
@@ -391,6 +414,20 @@ def test_expanded_storage_findings_use_registered_evaluators(
     opened = intake.ingest(raw(rule_id), tenant_id="TEN-001")
     outcome = validator(
         product, lambda finding, env: storage_security_state()).validate(
+            opened.case.case_id, host_env={})
+    assert outcome.findings[0].status is FindingValidationStatus.CONFIRMED
+
+
+@pytest.mark.parametrize("rule_id", [
+    "containerregistry_admin_user_disabled",
+    "containerregistry_not_publicly_accessible",
+    "containerregistry_uses_private_link",
+])
+def test_container_registry_findings_use_registered_evaluators(product, rule_id):
+    *_, intake = product
+    opened = intake.ingest(raw(rule_id), tenant_id="TEN-001")
+    outcome = validator(
+        product, lambda finding, env: container_registry_state()).validate(
             opened.case.case_id, host_env={})
     assert outcome.findings[0].status is FindingValidationStatus.CONFIRMED
 
