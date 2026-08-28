@@ -44,6 +44,6 @@
     "allowed_start_hours": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23],
     "candidate_count": 1,
     "minimum_profile_samples": 2,
-    "fixed_start_delay_minutes": 5
+    "fixed_start_delay_minutes": 180
   }
 }
