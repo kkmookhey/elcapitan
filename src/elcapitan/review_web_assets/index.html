@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>El Capitan · Human decision gate</title>
+  <link rel="stylesheet" href="/review.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><span>EC</span><div><strong>El Capitan</strong><small>Human decision gate</small></div></a>
+    <div class="boundary"><i></i><div><strong>Decision plane</strong><small>No execution route</small></div></div>
+  </header>
+  <main>
+    <section class="hero">
+      <div><p class="eyebrow">Evidence-bound change authority</p><h1>Approve exactly what was reviewed.</h1><p>Inspect the verified change, operational impact, window, rollback, and policy chain before recording a human decision.</p></div>
+      <div class="tenant-control"><label for="tenant">Customer tenant</label><div><input id="tenant" value="ASSURANCE-LAB" maxlength="100"><button id="load-queue" class="primary">Open review queue</button></div></div>
+    </section>
+    <section class="auth-notice"><strong>DEMO AUTHENTICATION</strong><span>This shared-token gate is suitable for non-production assurance only. Entra ID will replace it before customer approvals.</span></section>
+    <section class="workspace">
+      <aside class="queue card">
+        <header><div><p class="section-label">Review queue</p><h2>Human decisions</h2></div><span id="queue-count" class="pill">0 cases</span></header>
+        <div id="queue-list" class="queue-list"><p class="empty">Load a tenant to inspect its decision queue.</p></div>
+      </aside>
+      <section class="review card" id="review-panel">
+        <div class="empty-state"><p class="section-label">No case selected</p><h2>Select a package from the queue.</h2><p>The decision plane exposes only the immutable package currently bound to the case.</p></div>
+      </section>
+    </section>
+  </main>
+
+  <dialog id="approve-dialog">
+    <button class="dialog-close" data-close="approve-dialog" aria-label="Close">×</button>
+    <p class="section-label">Package-bound approval</p><h2>Approve this exact change?</h2>
+    <p class="dialog-copy">Approval creates an immutable decision record and durable schedule. It does not execute the change.</p>
+    <form id="approve-form">
+      <label>Approver name<input id="approve-name" required maxlength="200" autocomplete="name"></label>
+      <label>Type the confirmation phrase<input id="approve-confirmation" required autocomplete="off"></label>
+      <code id="approve-phrase" class="phrase"></code>
+      <label class="check"><input id="approve-attestation" type="checkbox" required><span>I reviewed the exact package hash, change, window, rollback, and policy checks.</span></label>
+      <div class="dialog-actions"><button type="button" class="ghost" data-close="approve-dialog">Cancel</button><button class="primary" type="submit">Record approval</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="reject-dialog">
+    <button class="dialog-close" data-close="reject-dialog" aria-label="Close">×</button>
+    <p class="section-label danger-label">Package rejection</p><h2>Reject this exact change?</h2>
+    <p class="dialog-copy">Rejection is terminal for this package and guarantees that no execution job is created.</p>
+    <form id="reject-form">
+      <label>Approver name<input id="reject-name" required maxlength="200" autocomplete="name"></label>
+      <label>Reason<textarea id="reject-reason" required minlength="20" maxlength="2000"></textarea></label>
+      <label>Type the confirmation phrase<input id="reject-confirmation" required autocomplete="off"></label>
+      <code id="reject-phrase" class="phrase reject-phrase"></code>
+      <label class="check"><input id="reject-attestation" type="checkbox" required><span>I intend to reject this package and prevent scheduling.</span></label>
+      <div class="dialog-actions"><button type="button" class="ghost" data-close="reject-dialog">Cancel</button><button class="danger" type="submit">Record rejection</button></div>
+    </form>
+  </dialog>
+  <div id="toast" class="toast" role="status"></div>
+  <script src="/review.js"></script>
+</body>
+</html>

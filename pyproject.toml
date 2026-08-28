@@ -27,6 +27,7 @@ elcapitan = [
   "schemas/*.json",
   "web/*.html", "web/*.css", "web/*.js",
   "shadow_web_assets/*.html", "shadow_web_assets/*.css", "shadow_web_assets/*.js",
+  "review_web_assets/*.html", "review_web_assets/*.css", "review_web_assets/*.js",
 ]
 
 [tool.pytest.ini_options]

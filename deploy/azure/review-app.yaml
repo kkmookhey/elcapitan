@@ -1,0 +1,51 @@
+location: Central India
+name: elcapitan-review-durable
+resourceGroup: elcapitan-remediation-lab-rg
+type: Microsoft.App/containerApps
+identity:
+  type: UserAssigned
+  userAssignedIdentities:
+    /subscriptions/8cd2b4cc-c789-466d-a8f7-8f51fb20985d/resourceGroups/elcapitan-remediation-lab-rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/elcapitan-demo-pull: {}
+properties:
+  managedEnvironmentId: /subscriptions/8cd2b4cc-c789-466d-a8f7-8f51fb20985d/resourceGroups/elcapitan-remediation-lab-rg/providers/Microsoft.App/managedEnvironments/elcapitan-shadow-private-env
+  configuration:
+    activeRevisionsMode: Single
+    ingress:
+      allowInsecure: false
+      external: true
+      targetPort: 8080
+      transport: Auto
+      traffic:
+        - latestRevision: true
+          weight: 100
+    registries:
+      - server: ca7b25e7d425acr.azurecr.io
+        identity: /subscriptions/8cd2b4cc-c789-466d-a8f7-8f51fb20985d/resourceGroups/elcapitan-remediation-lab-rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/elcapitan-demo-pull
+    secrets:
+      - name: database-url
+      - name: review-access-token
+  template:
+    containers:
+      - name: elcapitan-review-durable
+        image: ca7b25e7d425acr.azurecr.io/elcapitan-demo:20260827-review.1
+        command:
+          - elcapitan
+        args:
+          - serve-review
+          - --host
+          - 0.0.0.0
+          - --port
+          - "8080"
+          - --workdir
+          - /data/review
+        env:
+          - name: ELCAPITAN_REVIEW_ACCESS_TOKEN
+            secretRef: review-access-token
+          - name: ELCAPITAN_DATABASE_URL
+            secretRef: database-url
+        resources:
+          cpu: 0.5
+          memory: 1Gi
+    scale:
+      minReplicas: 1
+      maxReplicas: 1

@@ -48,6 +48,28 @@ ambient cloud profiles are ignored. See the
 real environment. Use the [first customer pilot profile](docs/first-customer-pilot.md)
 to scope the CTO access request and select the initial account or subscription.
 
+## Human decision plane
+
+Run the review gate as a separate service over the same durable database:
+
+```bash
+export ELCAPITAN_REVIEW_ACCESS_TOKEN='use-a-different-random-value-with-at-least-24-characters'
+export ELCAPITAN_DATABASE_URL='postgresql://...'
+UV_CACHE_DIR=/private/tmp/elcapitan-uv-cache \
+  uv run elcapitan serve-review --workdir .elcapitan-review
+```
+
+The review gate shows only the eight records referenced by the case's current
+human-review package, verifies and displays the exact Terraform source diff,
+and requires a typed package-specific confirmation for approval or rejection.
+Approval creates an immutable package-hash-bound `ChangeApproval.v1` and a
+durable scheduled job. Rejection creates an immutable `ChangeRejection.v1` and
+no job. The service has no execution or model endpoint and should run without a
+cloud mutation identity.
+
+Shared-token authentication is a non-production bridge. Replace it with the
+trusted Entra ID approval adapter before accepting customer change approvals.
+
 ## Current product slice
 
 The current implementation can:

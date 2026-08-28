@@ -118,6 +118,85 @@ class ApprovalService:
 
 
 @dataclass(frozen=True)
+class VerifiedRejection:
+    rejection_id: str
+    case_id: str
+    review_package_id: str
+    approver: str
+    authenticated_at: str
+    authentication_method: str
+    reason: str
+    statement: str
+
+    def __post_init__(self) -> None:
+        required = asdict(self)
+        missing = [name for name, value in required.items() if not value]
+        if missing:
+            raise ValueError("verified rejection is missing: " + ", ".join(missing))
+
+
+@dataclass(frozen=True)
+class RejectionOutcome:
+    case: RemediationCase
+    record: ProductRecord
+
+
+class RejectionService:
+    """Reject an exact human-review package through a verified identity adapter."""
+
+    def __init__(self, *, case_store: CaseStore, record_store: ProductRecordStore,
+                 artifact_root, now: Callable[[], str],
+                 id_factory: Callable[[str], str] = numeric_id) -> None:
+        self.case_store = case_store
+        self.record_store = record_store
+        self.artifact_root = Path(artifact_root)
+        self.now = now
+        self.id_factory = id_factory
+        self.workflow = WorkflowCoordinator(case_store)
+        self.collector = Collector(
+            "elcapitan-rejection-gate", "0.1.0", "trusted-approval-adapter")
+
+    def reject(self, assertion: VerifiedRejection) -> RejectionOutcome:
+        case = self.case_store.get(assertion.case_id)
+        if case.state is not CaseState.AWAITING_APPROVAL:
+            raise ActionPlaneError(
+                f"case {case.case_id} must be awaiting_approval, not {case.state}")
+        expected_package = case.record_ids.get("human_review_package_id")
+        if assertion.review_package_id != expected_package:
+            raise ActionPlaneError("rejection is not bound to this case's review package")
+        package = self.record_store.get(assertion.review_package_id)
+        if package.case_id != case.case_id or package.record_type != "HumanReviewPackage.v1":
+            raise ActionPlaneError("rejection package has the wrong owner or type")
+        now = self.now()
+        if parse_timestamp(assertion.authenticated_at) > parse_timestamp(now):
+            raise ActionPlaneError("rejection authentication timestamp is in the future")
+        binding = sha256_bytes(canonical_json(_jsonable(package.body)))
+        run_dir = (
+            self.artifact_root / "cases" / case.case_id / "rejection" /
+            assertion.rejection_id
+        )
+        rejection_ref = write_evidence(
+            run_dir, self.id_factory("EVD"), "verified_human_rejection",
+            canonical_json({**asdict(assertion), "review_package_sha256": binding}),
+            self.collector, sensitivity="restricted", now=now)
+        record = ProductRecord(
+            record_id=assertion.rejection_id, case_id=case.case_id,
+            record_type="ChangeRejection.v1", schema_version=1, created_at=now,
+            body={**asdict(assertion), "review_package_sha256": binding,
+                  "plan_id": case.record_ids["change_plan_id"],
+                  "window_id": case.record_ids["change_window_id"]},
+            evidence_ids=(rejection_ref.evidence_id,))
+        self.record_store.put(record)
+        case = self.workflow.advance(
+            case.case_id, CaseTransition.REJECT,
+            event_id=self.id_factory("EVT"), occurred_at=now,
+            actor=f"approver:{assertion.approver}",
+            record_ids={"rejection_id": assertion.rejection_id},
+            evidence_ids=record.evidence_ids, detail=assertion.reason)
+        return RejectionOutcome(case=case, record=record)
+
+
+@dataclass(frozen=True)
 class ExecutionContext:
     case: RemediationCase
     plan: ProductRecord

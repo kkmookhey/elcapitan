@@ -195,6 +195,12 @@ def _parser() -> argparse.ArgumentParser:
     shadow.add_argument("--host", default="127.0.0.1")
     shadow.add_argument("--port", type=int, default=8770)
     shadow.add_argument("--workdir", type=Path, default=Path(".elcapitan-shadow"))
+    review_server = sub.add_parser(
+        "serve-review", help="serve the authenticated human decision plane")
+    review_server.add_argument("--host", default="127.0.0.1")
+    review_server.add_argument("--port", type=int, default=8780)
+    review_server.add_argument(
+        "--workdir", type=Path, default=Path(".elcapitan-review"))
     show = sub.add_parser("show-review", help="print a case's human review package")
     show.add_argument("--case", required=True)
     show.add_argument("--db", type=Path, required=True)
@@ -1014,6 +1020,12 @@ def main(argv=None) -> int:
             raise ValueError("--port must be between 0 and 65535")
         from .shadow_web import run_shadow_server
         run_shadow_server(host=args.host, port=args.port, workdir=args.workdir)
+        return 0
+    if args.command == "serve-review":
+        if not 0 <= args.port <= 65535:
+            raise ValueError("--port must be between 0 and 65535")
+        from .review_web import run_review_server
+        run_review_server(host=args.host, port=args.port, workdir=args.workdir)
         return 0
     if args.command == "show-review":
         return _show_review(args)
