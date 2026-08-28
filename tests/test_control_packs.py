@@ -24,7 +24,7 @@ def test_builtin_registry_is_composed_from_service_packs():
         "aws-s3", "azure-app-service", "azure-key-vault", "azure-network", "azure-sql",
         "azure-storage"}
     registry = builtin_registry()
-    assert len(registry.list()) == 25
+    assert len(registry.list()) == 26
     assert registry.get("AZURE", "sqlserver_tde_encrypted_with_cmk").pack_id == (
         "azure-sql")
     assert registry.get(
@@ -96,6 +96,11 @@ def test_pack_rejects_a_definition_owned_by_another_pack():
             "network_rule_set": {"bypass": "None"}}, True),
         ("storage_ensure_azure_services_are_trusted_to_access_is_enabled", {
             "network_rule_set": {"bypass": "Logging,AzureServices"}}, False),
+        ("storage_key_rotation_90_days", {"key_policy": None}, True),
+        ("storage_key_rotation_90_days", {
+            "key_policy": {"keyExpirationPeriodInDays": 91}}, True),
+        ("storage_key_rotation_90_days", {
+            "key_policy": {"keyExpirationPeriodInDays": 90}}, False),
     ],
 )
 def test_storage_pack_matches_pinned_prowler_truth_conditions(
@@ -123,6 +128,9 @@ def test_storage_pack_matches_pinned_prowler_truth_conditions(
             "blob_container_delete_retention_policy": {"enabled": 1}}),
         ("storage_ensure_azure_services_are_trusted_to_access_is_enabled", {
             "network_rule_set": {"bypass": None}}),
+        ("storage_key_rotation_90_days", {
+            "key_policy": {"keyExpirationPeriodInDays": "90"}}),
+        ("storage_key_rotation_90_days", {"key_policy": []}),
     ],
 )
 def test_storage_pack_rejects_malformed_evidence(rule_id, values):

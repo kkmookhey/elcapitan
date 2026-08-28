@@ -152,6 +152,27 @@ def _trusted_azure_services(values) -> ControlEvaluation:
     )
 
 
+def _key_rotation_90_days(values) -> ControlEvaluation:
+    policy = require(values, "key_policy")
+    if policy is None:
+        days = None
+    elif isinstance(policy, dict):
+        days = policy.get("keyExpirationPeriodInDays")
+        if days is not None and (not isinstance(days, int) or isinstance(days, bool)):
+            raise ValueError(
+                "live storage key policy has invalid keyExpirationPeriodInDays")
+    else:
+        raise ValueError(f"live storage state has invalid key_policy {policy!r}")
+    valid = days is not None and 1 <= days <= 90
+    if days is None or days == 0:
+        reason = "storage account has no key expiration period set"
+    elif valid:
+        reason = f"storage key expiration period is {days} days"
+    else:
+        reason = f"storage key expiration period is outside 1-90 days: {days}"
+    return ControlEvaluation(confirmed=not valid, reason=reason)
+
+
 AZURE_STORAGE_PACK = ControlPack(
     pack_id="azure-storage",
     controls=(
@@ -269,6 +290,15 @@ AZURE_STORAGE_PACK = ControlPack(
             live_validation=True, remediation_planning=False,
             live_execution=False, evidence_aspects=("network_rule_set",),
             evaluator=_trusted_azure_services,
+        ),
+        ControlDefinition(
+            pack_id="azure-storage", provider="azure",
+            rule_id="storage_key_rotation_90_days",
+            resource_family="storage_account",
+            resource_types=("microsoft.storage/storageaccounts",),
+            live_validation=True, remediation_planning=False,
+            live_execution=False, evidence_aspects=("key_policy",),
+            evaluator=_key_rotation_90_days,
         ),
     ),
 )

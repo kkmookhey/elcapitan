@@ -437,6 +437,7 @@ def test_expanded_storage_controls_evaluate_the_measured_eiger_lab_contract(azur
         "storage_ensure_soft_delete_is_enabled": True,
         # The measured lab account explicitly allows the AzureServices bypass.
         "storage_ensure_azure_services_are_trusted_to_access_is_enabled": False,
+        "storage_key_rotation_90_days": True,
     }
     registry = builtin_registry()
     assert {
@@ -854,6 +855,7 @@ def test_azure_managed_identity_rest_capture_matches_cli_capture(
             "minimumTlsVersion": account["minimumTlsVersion"],
             "allowCrossTenantReplication": account["allowCrossTenantReplication"],
             "encryption": account["encryption"],
+            "keyPolicy": account["keyPolicy"],
             "sasPolicy": account["sasPolicy"],
             "isHnsEnabled": account["isHnsEnabled"],
             "accessTier": account["accessTier"],

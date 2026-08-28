@@ -39,11 +39,13 @@ collector recorded both facts and the control correctly remained confirmed
 because the Prowler rule requires an `AzureKeyVault` customer-managed key.
 Sanitized copies of the three ARM response shapes are regression fixtures.
 
-The Azure Storage pack also evaluates nine account-level checks from its
+The Azure Storage pack also evaluates ten account-level checks from its
 already measured account and blob-service evidence: customer-managed key
 encryption, geo-redundant replication, infrastructure encryption, default
 network deny, private endpoints, Shared Key disablement, default Entra
 authorization, container soft delete, and the trusted-Azure-services bypass.
+The tenth control requires account-key rotation within 90 days; an absent
+`keyPolicy`, zero days, or more than 90 days remains a confirmed finding.
 These controls add no cloud calls and no permissions. Their evaluators pin
 Prowler's current defaults, including null Shared Key state behaving as enabled
 and only `Standard_GRS`, `Standard_GZRS`, `Standard_RAGRS`, and
