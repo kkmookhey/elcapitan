@@ -30,6 +30,14 @@ Validation coverage never implies mutation coverage. For example,
 `sqlserver_tde_encrypted_with_cmk` supports live validation but explicitly has
 no remediation-planning or execution capability.
 
+The Azure SQL evidence contract was also run end to end on 2026-08-28 inside a
+no-ingress Container Apps job using a user-assigned identity with `Reader` at
+one disposable SQL server and nowhere broader. The measured edge case had TDE
+enabled on its user database but a `ServiceManaged` encryption protector. The
+collector recorded both facts and the control correctly remained confirmed
+because the Prowler rule requires an `AzureKeyVault` customer-managed key.
+Sanitized copies of the three ARM response shapes are regression fixtures.
+
 ## Provider adapters
 
 Packs evaluate typed evidence; provider adapters collect it. Collection remains

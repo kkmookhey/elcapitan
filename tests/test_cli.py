@@ -55,6 +55,29 @@ def test_cli_validates_case_with_scoped_read_only_cloud_identity(
         "read-only-scanner")
 
 
+def test_cli_captures_sql_state_through_the_scoped_read_only_connector(
+        tmp_path, capsys, monkeypatch):
+    bin_dir = fake_az.install(tmp_path / "bin", fake_az.sql_responses())
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    for name, value in fake_az.scanner_credentials().items():
+        monkeypatch.setenv(name, value)
+
+    assert main([
+        "capture-cloud-state", "--provider", "azure",
+        "--resource-id", fake_az.SQL_RESOURCE_UID,
+    ]) == 0
+    document = json.loads(capsys.readouterr().out)
+    config = dict(document["config"])
+    assert config["sql_tde_protector_type"] == '"AzureKeyVault"'
+    assert json.loads(config["sql_user_database_tde"]) == {
+        "application": "Enabled"}
+    rest_calls = [call for call in fake_az.calls(bin_dir)
+                  if call["operation"] == "rest"]
+    assert len(rest_calls) == 3
+    assert all(call["argv"][call["argv"].index("--method") + 1] == "get"
+               for call in rest_calls)
+
+
 def test_cli_prepares_a_verified_terraform_plan(tmp_path, capsys, monkeypatch):
     db = tmp_path / "product.db"
     artifacts = tmp_path / "artifacts"

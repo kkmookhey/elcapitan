@@ -1,0 +1,37 @@
+{
+  "value": [
+    {
+      "id": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/elcap-sql-fixture-rg/providers/Microsoft.Sql/servers/elcap-sql-fixture/databases/validator-contract",
+      "kind": "v12.0,user",
+      "location": "centralindia",
+      "name": "validator-contract",
+      "properties": {
+        "currentServiceObjectiveName": "Basic",
+        "status": "Online"
+      },
+      "sku": {
+        "capacity": 5,
+        "name": "Basic",
+        "tier": "Basic"
+      },
+      "type": "Microsoft.Sql/servers/databases"
+    },
+    {
+      "id": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/elcap-sql-fixture-rg/providers/Microsoft.Sql/servers/elcap-sql-fixture/databases/master",
+      "kind": "v12.0,system,serverless",
+      "location": "centralindia",
+      "name": "master",
+      "properties": {
+        "currentServiceObjectiveName": "GP_SYSTEM_4",
+        "status": "Online"
+      },
+      "sku": {
+        "capacity": 4,
+        "family": "SYSTEM",
+        "name": "GP_SYSTEM",
+        "tier": "System"
+      },
+      "type": "Microsoft.Sql/servers/databases"
+    }
+  ]
+}

@@ -9,10 +9,10 @@ produced by a separate process.
 Every default Storage reply below is a REAL document, captured on 2026-08-21
 from the live Eiger deployment (`eigercorpus8dlub3zy` in `eiger-rg`,
 subscription `8cd2b4cc-...`) and committed under tests/fixtures/. SQL replies
-are sanitized contract fixtures built from Microsoft's 2023-08-01 REST schema;
-they contain no customer identifiers or observations. Tests label and exercise
-those two evidence origins separately rather than presenting synthetic SQL
-data as a measured cloud response.
+include both sanitized contract fixtures built from Microsoft's 2023-08-01 REST
+schema and sanitized documents measured on 2026-08-28 from a disposable Azure
+SQL lab. They contain no customer identifiers or observations. Tests label and
+exercise those evidence origins separately.
 
 Three measured facts drove the design of the code this fake exercises, and
 none of them would have been guessed:
@@ -126,6 +126,22 @@ def sql_tde_document() -> dict:
     return json.loads((FIXTURES / "azure-sql-tde-enabled.json").read_text())
 
 
+def sql_lab_protector_document() -> dict:
+    """Sanitized response measured from the disposable SQL validation lab."""
+    return json.loads(
+        (FIXTURES / "azure-sql-lab-service-managed-protector.json").read_text())
+
+
+def sql_lab_databases_document() -> dict:
+    """Sanitized pageless database response measured from the SQL lab."""
+    return json.loads((FIXTURES / "azure-sql-lab-databases.json").read_text())
+
+
+def sql_lab_tde_document() -> dict:
+    """Sanitized user-database TDE response measured from the SQL lab."""
+    return json.loads((FIXTURES / "azure-sql-lab-tde-enabled.json").read_text())
+
+
 def metrics_populated() -> str:
     """A REAL Transactions window containing measured activity: 15 one-minute
     points, one of them 1.0 — the health check's corpus blob read."""
@@ -190,6 +206,14 @@ def sql_responses(*, protector: dict | None = None,
                 sql_tde_document() if tde is None else tde), "exit": 0},
         ]},
     }
+
+
+def sql_lab_responses() -> dict:
+    return sql_responses(
+        protector=sql_lab_protector_document(),
+        databases=sql_lab_databases_document(),
+        tde=sql_lab_tde_document(),
+    )
 
 
 def observer_credentials() -> dict:

@@ -238,6 +238,12 @@ def _parser() -> argparse.ArgumentParser:
         "connector-preflight",
         help="check a read-only scanner connector without making a cloud request")
     preflight.add_argument("--provider", choices=("aws", "azure"), required=True)
+    capture_state = sub.add_parser(
+        "capture-cloud-state",
+        help="capture one supported resource through the scoped read-only connector")
+    capture_state.add_argument("--provider", choices=("aws", "azure"), required=True)
+    capture_state.add_argument("--resource-id", required=True)
+    capture_state.add_argument("--region", default="")
     promotion = sub.add_parser(
         "promotion-manifest",
         help="export an evidence-minimized handoff from shadow to preapproval")
@@ -1101,6 +1107,15 @@ def main(argv=None) -> int:
         json.dump(
             connector_readiness(args.provider, host_env=os.environ).to_dict(),
             sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 0
+    if args.command == "capture-cloud-state":
+        from .cloud import capture_cloud_state, to_dict, verification_env
+        environment = verification_env(dict(os.environ), provider=args.provider)
+        state = capture_cloud_state(
+            args.resource_id, provider=args.provider,
+            region=args.region, env=environment)
+        json.dump(to_dict(state), sys.stdout, indent=2)
         sys.stdout.write("\n")
         return 0
     if args.command == "promotion-manifest":

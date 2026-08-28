@@ -1,0 +1,11 @@
+{
+  "id": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/elcap-sql-fixture-rg/providers/Microsoft.Sql/servers/elcap-sql-fixture/encryptionProtector/current",
+  "kind": "servicemanaged",
+  "name": "current",
+  "properties": {
+    "autoRotationEnabled": false,
+    "serverKeyName": "ServiceManaged",
+    "serverKeyType": "ServiceManaged"
+  },
+  "type": "Microsoft.Sql/servers/encryptionProtector"
+}

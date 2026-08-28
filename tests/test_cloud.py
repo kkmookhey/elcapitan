@@ -441,6 +441,17 @@ def test_azure_sql_capture_reads_complete_cmk_and_user_database_tde_contract(azu
     assert not any("/databases/master/transparentDataEncryption/" in url for url in urls)
 
 
+def test_azure_sql_capture_matches_sanitized_disposable_lab_measurement(azure):
+    azure.responses(fake_az.sql_lab_responses())
+    config = dict(azure(resource_uid=fake_az.SQL_RESOURCE_UID).config)
+
+    assert config == {
+        "sql_tde_protector_type": '"ServiceManaged"',
+        "sql_database_inventory": '["master","validator-contract"]',
+        "sql_user_database_tde": '{"validator-contract":"Enabled"}',
+    }
+
+
 def test_azure_sql_missing_tde_state_fails_closed(azure):
     tde = fake_az.sql_tde_document()
     del tde["properties"]["state"]
