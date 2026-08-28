@@ -132,7 +132,8 @@ class PromotionReadinessService:
             str(item.record["ocsf"].get("rule_id", ""))
             for item in confirmed
             if not (capability := self.registry.get(
-                item.provider, str(item.record["ocsf"].get("rule_id", ""))))
+                item.provider, str(item.record["ocsf"].get("rule_id", "")),
+                str(item.record.get("resource", {}).get("type", ""))))
             or not capability.remediation_planning
         })
         if unsupported:

@@ -287,7 +287,8 @@ class ShadowFleetControlPlane:
         supported = [
             item for item in findings
             if (capability := self.registry.get(
-                item.provider, str(item.record["ocsf"].get("rule_id", ""))))
+                item.provider, str(item.record["ocsf"].get("rule_id", "")),
+                str(item.record.get("resource", {}).get("type", ""))))
             and capability.live_validation
         ]
         if not supported:

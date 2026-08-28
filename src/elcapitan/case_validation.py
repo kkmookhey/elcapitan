@@ -9,12 +9,16 @@ from typing import Callable, Mapping
 
 from .cases import CaseState, CaseTransition, RemediationCase
 from .cloud import CloudState, capture_cloud_state, to_dict, verification_env
+from .control_packs import ControlPackRegistry, builtin_registry
 from .evidence import Collector, write_evidence
 from .finding_store import FindingStore, StoredFinding
 from .hashing import canonical_json
 from .intake import numeric_id
 from .product_records import ProductRecord, ProductRecordStore
 from .workflow import CaseStore, WorkflowCoordinator
+
+
+_CONTROL_REGISTRY = builtin_registry()
 
 
 class FindingValidationStatus(StrEnum):
@@ -69,70 +73,27 @@ def _value(state: CloudState, aspect: str):
 
 
 def evaluate_finding(finding: StoredFinding, state: CloudState,
-                     *, evidence_ids: tuple[str, ...]) -> FindingValidation:
+                     *, evidence_ids: tuple[str, ...],
+                     registry: ControlPackRegistry | None = None
+                     ) -> FindingValidation:
     rule_id = finding.record["ocsf"].get("rule_id", "")
-    confirmed: bool
-    reason: str
-    if rule_id == "storage_account_public_network_access_disabled":
-        value = _value(state, "public_network_access")
-        confirmed = str(value).lower() != "disabled"
-        reason = f"public network access is {value!r}"
-    elif rule_id == "storage_blob_public_access_level_is_disabled":
-        value = _value(state, "allow_blob_public_access")
-        confirmed = value is not False
-        reason = f"allow blob public access is {value!r}"
-    elif rule_id == "storage_blob_versioning_is_enabled":
-        value = _value(state, "blob_versioning")
-        confirmed = value is not True
-        reason = f"blob versioning is {value!r}"
-    elif rule_id == "sqlserver_tde_encrypted_with_cmk":
-        protector_type = _value(state, "sql_tde_protector_type")
-        database_tde = _value(state, "sql_user_database_tde")
-        if protector_type not in {"AzureKeyVault", "ServiceManaged"}:
-            raise ValueError(
-                f"live SQL state has unknown TDE protector type {protector_type!r}")
-        if not isinstance(database_tde, dict):
-            raise ValueError("live SQL state has no user-database TDE map")
-        invalid = {
-            name: value for name, value in database_tde.items()
-            if (not isinstance(name, str) or not name
-                or value not in {"Enabled", "Disabled"})
-        }
-        if invalid:
-            raise ValueError(
-                f"live SQL state has invalid user-database TDE values: {invalid!r}")
-        disabled = sorted(
-            name for name, value in database_tde.items() if value != "Enabled")
-        confirmed = protector_type != "AzureKeyVault" or bool(disabled)
-        if protector_type != "AzureKeyVault":
-            reason = f"TDE protector type is {protector_type!r}, not 'AzureKeyVault'"
-        elif disabled:
-            reason = "TDE is disabled for user database(s): " + ", ".join(disabled)
-        elif database_tde:
-            reason = (
-                "TDE protector is 'AzureKeyVault' and TDE is enabled for every "
-                "user database")
-        else:
-            # Current Prowler emits no result when a logical server has only
-            # the immutable master database. A stale finding therefore no
-            # longer describes a remediable user-database risk.
-            reason = "SQL server has no user databases; only master is excluded"
-    elif rule_id == "s3_bucket_object_versioning":
-        value = _value(state, "versioning")
-        enabled = isinstance(value, dict) and value.get("Status") == "Enabled"
-        confirmed = not enabled
-        reason = f"bucket versioning status is {value.get('Status')!r}" if isinstance(
-            value, dict) else f"bucket versioning response is {value!r}"
-    else:
+    resource_type = str(finding.record.get("resource", {}).get("type", ""))
+    definition = (registry or _CONTROL_REGISTRY).get(
+        finding.provider, rule_id, resource_type)
+    if definition is None:
         return FindingValidation(
             finding_id=finding.finding_id, rule_id=rule_id,
             status=FindingValidationStatus.UNSUPPORTED,
-            reason=f"no deterministic live evaluator is registered for rule {rule_id!r}")
+            reason=(f"no deterministic live evaluator is registered for provider "
+                    f"{finding.provider!r}, rule {rule_id!r}, and resource type "
+                    f"{resource_type!r}"))
+    values = {aspect: _value(state, aspect) for aspect, _ in state.config}
+    evaluation = definition.evaluator(values)
     return FindingValidation(
         finding_id=finding.finding_id, rule_id=rule_id,
-        status=(FindingValidationStatus.CONFIRMED if confirmed
+        status=(FindingValidationStatus.CONFIRMED if evaluation.confirmed
                 else FindingValidationStatus.NOT_CONFIRMED),
-        reason=reason, evidence_ids=evidence_ids)
+        reason=evaluation.reason, evidence_ids=evidence_ids)
 
 
 class CaseValidationService:

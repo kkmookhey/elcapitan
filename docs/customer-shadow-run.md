@@ -28,6 +28,10 @@ reuse the public synthetic lifecycle demo's `/data` volume or cloud identity.
 
 Support is explicit and fails closed:
 
+Definitions are installed through the
+[control-pack architecture](control-packs.md); the fleet workflow remains
+provider-neutral while each service retains its exact evidence semantics.
+
 | Provider | Rule | Live validation | Live execution |
 |---|---|---:|---:|
 | AWS | `s3_bucket_object_versioning` | yes | no |

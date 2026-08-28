@@ -39,9 +39,13 @@ def product(tmp_path):
     return tmp_path, cases, findings, records, ids, intake
 
 
-def raw(rule_id="storage_account_public_network_access_disabled"):
+def raw(rule_id="storage_account_public_network_access_disabled", *, resource_type=None):
     document = json.loads(FIXTURE.read_text())
     document["finding_info"]["analytic"]["uid"] = rule_id
+    if resource_type is not None:
+        document["resources"][0]["type"] = resource_type
+    elif rule_id.startswith("sqlserver_"):
+        document["resources"][0]["type"] = "microsoft.sql/servers"
     return document
 
 
@@ -55,6 +59,7 @@ def state(public_network_access="Enabled"):
 
 
 def sql_state(protector="AzureKeyVault", database_tde=None):
+    tde = {"application": "Enabled"} if database_tde is None else database_tde
     return CloudState(
         provider="azure",
         resource_uid=("/subscriptions/8cd2b4cc-c789-466d-a8f7-8f51fb20985d/"
@@ -62,8 +67,9 @@ def sql_state(protector="AzureKeyVault", database_tde=None):
                       "storageAccounts/eigercorpus8dlub3zy"),
         config=(
             ("sql_tde_protector_type", json.dumps(protector)),
-            ("sql_user_database_tde", json.dumps(
-                {"application": "Enabled"} if database_tde is None else database_tde)),
+            ("sql_database_inventory", json.dumps(
+                ["master", *tde.keys()])),
+            ("sql_user_database_tde", json.dumps(tde)),
         ))
 
 
@@ -108,6 +114,18 @@ def test_unsupported_rule_blocks_instead_of_guessing(product):
         opened.case.case_id, host_env={})
     assert outcome.case.state is CaseState.BLOCKED
     assert outcome.findings[0].status is FindingValidationStatus.UNSUPPORTED
+
+
+def test_registered_rule_on_wrong_resource_type_is_unsupported(product):
+    *_, intake = product
+    opened = intake.ingest(raw(
+        "sqlserver_tde_encrypted_with_cmk",
+        resource_type="microsoft.storage/storageaccounts"), tenant_id="TEN-001")
+    outcome = validator(product, lambda finding, env: sql_state()).validate(
+        opened.case.case_id, host_env={})
+    assert outcome.case.state is CaseState.BLOCKED
+    assert outcome.findings[0].status is FindingValidationStatus.UNSUPPORTED
+    assert "resource type" in outcome.findings[0].reason
 
 
 def test_sql_tde_cmk_finding_is_not_confirmed_when_every_user_database_is_encrypted(

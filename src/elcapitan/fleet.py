@@ -13,66 +13,35 @@ from .constants import (
     AZURE_SCANNER_MANAGED_IDENTITY_CLIENT_ID,
     scanner_env_map,
 )
+from .control_packs import ControlDefinition, builtin_registry
 from .finding_store import FindingStore, StoredFinding
 from .portfolio import PortfolioItem, PortfolioService
 from .product_records import ProductRecordStore
 from .workflow import CaseStore
 
 
-@dataclass(frozen=True)
-class ControlCapability:
-    provider: str
-    rule_id: str
-    resource_family: str
-    live_validation: bool
-    remediation_planning: bool
-    live_execution: bool
-    evidence_aspects: tuple[str, ...]
-
-    def to_dict(self) -> dict:
-        value = asdict(self)
-        value["evidence_aspects"] = list(self.evidence_aspects)
-        return value
-
-
-_CAPABILITIES = (
-    ControlCapability(
-        "aws", "s3_bucket_object_versioning", "s3_bucket",
-        True, True, False, ("versioning",),
-    ),
-    ControlCapability(
-        "azure", "storage_account_public_network_access_disabled", "storage_account",
-        True, True, True,
-        ("public_network_access", "network_rule_set", "private_endpoint_connections"),
-    ),
-    ControlCapability(
-        "azure", "storage_blob_public_access_level_is_disabled", "storage_account",
-        True, True, True, ("allow_blob_public_access",),
-    ),
-    ControlCapability(
-        "azure", "storage_blob_versioning_is_enabled", "storage_account",
-        True, True, False, ("blob_versioning",),
-    ),
-    ControlCapability(
-        "azure", "sqlserver_tde_encrypted_with_cmk", "sql_server",
-        True, False, False,
-        ("sql_tde_protector_type", "sql_database_inventory",
-         "sql_user_database_tde"),
-    ),
-)
+ControlCapability = ControlDefinition
 
 
 class CapabilityRegistry:
-    def __init__(self, capabilities: tuple[ControlCapability, ...] = _CAPABILITIES) -> None:
-        self._capabilities = tuple(capabilities)
+    """Compatibility facade over installed deterministic control packs."""
+    def __init__(self, capabilities: tuple[ControlCapability, ...] | None = None) -> None:
+        self._capabilities = tuple(
+            builtin_registry().list() if capabilities is None else capabilities)
         self._by_key = {
             (item.provider, item.rule_id): item for item in self._capabilities
         }
         if len(self._by_key) != len(self._capabilities):
             raise ValueError("provider capabilities must be unique by provider and rule")
 
-    def get(self, provider: str, rule_id: str) -> ControlCapability | None:
-        return self._by_key.get((provider.lower(), rule_id))
+    def get(self, provider: str, rule_id: str,
+            resource_type: str = "") -> ControlCapability | None:
+        capability = self._by_key.get((provider.lower(), rule_id))
+        if (capability is not None and resource_type
+                and resource_type.lower() not in {
+                    item.lower() for item in capability.resource_types}):
+            return None
+        return capability
 
     def list(self, *, provider: str | None = None) -> tuple[ControlCapability, ...]:
         selected = (
@@ -258,7 +227,9 @@ class FleetSnapshotService:
               portfolio: PortfolioItem | None) -> FleetCase:
         findings = self.finding_store.list_for_case(case.case_id)
         supported = sum(
-            self.registry.get(finding.provider, self._rule(finding)) is not None
+            self.registry.get(
+                finding.provider, self._rule(finding),
+                str(finding.record.get("resource", {}).get("type", ""))) is not None
             for finding in findings
         )
         validation_counts: Counter[str] = Counter()
