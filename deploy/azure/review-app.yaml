@@ -27,7 +27,7 @@ properties:
   template:
     containers:
       - name: elcapitan-review-durable
-        image: ca7b25e7d425acr.azurecr.io/elcapitan-demo:20260827-review.1
+        image: ca7b25e7d425acr.azurecr.io/elcapitan-demo:20260827-review.2
         command:
           - elcapitan
         args:

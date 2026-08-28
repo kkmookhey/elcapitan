@@ -103,6 +103,9 @@ class ReviewControlPlane:
         if case.state not in DECISION_STATES:
             raise ReviewControlError(
                 f"case {case_id} is {case.state.value}, not in the human decision plane")
+        if not case.record_ids.get("human_review_package_id"):
+            raise ReviewControlError(
+                f"case {case_id} has no human-review package")
         return case
 
     def _record(self, case, key: str, expected_type: str) -> ProductRecord:
@@ -186,6 +189,7 @@ class ReviewControlPlane:
         cases = [
             case for case in self.cases.list_cases(tenant_id=tenant_id)
             if case.state in DECISION_STATES
+            and case.record_ids.get("human_review_package_id")
         ]
         items = []
         for case in sorted(

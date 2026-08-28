@@ -160,3 +160,20 @@ def test_stale_or_mistyped_decisions_fail_closed(tmp_path):
     mistyped["confirmation"] = "APPROVE"
     with pytest.raises(ReviewControlError, match="exactly match"):
         control.approve(mistyped)
+
+
+def test_policy_rejection_without_a_human_package_is_not_a_review_item(tmp_path):
+    control = prepared_review(tmp_path)
+    rejected = RemediationCase(
+        case_id="CASE-POLICY-REJECT", tenant_id="TEN-REVIEW",
+        finding_ids=("FIND-2",), asset_ids=("azure:other",),
+        service_ids=(), state=CaseState.REJECTED, version=5,
+        created_at=NOW, updated_at=NOW,
+        record_ids={"policy_decision_id": "POL-REJECT"})
+    control.cases.create(rejected)
+
+    queue = control.queue(tenant_id="TEN-REVIEW")
+
+    assert [item["case_id"] for item in queue["cases"]] == ["CASE-REVIEW"]
+    with pytest.raises(ReviewControlError, match="no human-review package"):
+        control.detail(tenant_id="TEN-REVIEW", case_id="CASE-POLICY-REJECT")
