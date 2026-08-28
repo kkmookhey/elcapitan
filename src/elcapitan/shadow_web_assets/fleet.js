@@ -170,7 +170,16 @@ function fact(label, value) {
 function recordSummary(record) {
   const body = record.body || {};
   const findings = body.findings || [];
-  if (findings.length) return findings.map(item => `${humanize(item.status)}: ${item.reason}`).join(" · ");
+  if (findings.length) {
+    const counts = findings.reduce((totals, item) => {
+      const status = humanize(item.status || "unknown");
+      totals[status] = (totals[status] || 0) + 1;
+      return totals;
+    }, {});
+    const outcomes = Object.entries(counts).map(([status, count]) => `${count} ${status.toLowerCase()}`);
+    const reasons = [...new Set(findings.map(item => item.reason).filter(Boolean))];
+    return `${outcomes.join(" · ")}${reasons.length ? ` · ${reasons.join(" · ")}` : ""}`;
+  }
   if (record.record_type === "IaCLink.v1") return `Linked ${body.link?.resource_address || body.link?.source_path || "Terraform resource"}`;
   if (record.record_type === "RemediationPlan.v1") return `${humanize(body.status)}: ${body.plan?.objective || "Remediation plan"}`;
   if (record.record_type === "SREReview.v1") return `${humanize(body.decision)}: ${body.summary}`;
@@ -181,11 +190,50 @@ function recordSummary(record) {
   return "Evidence record captured";
 }
 
-function renderRecords(records) {
+const packageRecordKeys = [
+  ["validation_result_id", "Live validation"],
+  ["iac_link_id", "IaC target"],
+  ["change_plan_id", "Remediation plan"],
+  ["sre_review_id", "SRE review"],
+  ["change_window_id", "Change window"],
+  ["rollback_review_id", "Rollback review"],
+  ["policy_decision_id", "Policy gate"],
+  ["human_review_package_id", "Human decision"],
+];
+
+function recordBadge(record, current, stage) {
+  if (current) return `<span class="record-badge current">CURRENT · ${escapeHtml(stage)}</span>`;
+  const decision = String(record.body?.decision || "").toLowerCase();
+  if (decision === "reject") return '<span class="record-badge rejected">REJECTED · SUPERSEDED</span>';
+  return '<span class="record-badge superseded">SUPERSEDED</span>';
+}
+
+function renderRecord(record, {current = false, stage = ""} = {}) {
+  return `<div class="record ${current ? "current-record" : "history-record"}"><header><strong>${escapeHtml(record.record_type)}</strong>${recordBadge(record, current, stage)}</header><p>${escapeHtml(recordSummary(record))}</p><code>${escapeHtml(shortId(record.record_id))} · ${escapeHtml(record.created_at)}</code></div>`;
+}
+
+function partitionRecords(records, caseDoc) {
+  const byId = new Map(records.map(record => [record.record_id, record]));
+  const currentIds = new Set();
+  const current = packageRecordKeys.flatMap(([key, stage]) => {
+    const recordId = caseDoc.record_ids?.[key];
+    const record = recordId ? byId.get(recordId) : null;
+    if (!record) return [];
+    currentIds.add(recordId);
+    return [{record, stage}];
+  });
+  const history = records.filter(record => !currentIds.has(record.record_id)).reverse();
+  return {current, history};
+}
+
+function renderEvidenceRecords(records, caseDoc) {
   if (!records.length) return '<p class="empty compact">No validation product records yet.</p>';
-  return records.map(record => {
-    return `<div class="record"><strong>${escapeHtml(record.record_type)}</strong><p>${escapeHtml(recordSummary(record))}</p><code>${escapeHtml(shortId(record.record_id))} · ${escapeHtml(record.created_at)}</code></div>`;
-  }).join("");
+  const {current, history} = partitionRecords(records, caseDoc);
+  const packageRecord = current.find(item => item.record.record_type === "HumanReviewPackage.v1")?.record;
+  const executionStatus = humanize(packageRecord?.body?.execution_status || "not started");
+  const currentMarkup = current.length ? current.map(item => renderRecord(item.record, {current:true, stage:item.stage})).join("") : '<p class="empty compact">No authoritative package has been assembled yet.</p>';
+  const historyMarkup = history.length ? `<details class="record-history"><summary>Superseded history <span>${history.length} record${history.length === 1 ? "" : "s"}</span></summary><p class="history-note">These records are accurate historical evidence, but they are not part of the current approval package.</p>${history.map(record => renderRecord(record)).join("")}</details>` : "";
+  return `<div class="package-banner"><div><strong>Authoritative package</strong><p>Only records marked CURRENT govern the next human decision.</p></div><span class="execution-state">Execution ${escapeHtml(executionStatus)}</span></div>${currentMarkup}${historyMarkup}`;
 }
 
 async function openCase(caseId) {
@@ -203,11 +251,11 @@ async function openCase(caseId) {
     <div class="detail-actions">${item && canValidate(item) ? `<button class="primary" data-validate="${escapeHtml(caseId)}">Validate against live ${escapeHtml(item.provider.toUpperCase())}</button>` : ""}<span class="pill">${escapeHtml(humanize(caseDoc.state))}</span>${item?.synthetic ? '<span class="pill sample-pill">Synthetic sample</span>' : ""}</div>
     <div class="detail-grid">
       <section class="detail-section"><h3>Case identity</h3>${fact("Case", caseDoc.case_id)}${fact("Tenant", caseDoc.tenant_id)}${fact("Provider", finding.provider)}${fact("Account", finding.account)}${fact("Service", (caseDoc.service_ids || []).join(", ") || "Unmapped")}</section>
-      <section class="detail-section"><h3>Control & target</h3>${fact("Rule", ocsf.rule_id)}${fact("Resource", finding.resource_uid)}${fact("Severity", finding.record?.severity)}${fact("Findings", caseDoc.finding_ids.length)}</section>
+      <section class="detail-section"><h3>Control & target</h3>${fact("Rule", ocsf.rule_id)}${fact("Resource", finding.resource_uid)}${fact("Severity", finding.record?.severity)}${fact("Scanner observations", caseDoc.finding_ids.length)}${fact("Confirmed controls", (promotion.confirmed_rule_ids || []).length)}</section>
       <section class="detail-section"><h3>Risk rationale</h3>${(caseDoc.priority?.factors || []).map(value => `<div class="record"><p>${escapeHtml(value)}</p></div>`).join("") || '<p class="empty compact">Not assessed.</p>'}</section>
       <section class="detail-section"><h3>Shadow safety boundary</h3>${fact("Live validation", safety.mode === "shadow" ? "Allowed" : "Unknown")}${fact("External models", safety.external_models ? "Allowed" : "Disabled")}${fact("Approval", safety.approval ? "Allowed" : "Unavailable")}${fact("Scheduling", safety.scheduling ? "Allowed" : "Unavailable")}${fact("Execution", safety.execution ? "Allowed" : "Unavailable")}</section>
       <section class="detail-section full"><h3>Operational review</h3>${fact("Status", humanize(promotion.status))}${fact("Promotion token", shortId(promotion.promotion_token, 48))}${fact("Confirmed controls", (promotion.confirmed_rule_ids || []).join(", ") || "None")}${(promotion.blockers || []).map(value => `<div class="record"><p>${escapeHtml(value)}</p></div>`).join("")}${promotion.status === "ready_for_preapproval" ? (promotion.required_inputs || []).map(value => `<div class="record"><p>${escapeHtml(value)}</p></div>`).join("") : ""}</section>
-      <section class="detail-section full"><h3>Evidence & decision records</h3>${renderRecords(detail.records)}</section>
+      <section class="detail-section full"><h3>${caseDoc.state === "awaiting_approval" ? "Current approval package" : "Current evidence chain"}</h3>${renderEvidenceRecords(detail.records, caseDoc)}</section>
       <section class="detail-section full"><h3>Immutable case timeline</h3>${detail.events.map(event => `<div class="record"><strong>${escapeHtml(humanize(event.transition))}</strong><p>${escapeHtml(humanize(event.from_state))} → ${escapeHtml(humanize(event.to_state))} · ${escapeHtml(event.actor)}</p><code>${escapeHtml(event.occurred_at)} · ${escapeHtml(shortId(event.event_id))}</code></div>`).join("")}</section>
     </div>`;
   $("#detail-dialog").showModal();

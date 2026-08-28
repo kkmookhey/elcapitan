@@ -44,6 +44,13 @@ def test_shadow_api_intake_fleet_and_case_detail_are_authenticated(tmp_path):
         assert status == 200
         assert headers["Content-Type"].startswith("text/html")
         assert b"Customer shadow fleet" in content
+        status, headers, content = request(
+            server, "GET", "/fleet.js", headers={"Cookie": cookie})
+        assert status == 200
+        assert headers["Content-Type"].startswith("text/javascript")
+        assert b"Current approval package" in content
+        assert b"Superseded history" in content
+        assert b"Only records marked CURRENT" in content
         body = json.dumps({
             "tenant_id": "TEN-API",
             "findings": [json.loads(FIXTURE.read_text())],
