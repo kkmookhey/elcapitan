@@ -245,12 +245,19 @@ def test_cli_reports_capabilities_connector_preflight_and_full_fleet(
 
     assert main(["capabilities", "--provider", "azure"]) == 0
     capabilities = json.loads(capsys.readouterr().out)
-    assert len(capabilities["capabilities"]) == 4
+    assert len(capabilities["capabilities"]) == 7
     sql = next(item for item in capabilities["capabilities"]
                if item["rule_id"] == "sqlserver_tde_encrypted_with_cmk")
     assert sql["live_validation"] is True
     assert sql["remediation_planning"] is False
     assert sql["live_execution"] is False
+    key_vault = [
+        item for item in capabilities["capabilities"]
+        if item["rule_id"].startswith("keyvault_")]
+    assert len(key_vault) == 3
+    assert all(item["live_validation"] is True for item in key_vault)
+    assert all(item["remediation_planning"] is False for item in key_vault)
+    assert all(item["live_execution"] is False for item in key_vault)
     assert all(item["provider"] == "azure" for item in capabilities["capabilities"])
 
     monkeypatch.setenv("PATH", "")

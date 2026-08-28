@@ -21,8 +21,8 @@ Each installed pack registers explicit definitions containing:
 - a deterministic evaluator;
 - separate validation, planning, and execution capability flags.
 
-The built-in v1 packs are currently `aws-s3`, `azure-storage`, and
-`azure-sql`. Registration is fail-closed: duplicate provider/rule keys,
+The built-in v1 packs are currently `aws-s3`, `azure-storage`, `azure-sql`, and
+`azure-key-vault`. Registration is fail-closed: duplicate provider/rule keys,
 mismatched pack ownership, missing evidence contracts, and mismatched resource
 types are rejected.
 
@@ -37,6 +37,22 @@ enabled on its user database but a `ServiceManaged` encryption protector. The
 collector recorded both facts and the control correctly remained confirmed
 because the Prowler rule requires an `AzureKeyVault` customer-managed key.
 Sanitized copies of the three ARM response shapes are regression fixtures.
+
+The Azure Key Vault pack pins the current Prowler truth conditions for
+`keyvault_rbac_enabled`, `keyvault_private_endpoints`, and
+`keyvault_recoverable`. All three consume one Key Vault management-plane GET;
+they never list keys, secrets, or certificates. A no-ingress managed-identity
+run on 2026-08-28 measured an important absent-property contract: a vault with
+purge protection disabled omitted `enablePurgeProtection`, and a vault with no
+private endpoints omitted `privateEndpointConnections`. The collector records
+those states as `null` and zero respectively, so they remain confirmed failures
+instead of becoming unavailable evidence. The sanitized ARM document is a
+regression fixture. Planning and execution remain disabled for this pack.
+
+Semantics are pinned to the official [Prowler Key Vault check
+implementations](https://github.com/prowler-cloud/prowler/tree/master/prowler/providers/azure/services/keyvault)
+and fields to Microsoft's [Vaults - Get 2024-11-01 REST
+contract](https://learn.microsoft.com/rest/api/keyvault/keyvault/vaults/get?view=rest-keyvault-keyvault-2024-11-01).
 
 ## Provider adapters
 

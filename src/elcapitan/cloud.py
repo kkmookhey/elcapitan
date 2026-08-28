@@ -328,6 +328,7 @@ AZURE_BLOB_SERVICE_ASPECTS = {
 # Compared case-insensitively because Prowler emits lower-case resource types
 # while ARM ids preserve provider casing.
 AZURE_SUPPORTED_TYPES = (
+    "microsoft.keyvault/vaults",
     "microsoft.sql/servers",
     "microsoft.storage/storageaccounts",
 )
@@ -335,6 +336,7 @@ AZURE_RESOURCE_MANAGER = "https://management.azure.com"
 AZURE_STORAGE_API_VERSION = "2025-08-01"
 AZURE_BLOB_API_VERSION = "2025-06-01"
 AZURE_SQL_API_VERSION = "2023-08-01"
+AZURE_KEY_VAULT_API_VERSION = "2024-11-01"
 
 # The critical Prowler control `sqlserver_tde_encrypted_with_cmk` is not a
 # single-property check. It requires a CMK-backed server protector and TDE on
@@ -348,6 +350,13 @@ AZURE_SQL_TDE_ASPECTS = (
     "sql_user_database_tde",
 )
 _AZURE_MAX_LIST_PAGES = 100
+
+AZURE_KEY_VAULT_ASPECTS = (
+    "keyvault_enable_rbac_authorization",
+    "keyvault_enable_soft_delete",
+    "keyvault_enable_purge_protection",
+    "keyvault_private_endpoint_connection_count",
+)
 
 
 def _arm_parts(resource_uid: str) -> tuple[str, str, str, str]:
@@ -638,6 +647,49 @@ def _capture_azure_sql(resource_uid: str, *, read_url) -> tuple[tuple[str, str],
         for aspect in AZURE_SQL_TDE_ASPECTS)
 
 
+def _capture_azure_key_vault(
+        resource_uid: str, *, read_url) -> tuple[tuple[str, str], ...]:
+    """Capture the management-plane evidence shared by three Prowler checks."""
+    document = read_url(
+        _arm_url(resource_uid, api_version=AZURE_KEY_VAULT_API_VERSION),
+        what=f"the Key Vault {resource_uid}")
+    properties = document.get("properties")
+    if not isinstance(properties, dict):
+        raise ValueError(
+            f"could not read the Key Vault {resource_uid}: response has no "
+            "properties object")
+
+    values = {}
+    for aspect, property_name in (
+        ("keyvault_enable_rbac_authorization", "enableRbacAuthorization"),
+        ("keyvault_enable_soft_delete", "enableSoftDelete"),
+        ("keyvault_enable_purge_protection", "enablePurgeProtection"),
+    ):
+        value = properties.get(property_name)
+        if value is not None and not isinstance(value, bool):
+            raise ValueError(
+                f"could not read {aspect} of {resource_uid}: {property_name} "
+                f"is {value!r}, not a boolean or null")
+        # Prowler treats an absent/null SDK property as false for all three
+        # checks. Preserve null as evidence instead of inventing an explicit
+        # false value, while the evaluator implements that exact truthiness.
+        values[aspect] = value
+
+    connections = properties.get("privateEndpointConnections")
+    if connections is None:
+        connections = []
+    if (not isinstance(connections, list)
+            or any(not isinstance(item, dict) for item in connections)):
+        raise ValueError(
+            f"could not read Key Vault private endpoints of {resource_uid}: "
+            "privateEndpointConnections is not an object list")
+    values["keyvault_private_endpoint_connection_count"] = len(connections)
+
+    return tuple(
+        (aspect, canonical_json(values[aspect]).decode("utf-8"))
+        for aspect in AZURE_KEY_VAULT_ASPECTS)
+
+
 def _capture_azure(resource_uid: str, region: str, env: dict) -> tuple[tuple[str, str], ...]:
     # `region` is accepted for signature symmetry with _capture_aws and
     # deliberately unused: an ARM resource id already names the subscription
@@ -654,6 +706,11 @@ def _capture_azure(resource_uid: str, region: str, env: dict) -> tuple[tuple[str
         env.get("ELCAP_AZURE_AUTH_MODE") == AZURE_MANAGED_IDENTITY_AUTH_MODE)
     if managed_identity:
         token = _managed_identity_token(env)
+        if arm_type.lower() == "microsoft.keyvault/vaults":
+            return _capture_azure_key_vault(
+                resource_uid,
+                read_url=lambda url, *, what: _arm_url_json(
+                    url, token=token, what=what))
         if arm_type.lower() == "microsoft.sql/servers":
             return _capture_azure_sql(
                 resource_uid,
@@ -694,6 +751,12 @@ def _capture_azure(resource_uid: str, region: str, env: dict) -> tuple[tuple[str
             raise ValueError(
                 f"the read-only scanner principal could not sign in to Azure: "
                 f"az login exited {code}: {stderr.strip()}")
+
+        if arm_type.lower() == "microsoft.keyvault/vaults":
+            return _capture_azure_key_vault(
+                resource_uid,
+                read_url=lambda url, *, what: _az_rest_json(
+                    az_env, url, what=what))
 
         if arm_type.lower() == "microsoft.sql/servers":
             return _capture_azure_sql(

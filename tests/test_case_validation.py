@@ -46,6 +46,8 @@ def raw(rule_id="storage_account_public_network_access_disabled", *, resource_ty
         document["resources"][0]["type"] = resource_type
     elif rule_id.startswith("sqlserver_"):
         document["resources"][0]["type"] = "microsoft.sql/servers"
+    elif rule_id.startswith("keyvault_"):
+        document["resources"][0]["type"] = "microsoft.keyvault/vaults"
     return document
 
 
@@ -70,6 +72,22 @@ def sql_state(protector="AzureKeyVault", database_tde=None):
             ("sql_database_inventory", json.dumps(
                 ["master", *tde.keys()])),
             ("sql_user_database_tde", json.dumps(tde)),
+        ))
+
+
+def key_vault_state(*, rbac=False, soft_delete=True,
+                    purge_protection=False, private_endpoints=0):
+    return CloudState(
+        provider="azure",
+        resource_uid=("/subscriptions/8cd2b4cc-c789-466d-a8f7-8f51fb20985d/"
+                      "resourceGroups/eiger-rg/providers/Microsoft.Storage/"
+                      "storageAccounts/eigercorpus8dlub3zy"),
+        config=(
+            ("keyvault_enable_rbac_authorization", json.dumps(rbac)),
+            ("keyvault_enable_soft_delete", json.dumps(soft_delete)),
+            ("keyvault_enable_purge_protection", json.dumps(purge_protection)),
+            ("keyvault_private_endpoint_connection_count",
+             json.dumps(private_endpoints)),
         ))
 
 
@@ -166,6 +184,32 @@ def test_sql_tde_cmk_stale_finding_closes_when_no_user_databases_remain(product)
             opened.case.case_id, host_env={})
     assert outcome.case.state is CaseState.CLOSED_NO_ACTION
     assert "no user databases" in outcome.findings[0].reason
+
+
+@pytest.mark.parametrize(
+    ("rule_id", "cloud_state", "expected"),
+    [
+        ("keyvault_rbac_enabled", key_vault_state(rbac=False),
+         FindingValidationStatus.CONFIRMED),
+        ("keyvault_rbac_enabled", key_vault_state(rbac=True),
+         FindingValidationStatus.NOT_CONFIRMED),
+        ("keyvault_recoverable", key_vault_state(purge_protection=False),
+         FindingValidationStatus.CONFIRMED),
+        ("keyvault_recoverable", key_vault_state(purge_protection=True),
+         FindingValidationStatus.NOT_CONFIRMED),
+        ("keyvault_private_endpoints", key_vault_state(private_endpoints=0),
+         FindingValidationStatus.CONFIRMED),
+        ("keyvault_private_endpoints", key_vault_state(private_endpoints=1),
+         FindingValidationStatus.NOT_CONFIRMED),
+    ],
+)
+def test_key_vault_findings_use_the_registered_exact_evaluator(
+        product, rule_id, cloud_state, expected):
+    *_, intake = product
+    opened = intake.ingest(raw(rule_id), tenant_id="TEN-001")
+    outcome = validator(product, lambda finding, env: cloud_state).validate(
+        opened.case.case_id, host_env={})
+    assert outcome.findings[0].status is expected
 
 
 def test_cloud_read_failure_is_a_recorded_blocker(product):

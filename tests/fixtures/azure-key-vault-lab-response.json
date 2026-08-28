@@ -1,0 +1,47 @@
+{
+  "id": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/elcap-keyvault-fixture-rg/providers/Microsoft.KeyVault/vaults/elcap-keyvault-fixture",
+  "location": "centralindia",
+  "name": "elcap-keyvault-fixture",
+  "properties": {
+    "accessPolicies": [
+      {
+        "objectId": "00000000-0000-0000-0000-000000000002",
+        "permissions": {
+          "certificates": ["all"],
+          "keys": ["all"],
+          "secrets": ["all"],
+          "storage": ["all"]
+        },
+        "tenantId": "00000000-0000-0000-0000-000000000003"
+      }
+    ],
+    "enableRbacAuthorization": false,
+    "enableSoftDelete": true,
+    "enabledForDeployment": false,
+    "enabledForDiskEncryption": false,
+    "enabledForTemplateDeployment": false,
+    "provisioningState": "Succeeded",
+    "publicNetworkAccess": "Disabled",
+    "sku": {
+      "family": "A",
+      "name": "standard"
+    },
+    "softDeleteRetentionInDays": 7,
+    "tenantId": "00000000-0000-0000-0000-000000000003",
+    "vaultUri": "https://elcap-keyvault-fixture.vault.azure.net/"
+  },
+  "systemData": {
+    "createdAt": "2026-08-28T18:08:48.849Z",
+    "createdBy": "fixture@example.invalid",
+    "createdByType": "User",
+    "lastModifiedAt": "2026-08-28T18:08:48.849Z",
+    "lastModifiedBy": "fixture@example.invalid",
+    "lastModifiedByType": "User"
+  },
+  "tags": {
+    "elcapitan-disposable": "true",
+    "elcapitan-owner": "fixture",
+    "elcapitan-purpose": "validator-contract"
+  },
+  "type": "Microsoft.KeyVault/vaults"
+}

@@ -452,6 +452,82 @@ def test_azure_sql_capture_matches_sanitized_disposable_lab_measurement(azure):
     }
 
 
+def test_azure_key_vault_capture_uses_one_management_plane_get(azure):
+    azure.responses(fake_az.key_vault_responses())
+    state = azure(resource_uid=fake_az.KEY_VAULT_RESOURCE_UID)
+
+    assert dict(state.config) == {
+        "keyvault_enable_rbac_authorization": "false",
+        "keyvault_enable_soft_delete": "true",
+        "keyvault_enable_purge_protection": "false",
+        "keyvault_private_endpoint_connection_count": "0",
+    }
+    rest_calls = [call for call in fake_az.calls(azure.bin_dir)
+                  if call["operation"] == "rest"]
+    assert len(rest_calls) == 1
+    call = rest_calls[0]["argv"]
+    assert call[call.index("--method") + 1] == "get"
+    assert call[call.index("--url") + 1].endswith("api-version=2024-11-01")
+
+
+def test_azure_key_vault_capture_rejects_malformed_private_endpoints(azure):
+    vault = fake_az.key_vault_document()
+    vault["properties"]["privateEndpointConnections"] = ["not-an-object"]
+    azure.responses(fake_az.key_vault_responses(vault=vault))
+
+    with pytest.raises(ValueError, match="object list"):
+        azure(resource_uid=fake_az.KEY_VAULT_RESOURCE_UID)
+
+
+def test_azure_key_vault_capture_matches_sanitized_lab_missing_fields(azure):
+    azure.responses(fake_az.key_vault_lab_responses())
+
+    assert dict(azure(resource_uid=fake_az.KEY_VAULT_RESOURCE_UID).config) == {
+        "keyvault_enable_rbac_authorization": "false",
+        "keyvault_enable_soft_delete": "true",
+        "keyvault_enable_purge_protection": "null",
+        "keyvault_private_endpoint_connection_count": "0",
+    }
+
+
+def test_azure_key_vault_managed_identity_uses_one_bounded_arm_get(monkeypatch):
+    requests = []
+
+    class Response:
+        def __init__(self, document):
+            self.payload = json.dumps(document).encode()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def read(self):
+            return self.payload
+
+    def urlopen(request, timeout):
+        requests.append(request)
+        if request.full_url.startswith("http://localhost/"):
+            return Response({"access_token": "read-only-token"})
+        assert request.get_header("Authorization") == "Bearer read-only-token"
+        assert request.full_url.startswith(
+            "https://management.azure.com" + fake_az.KEY_VAULT_RESOURCE_UID)
+        return Response(fake_az.key_vault_document())
+
+    monkeypatch.setattr("elcapitan.cloud.urllib.request.urlopen", urlopen)
+    managed_env = verification_env({
+        "ELCAP_SCANNER_AZURE_MANAGED_IDENTITY_CLIENT_ID": "scanner-client-id",
+        "IDENTITY_ENDPOINT": "http://localhost/token",
+        "IDENTITY_HEADER": "rotating-platform-header",
+    }, provider="azure")
+    state = capture_cloud_state(
+        fake_az.KEY_VAULT_RESOURCE_UID, provider="azure", env=managed_env)
+
+    assert dict(state.config)["keyvault_enable_soft_delete"] == "true"
+    assert len(requests) == 2
+
+
 def test_azure_sql_missing_tde_state_fails_closed(azure):
     tde = fake_az.sql_tde_document()
     del tde["properties"]["state"]

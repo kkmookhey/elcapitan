@@ -1,0 +1,15 @@
+{
+  "id": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/elcap-keyvault-fixture-rg/providers/Microsoft.KeyVault/vaults/elcap-keyvault-fixture",
+  "location": "centralindia",
+  "name": "elcap-keyvault-fixture",
+  "properties": {
+    "enablePurgeProtection": false,
+    "enableRbacAuthorization": false,
+    "enableSoftDelete": true,
+    "privateEndpointConnections": [],
+    "provisioningState": "Succeeded",
+    "publicNetworkAccess": "Disabled",
+    "softDeleteRetentionInDays": 7
+  },
+  "type": "Microsoft.KeyVault/vaults"
+}

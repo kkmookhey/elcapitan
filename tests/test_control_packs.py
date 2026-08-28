@@ -21,9 +21,9 @@ def definition(*, pack_id="fixture", provider="azure", rule_id="fixture_rule"):
 
 def test_builtin_registry_is_composed_from_service_packs():
     assert {pack.pack_id for pack in BUILTIN_CONTROL_PACKS} == {
-        "aws-s3", "azure-sql", "azure-storage"}
+        "aws-s3", "azure-key-vault", "azure-sql", "azure-storage"}
     registry = builtin_registry()
-    assert len(registry.list()) == 5
+    assert len(registry.list()) == 8
     assert registry.get("AZURE", "sqlserver_tde_encrypted_with_cmk").pack_id == (
         "azure-sql")
     assert registry.get(
@@ -57,3 +57,48 @@ def test_sql_pack_rejects_partial_database_evidence():
             "sql_database_inventory": ["master", "one", "two"],
             "sql_user_database_tde": {"one": "Enabled"},
         })
+
+
+@pytest.mark.parametrize(
+    ("rule_id", "values", "confirmed"),
+    [
+        ("keyvault_rbac_enabled",
+         {"keyvault_enable_rbac_authorization": False}, True),
+        ("keyvault_rbac_enabled",
+         {"keyvault_enable_rbac_authorization": True}, False),
+        ("keyvault_recoverable", {
+            "keyvault_enable_soft_delete": True,
+            "keyvault_enable_purge_protection": False,
+         }, True),
+        ("keyvault_recoverable", {
+            "keyvault_enable_soft_delete": True,
+            "keyvault_enable_purge_protection": True,
+         }, False),
+        ("keyvault_private_endpoints",
+         {"keyvault_private_endpoint_connection_count": 0}, True),
+        ("keyvault_private_endpoints",
+         {"keyvault_private_endpoint_connection_count": 1}, False),
+    ],
+)
+def test_key_vault_pack_matches_pinned_prowler_truth_conditions(
+        rule_id, values, confirmed):
+    control = builtin_registry().get("azure", rule_id)
+    assert control.evaluator(values).confirmed is confirmed
+
+
+@pytest.mark.parametrize(
+    ("rule_id", "values"),
+    [
+        ("keyvault_rbac_enabled",
+         {"keyvault_enable_rbac_authorization": "false"}),
+        ("keyvault_recoverable", {
+            "keyvault_enable_soft_delete": True,
+            "keyvault_enable_purge_protection": 1,
+         }),
+        ("keyvault_private_endpoints",
+         {"keyvault_private_endpoint_connection_count": True}),
+    ],
+)
+def test_key_vault_pack_rejects_malformed_evidence(rule_id, values):
+    with pytest.raises(ValueError, match="invalid"):
+        builtin_registry().get("azure", rule_id).evaluator(values)

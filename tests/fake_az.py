@@ -12,7 +12,9 @@ subscription `8cd2b4cc-...`) and committed under tests/fixtures/. SQL replies
 include both sanitized contract fixtures built from Microsoft's 2023-08-01 REST
 schema and sanitized documents measured on 2026-08-28 from a disposable Azure
 SQL lab. They contain no customer identifiers or observations. Tests label and
-exercise those evidence origins separately.
+exercise those evidence origins separately. Key Vault replies likewise include
+an official-schema contract fixture and a sanitized 2026-08-28 disposable-lab
+response whose omitted properties are part of the tested contract.
 
 Three measured facts drove the design of the code this fake exercises, and
 none of them would have been guessed:
@@ -49,6 +51,11 @@ SQL_SUBSCRIPTION = "00000000-0000-0000-0000-000000000001"
 SQL_RESOURCE_UID = (
     f"/subscriptions/{SQL_SUBSCRIPTION}/resourceGroups/{SQL_RESOURCE_GROUP}"
     f"/providers/Microsoft.Sql/servers/{SQL_SERVER_NAME}")
+KEY_VAULT_NAME = "elcap-keyvault-fixture"
+KEY_VAULT_RESOURCE_GROUP = "elcap-keyvault-fixture-rg"
+KEY_VAULT_RESOURCE_UID = (
+    f"/subscriptions/{SQL_SUBSCRIPTION}/resourceGroups/{KEY_VAULT_RESOURCE_GROUP}"
+    f"/providers/Microsoft.KeyVault/vaults/{KEY_VAULT_NAME}")
 
 # The operation key is the leading run of non-flag argv tokens, which is how
 # `az` itself names a command ("storage account show"). Building it from argv
@@ -142,6 +149,16 @@ def sql_lab_tde_document() -> dict:
     return json.loads((FIXTURES / "azure-sql-lab-tde-enabled.json").read_text())
 
 
+def key_vault_document() -> dict:
+    """Synthetic fixture pinned to the official 2024-11-01 REST schema."""
+    return json.loads((FIXTURES / "azure-key-vault-contract.json").read_text())
+
+
+def key_vault_lab_document() -> dict:
+    """Sanitized response measured from the disposable Key Vault lab."""
+    return json.loads((FIXTURES / "azure-key-vault-lab-response.json").read_text())
+
+
 def metrics_populated() -> str:
     """A REAL Transactions window containing measured activity: 15 one-minute
     points, one of them 1.0 — the health check's corpus blob read."""
@@ -214,6 +231,18 @@ def sql_lab_responses() -> dict:
         databases=sql_lab_databases_document(),
         tde=sql_lab_tde_document(),
     )
+
+
+def key_vault_responses(*, vault: dict | None = None) -> dict:
+    return {
+        "login": {"stdout": "[]", "exit": 0},
+        "rest": {"stdout": json.dumps(
+            key_vault_document() if vault is None else vault), "exit": 0},
+    }
+
+
+def key_vault_lab_responses() -> dict:
+    return key_vault_responses(vault=key_vault_lab_document())
 
 
 def observer_credentials() -> dict:
