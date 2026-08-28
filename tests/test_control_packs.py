@@ -24,7 +24,7 @@ def test_builtin_registry_is_composed_from_service_packs():
         "aws-s3", "azure-app-service", "azure-key-vault", "azure-network", "azure-sql",
         "azure-storage"}
     registry = builtin_registry()
-    assert len(registry.list()) == 13
+    assert len(registry.list()) == 16
     assert registry.get("AZURE", "sqlserver_tde_encrypted_with_cmk").pack_id == (
         "azure-sql")
     assert registry.get(
@@ -147,23 +147,33 @@ def test_network_subnet_pack_rejects_malformed_nsg_id():
     ("rule_id", "values", "confirmed"),
     [
         ("app_client_certificates_on", {
+            "app_kind": "app,linux",
             "app_client_cert_enabled": True,
             "app_client_cert_mode": "Required",
          }, False),
         ("app_client_certificates_on", {
+            "app_kind": "app,linux",
             "app_client_cert_enabled": False,
             "app_client_cert_mode": "Required",
          }, True),
         ("app_ensure_auth_is_set_up", {
+            "app_kind": "app,linux",
             "app_auth_platform_enabled": True,
          }, False),
         ("app_ensure_auth_is_set_up", {
+            "app_kind": "app,linux",
             "app_auth_platform_enabled": None,
          }, True),
+        ("app_ensure_auth_is_set_up", {
+            "app_kind": "functionapp,linux",
+            "app_auth_platform_enabled": False,
+         }, False),
         ("app_ensure_using_http20", {
+            "app_kind": "app,linux",
             "app_http20_enabled": True,
          }, False),
         ("app_ensure_using_http20", {
+            "app_kind": "app,linux",
             "app_http20_enabled": False,
          }, True),
         ("app_http_logs_enabled", {
@@ -174,6 +184,36 @@ def test_network_subnet_pack_rejects_malformed_nsg_id():
                 "category_group": None,
                 "enabled": True,
             }],
+         }, False),
+        ("app_function_ftps_deployment_disabled", {
+            "app_kind": "functionapp,linux",
+            "app_ftps_state": "AllAllowed",
+         }, True),
+        ("app_function_ftps_deployment_disabled", {
+            "app_kind": "functionapp,linux",
+            "app_ftps_state": "Disabled",
+         }, False),
+        ("app_function_not_publicly_accessible", {
+            "app_kind": "functionapp,linux",
+            "app_public_network_access": "Enabled",
+         }, True),
+        ("app_function_not_publicly_accessible", {
+            "app_kind": "functionapp,linux",
+            "app_public_network_access": "Disabled",
+         }, False),
+        ("app_function_vnet_integration_enabled", {
+            "app_kind": "functionapp,linux",
+            "app_virtual_network_subnet_id": None,
+         }, True),
+        ("app_function_vnet_integration_enabled", {
+            "app_kind": "functionapp,linux",
+            "app_virtual_network_subnet_id": "/subscriptions/sub/resourceGroups/rg/"
+                                             "providers/Microsoft.Network/"
+                                             "virtualNetworks/vnet/subnets/apps",
+         }, False),
+        ("app_function_ftps_deployment_disabled", {
+            "app_kind": "app,linux",
+            "app_ftps_state": "AllAllowed",
          }, False),
         ("app_http_logs_enabled", {
             "app_kind": "app,linux",
@@ -204,11 +244,20 @@ def test_app_service_pack_matches_pinned_prowler_truth_conditions(
     ("rule_id", "values"),
     [
         ("app_client_certificates_on", {
-            "app_client_cert_enabled": "true", "app_client_cert_mode": "Required"}),
-        ("app_ensure_auth_is_set_up", {"app_auth_platform_enabled": 1}),
-        ("app_ensure_using_http20", {"app_http20_enabled": "false"}),
+            "app_kind": "app", "app_client_cert_enabled": "true",
+            "app_client_cert_mode": "Required"}),
+        ("app_ensure_auth_is_set_up", {
+            "app_kind": "app", "app_auth_platform_enabled": 1}),
+        ("app_ensure_using_http20", {
+            "app_kind": "app", "app_http20_enabled": "false"}),
         ("app_http_logs_enabled", {
             "app_kind": "app", "app_diagnostic_log_settings": [{}]}),
+        ("app_function_ftps_deployment_disabled", {
+            "app_kind": "functionapp", "app_ftps_state": 1}),
+        ("app_function_not_publicly_accessible", {
+            "app_kind": "functionapp", "app_public_network_access": False}),
+        ("app_function_vnet_integration_enabled", {
+            "app_kind": "functionapp", "app_virtual_network_subnet_id": {}}),
     ],
 )
 def test_app_service_pack_rejects_malformed_evidence(rule_id, values):

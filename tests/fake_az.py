@@ -64,6 +64,9 @@ APP_SERVICE_RESOURCE_UID = (
     f"/subscriptions/{SQL_SUBSCRIPTION}/resourceGroups/elcap-app-fixture-rg"
     "/providers/Microsoft.Web/sites/elcap-app-fixture")
 APP_SERVICE_CONFIG_RESOURCE_UID = APP_SERVICE_RESOURCE_UID + "/config/web"
+FUNCTION_APP_RESOURCE_UID = (
+    f"/subscriptions/{SQL_SUBSCRIPTION}/resourceGroups/elcap-app-fixture-rg"
+    "/providers/Microsoft.Web/sites/elcap-function-fixture")
 
 # The operation key is the leading run of non-flag argv tokens, which is how
 # `az` itself names a command ("storage account show"). Building it from argv
@@ -191,6 +194,21 @@ def app_diagnostic_settings_document() -> dict:
         (FIXTURES / "azure-app-diagnostic-settings-contract.json").read_text())
 
 
+def function_site_lab_document() -> dict:
+    return json.loads(
+        (FIXTURES / "azure-function-site-lab-response.json").read_text())
+
+
+def function_web_config_lab_document() -> dict:
+    return json.loads(
+        (FIXTURES / "azure-function-web-config-lab-response.json").read_text())
+
+
+def function_auth_v2_lab_document() -> dict:
+    return json.loads(
+        (FIXTURES / "azure-function-auth-v2-lab-response.json").read_text())
+
+
 def metrics_populated() -> str:
     """A REAL Transactions window containing measured activity: 15 one-minute
     points, one of them 1.0 — the health check's corpus blob read."""
@@ -304,6 +322,14 @@ def app_service_responses(*, site: dict | None = None,
                 if diagnostics is None else diagnostics), "exit": 0},
         ]},
     }
+
+
+def function_app_lab_responses() -> dict:
+    return app_service_responses(
+        site=function_site_lab_document(),
+        web_config=function_web_config_lab_document(),
+        auth=function_auth_v2_lab_document(),
+    )
 
 
 def observer_credentials() -> dict:

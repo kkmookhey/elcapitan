@@ -1,9 +1,9 @@
-"""Deterministic Azure App Service web-app control definitions.
+"""Deterministic Azure App Service and Function App control definitions.
 
-The truth conditions are pinned to Prowler's Azure ``app`` checks.  This pack
-intentionally covers web apps only.  Function-app controls remain a separate
-pack because their deployment, public-network, and VNet evidence contracts are
-different even though Azure represents both workloads as Microsoft.Web/sites.
+The truth conditions are pinned to Prowler's Azure ``app`` checks.  Web-app and
+Function App controls share a bounded ARM collector but retain separate kind
+guards and evaluators because their security semantics differ even though Azure
+represents both workloads as Microsoft.Web/sites.
 """
 from __future__ import annotations
 
@@ -17,7 +17,24 @@ def _optional_boolean(values, aspect: str):
     return value
 
 
+def _kind(values) -> str:
+    kind = require(values, "app_kind")
+    if not isinstance(kind, str) or not kind:
+        raise ValueError(f"live App Service state has invalid app kind {kind!r}")
+    return kind
+
+
+def _web_app(values) -> bool:
+    return _kind(values).startswith("app")
+
+
+def _function_app(values) -> bool:
+    return _kind(values).startswith("functionapp")
+
+
 def _client_certificates(values) -> ControlEvaluation:
+    if not _web_app(values):
+        return ControlEvaluation(False, "resource is not an App Service web app")
     enabled = _optional_boolean(values, "app_client_cert_enabled")
     mode = require(values, "app_client_cert_mode")
     if mode is not None and not isinstance(mode, str):
@@ -32,6 +49,8 @@ def _client_certificates(values) -> ControlEvaluation:
 
 
 def _authentication(values) -> ControlEvaluation:
+    if not _web_app(values):
+        return ControlEvaluation(False, "resource is not an App Service web app")
     enabled = _optional_boolean(values, "app_auth_platform_enabled")
     return ControlEvaluation(
         confirmed=enabled is not True,
@@ -41,6 +60,8 @@ def _authentication(values) -> ControlEvaluation:
 
 
 def _http20(values) -> ControlEvaluation:
+    if not _web_app(values):
+        return ControlEvaluation(False, "resource is not an App Service web app")
     enabled = _optional_boolean(values, "app_http20_enabled")
     return ControlEvaluation(
         confirmed=enabled is not True,
@@ -49,10 +70,8 @@ def _http20(values) -> ControlEvaluation:
 
 
 def _http_logs(values) -> ControlEvaluation:
-    kind = require(values, "app_kind")
+    kind = _kind(values)
     settings = require(values, "app_diagnostic_log_settings")
-    if not isinstance(kind, str) or not kind:
-        raise ValueError(f"live App Service state has invalid app kind {kind!r}")
     if not isinstance(settings, list):
         raise ValueError("live App Service diagnostic settings are not a list")
 
@@ -86,15 +105,58 @@ def _http_logs(values) -> ControlEvaluation:
 
     # Prowler excludes function apps from this web-app check.  Preserve the
     # exclusion explicitly in case a producer labels a function as sites.
-    if "functionapp" in kind:
+    if not kind.startswith("app"):
         return ControlEvaluation(
             confirmed=False,
-            reason="Prowler excludes function apps from the web-app HTTP log check",
+            reason="Prowler excludes non-web workloads from the web-app HTTP log check",
         )
     return ControlEvaluation(
         confirmed=not enabled,
         reason=("App Service HTTP diagnostic logs are enabled" if enabled else
                 "App Service HTTP diagnostic logs are not enabled"),
+    )
+
+
+def _optional_string(values, aspect: str):
+    value = require(values, aspect)
+    if value is not None and not isinstance(value, str):
+        raise ValueError(f"live App Service state has invalid {aspect} {value!r}")
+    return value
+
+
+def _function_ftps(values) -> ControlEvaluation:
+    if not _function_app(values):
+        return ControlEvaluation(False, "resource is not an Azure Function App")
+    state = _optional_string(values, "app_ftps_state")
+    disabled = state == "Disabled"
+    return ControlEvaluation(
+        confirmed=not disabled,
+        reason=("Function App FTPS deployment is disabled" if disabled else
+                f"Function App FTPS deployment state is {state!r}"),
+    )
+
+
+def _function_public_access(values) -> ControlEvaluation:
+    if not _function_app(values):
+        return ControlEvaluation(False, "resource is not an Azure Function App")
+    state = _optional_string(values, "app_public_network_access")
+    disabled = state == "Disabled"
+    return ControlEvaluation(
+        confirmed=not disabled,
+        reason=("Function App public network access is disabled" if disabled else
+                f"Function App public network access is {state!r}"),
+    )
+
+
+def _function_vnet(values) -> ControlEvaluation:
+    if not _function_app(values):
+        return ControlEvaluation(False, "resource is not an Azure Function App")
+    subnet_id = _optional_string(values, "app_virtual_network_subnet_id")
+    integrated = bool(subnet_id)
+    return ControlEvaluation(
+        confirmed=not integrated,
+        reason=("Function App has VNet integration" if integrated else
+                "Function App has no VNet integration"),
     )
 
 
@@ -110,7 +172,8 @@ AZURE_APP_SERVICE_PACK = ControlPack(
             resource_types=("microsoft.web/sites/config",),
             live_validation=True, remediation_planning=False,
             live_execution=False,
-            evidence_aspects=("app_client_cert_enabled", "app_client_cert_mode"),
+            evidence_aspects=(
+                "app_kind", "app_client_cert_enabled", "app_client_cert_mode"),
             evaluator=_client_certificates,
         ),
         ControlDefinition(
@@ -120,7 +183,7 @@ AZURE_APP_SERVICE_PACK = ControlPack(
             resource_types=("microsoft.web/sites",),
             live_validation=True, remediation_planning=False,
             live_execution=False,
-            evidence_aspects=("app_auth_platform_enabled",),
+            evidence_aspects=("app_kind", "app_auth_platform_enabled"),
             evaluator=_authentication,
         ),
         ControlDefinition(
@@ -130,7 +193,7 @@ AZURE_APP_SERVICE_PACK = ControlPack(
             resource_types=("microsoft.web/sites",),
             live_validation=True, remediation_planning=False,
             live_execution=False,
-            evidence_aspects=("app_http20_enabled",),
+            evidence_aspects=("app_kind", "app_http20_enabled"),
             evaluator=_http20,
         ),
         ControlDefinition(
@@ -142,6 +205,36 @@ AZURE_APP_SERVICE_PACK = ControlPack(
             live_execution=False,
             evidence_aspects=("app_kind", "app_diagnostic_log_settings"),
             evaluator=_http_logs,
+        ),
+        ControlDefinition(
+            pack_id="azure-app-service", provider="azure",
+            rule_id="app_function_ftps_deployment_disabled",
+            resource_family="azure_function_app",
+            resource_types=("microsoft.web/sites",),
+            live_validation=True, remediation_planning=False,
+            live_execution=False,
+            evidence_aspects=("app_kind", "app_ftps_state"),
+            evaluator=_function_ftps,
+        ),
+        ControlDefinition(
+            pack_id="azure-app-service", provider="azure",
+            rule_id="app_function_not_publicly_accessible",
+            resource_family="azure_function_app",
+            resource_types=("microsoft.web/sites",),
+            live_validation=True, remediation_planning=False,
+            live_execution=False,
+            evidence_aspects=("app_kind", "app_public_network_access"),
+            evaluator=_function_public_access,
+        ),
+        ControlDefinition(
+            pack_id="azure-app-service", provider="azure",
+            rule_id="app_function_vnet_integration_enabled",
+            resource_family="azure_function_app",
+            resource_types=("microsoft.web/sites",),
+            live_validation=True, remediation_planning=False,
+            live_execution=False,
+            evidence_aspects=("app_kind", "app_virtual_network_subnet_id"),
+            evaluator=_function_vnet,
         ),
     ),
 )

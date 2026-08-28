@@ -1,0 +1,10 @@
+{
+  "id": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/elcap-app-fixture-rg/providers/Microsoft.Web/sites/elcap-function-fixture/config/authsettingsV2",
+  "name": "authsettingsV2",
+  "type": "Microsoft.Web/sites/config",
+  "properties": {
+    "platform": {
+      "enabled": false
+    }
+  }
+}

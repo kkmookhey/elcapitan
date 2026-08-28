@@ -371,6 +371,9 @@ AZURE_APP_SERVICE_ASPECTS = (
     "app_auth_platform_enabled",
     "app_http20_enabled",
     "app_diagnostic_log_settings",
+    "app_ftps_state",
+    "app_public_network_access",
+    "app_virtual_network_subnet_id",
 )
 
 
@@ -807,6 +810,18 @@ def _capture_azure_app_service(
         raise ValueError(
             f"could not read the App Service site {site_id}: clientCertMode is "
             "not a string or null")
+    public_network_access = site_properties.get("publicNetworkAccess")
+    if (public_network_access is not None
+            and not isinstance(public_network_access, str)):
+        raise ValueError(
+            f"could not read the App Service site {site_id}: publicNetworkAccess "
+            "is not a string or null")
+    virtual_network_subnet_id = site_properties.get("virtualNetworkSubnetId")
+    if (virtual_network_subnet_id is not None
+            and not isinstance(virtual_network_subnet_id, str)):
+        raise ValueError(
+            f"could not read the App Service site {site_id}: "
+            "virtualNetworkSubnetId is not a string or null")
 
     web_config_id = f"{site_id}/config/web"
     web_config = read_url(
@@ -825,6 +840,11 @@ def _capture_azure_app_service(
             "properties object")
     http20_enabled = _optional_arm_boolean(
         web_properties, "http20Enabled", what=f"the web configuration of {site_id}")
+    ftps_state = web_properties.get("ftpsState")
+    if ftps_state is not None and not isinstance(ftps_state, str):
+        raise ValueError(
+            f"could not read the web configuration of {site_id}: ftpsState is "
+            "not a string or null")
 
     auth_id = f"{site_id}/config/authsettingsV2"
     auth = read_url(
@@ -910,6 +930,9 @@ def _capture_azure_app_service(
         "app_auth_platform_enabled": auth_enabled,
         "app_http20_enabled": http20_enabled,
         "app_diagnostic_log_settings": log_entries,
+        "app_ftps_state": ftps_state,
+        "app_public_network_access": public_network_access,
+        "app_virtual_network_subnet_id": virtual_network_subnet_id,
     }
     return tuple(
         (aspect, canonical_json(values[aspect]).decode("utf-8"))

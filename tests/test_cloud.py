@@ -616,6 +616,9 @@ def test_azure_app_service_capture_matches_disposable_lab_measurement(
         "app_auth_platform_enabled": "false",
         "app_http20_enabled": "false",
         "app_diagnostic_log_settings": "[]",
+        "app_ftps_state": "null",
+        "app_public_network_access": "null",
+        "app_virtual_network_subnet_id": "null",
     }
     rest_calls = [call for call in fake_az.calls(azure.bin_dir)
                   if call["operation"] == "rest"]
@@ -642,6 +645,23 @@ def test_azure_app_service_capture_accepts_an_exact_config_child_id(azure):
     url = first_rest["argv"][first_rest["argv"].index("--url") + 1]
     assert url.startswith(
         "https://management.azure.com" + fake_az.APP_SERVICE_RESOURCE_UID + "?")
+
+
+def test_azure_function_app_capture_matches_disposable_lab_measurement(azure):
+    azure.responses(fake_az.function_app_lab_responses())
+    state = azure(resource_uid=fake_az.FUNCTION_APP_RESOURCE_UID)
+
+    assert dict(state.config) == {
+        "app_kind": '"functionapp,linux"',
+        "app_client_cert_enabled": "false",
+        "app_client_cert_mode": '"Required"',
+        "app_auth_platform_enabled": "false",
+        "app_http20_enabled": "true",
+        "app_diagnostic_log_settings": "[]",
+        "app_ftps_state": '"FtpsOnly"',
+        "app_public_network_access": '"Enabled"',
+        "app_virtual_network_subnet_id": "null",
+    }
 
 
 def test_azure_app_service_capture_minimizes_diagnostic_settings(azure):
@@ -681,10 +701,16 @@ def test_azure_app_service_capture_minimizes_diagnostic_settings(azure):
     ("document_name", "mutate", "message"),
     [
         ("site", lambda value: value.update({"kind": None}), "no kind"),
+        ("site", lambda value: value["properties"].update(
+            {"publicNetworkAccess": False}), "not a string"),
+        ("site", lambda value: value["properties"].update(
+            {"virtualNetworkSubnetId": {}}), "not a string"),
         ("web_config", lambda value: value.update({"id": value["id"] + "-other"}),
          "does not match"),
         ("web_config", lambda value: value["properties"].update(
             {"http20Enabled": "false"}), "not a boolean"),
+        ("web_config", lambda value: value["properties"].update(
+            {"ftpsState": False}), "not a string"),
         ("auth", lambda value: value.update({"id": value["id"] + "-other"}),
          "does not match"),
         ("auth", lambda value: value["properties"].update(

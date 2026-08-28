@@ -84,8 +84,9 @@ normalized diagnostic log category states. It excludes application settings,
 authentication provider configuration, destinations, code, and content. The
 client-certificate control deliberately accepts Prowler's
 `microsoft.web/sites/config` OCSF type even though Prowler retains the parent
-site ARM id. Function-app checks remain unsupported until their separate
-contract and lab are complete. Planning and execution are disabled.
+site ARM id. Every web-app evaluator also verifies that the live Azure kind
+still starts with `app`, preventing a reclassified Function App from satisfying
+a stale web-app finding.
 
 The collector was run end to end on 2026-08-28 in a no-ingress Container Apps
 job. Its managed identity held `Reader` at one tagged, empty disposable web app
@@ -97,6 +98,24 @@ branch. The job returned only the six normalized evidence aspects, succeeded,
 and the job, role assignment, web app, plan, and candidate image were deleted
 and independently confirmed absent. Sanitized ARM documents preserve those
 shapes as regression fixtures.
+
+The same bounded collector now supports the three distinct Function App
+controls `app_function_ftps_deployment_disabled`,
+`app_function_not_publicly_accessible`, and
+`app_function_vnet_integration_enabled`. Their evaluators first require a live
+kind beginning with `functionapp`, then independently require `ftpsState` to be
+`Disabled`, `publicNetworkAccess` to be `Disabled`, and a non-empty
+`virtualNetworkSubnetId`. Validation coverage does not imply change authority:
+planning and execution remain disabled for all seven App Service controls.
+
+This Function App contract was measured on 2026-08-28 against a tagged, empty
+disposable Linux Function App on its own temporary Basic plan and dedicated
+empty storage account. A no-ingress job with `Reader` only at that Function App
+captured `FtpsOnly`, `Enabled`, and a null subnet ID, confirming all three
+intentional failure branches. No function code was deployed. The job, exact
+role assignment, Function App, plan, storage account, and candidate image were
+then deleted and independently confirmed absent. Sanitized measurements are
+regression fixtures.
 
 Semantics are pinned to Prowler's [App Service check
 implementations](https://github.com/prowler-cloud/prowler/tree/master/prowler/providers/azure/services/app),

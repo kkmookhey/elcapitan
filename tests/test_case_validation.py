@@ -119,17 +119,22 @@ def network_subnet_state(nsg_id=None):
         ))
 
 
-def app_service_state(*, client_cert_enabled=False, client_cert_mode="Required",
-                      auth_enabled=False, http20_enabled=False, logs=None):
+def app_service_state(*, kind="app,linux", client_cert_enabled=False,
+                      client_cert_mode="Required", auth_enabled=False,
+                      http20_enabled=False, logs=None, ftps_state=None,
+                      public_network_access=None, virtual_network_subnet_id=None):
     return CloudState(
         provider="azure", resource_uid=APP_SERVICE_UID,
         config=(
-            ("app_kind", '"app,linux"'),
+            ("app_kind", json.dumps(kind)),
             ("app_client_cert_enabled", json.dumps(client_cert_enabled)),
             ("app_client_cert_mode", json.dumps(client_cert_mode)),
             ("app_auth_platform_enabled", json.dumps(auth_enabled)),
             ("app_http20_enabled", json.dumps(http20_enabled)),
             ("app_diagnostic_log_settings", json.dumps(logs or [])),
+            ("app_ftps_state", json.dumps(ftps_state)),
+            ("app_public_network_access", json.dumps(public_network_access)),
+            ("app_virtual_network_subnet_id", json.dumps(virtual_network_subnet_id)),
         ))
 
 
@@ -295,6 +300,24 @@ def test_network_subnet_finding_is_bound_to_nested_resource_type(
             "setting": "security", "category": "AppServiceHTTPLogs",
             "category_group": None, "enabled": True,
          }]), FindingValidationStatus.NOT_CONFIRMED),
+        ("app_function_ftps_deployment_disabled", app_service_state(
+            kind="functionapp,linux", ftps_state="AllAllowed"),
+         FindingValidationStatus.CONFIRMED),
+        ("app_function_ftps_deployment_disabled", app_service_state(
+            kind="functionapp,linux", ftps_state="Disabled"),
+         FindingValidationStatus.NOT_CONFIRMED),
+        ("app_function_not_publicly_accessible", app_service_state(
+            kind="functionapp,linux", public_network_access="Enabled"),
+         FindingValidationStatus.CONFIRMED),
+        ("app_function_not_publicly_accessible", app_service_state(
+            kind="functionapp,linux", public_network_access="Disabled"),
+         FindingValidationStatus.NOT_CONFIRMED),
+        ("app_function_vnet_integration_enabled", app_service_state(
+            kind="functionapp,linux", virtual_network_subnet_id=None),
+         FindingValidationStatus.CONFIRMED),
+        ("app_function_vnet_integration_enabled", app_service_state(
+            kind="functionapp,linux", virtual_network_subnet_id="/subnets/apps"),
+         FindingValidationStatus.NOT_CONFIRMED),
     ],
 )
 def test_app_service_findings_are_bound_to_exact_ocsf_resource_types(
