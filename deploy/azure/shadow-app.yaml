@@ -28,7 +28,7 @@ properties:
   template:
     containers:
       - name: elcapitan-shadow-durable
-        image: ca7b25e7d425acr.azurecr.io/elcapitan-demo:20260827-shadow.13
+        image: ca7b25e7d425acr.azurecr.io/elcapitan-demo:20260827-shadow.14
         command:
           - elcapitan
         args:

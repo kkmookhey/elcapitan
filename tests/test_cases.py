@@ -283,7 +283,9 @@ def test_new_finding_after_planning_revokes_stale_validation_and_approvals():
                       record_ids={"validation_result_id": "VAL-001"})
     current = advance(current, CaseTransition.PREPARE_PLAN, 3,
                       record_ids={"change_plan_id": "PLAN-001",
-                                  "iac_link_id": "LINK-001"}, change_plan=plan())
+                                  "iac_link_id": "LINK-001",
+                                  "review_feedback_id": "RBK-OLD"},
+                      change_plan=plan())
     current = advance(current, CaseTransition.APPROVE_SRE, 4,
                       record_ids={"sre_review_id": "SRE-001"})
     current = advance(current, CaseTransition.SELECT_WINDOW, 5,
@@ -307,6 +309,7 @@ def test_new_finding_after_planning_revokes_stale_validation_and_approvals():
     assert "sre_review_id" not in refreshed.record_ids
     assert "change_window_id" not in refreshed.record_ids
     assert "rollback_review_id" not in refreshed.record_ids
+    assert "review_feedback_id" not in refreshed.record_ids
     assert event.from_state is CaseState.ROLLBACK_READY
     assert event.to_state is CaseState.PRIORITIZED
 

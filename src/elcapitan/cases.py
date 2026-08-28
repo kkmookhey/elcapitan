@@ -398,8 +398,8 @@ def transition_case(case: RemediationCase, transition: CaseTransition, *,
         for name in (
             "validation_result_id", "iac_link_id", "change_plan_id",
             "sre_review_id", "change_window_id", "rollback_review_id",
-            "policy_decision_id", "human_review_package_id", "approval_id",
-            "schedule_id",
+            "review_feedback_id", "policy_decision_id",
+            "human_review_package_id", "approval_id", "schedule_id",
         ):
             merged_records.pop(name, None)
     if transition is CaseTransition.RETRY_SRE:

@@ -530,9 +530,15 @@ class RollbackReviewService(_AgentStage):
             case = self.workflow.advance(case_id, CaseTransition.REVIEW_ROLLBACK, **common)
         elif decision == "reject":
             required_changes = _strings(output, "required_changes")
+            events = self.case_store.events(case_id)
+            cycle_start = max((
+                event.sequence for event in events
+                if event.transition is CaseTransition.ADD_FINDING
+                and event.to_state is CaseState.PRIORITIZED
+            ), default=0)
             already_reworked = any(
                 event.transition is CaseTransition.REQUEST_REWORK
-                for event in self.case_store.events(case_id))
+                and event.sequence > cycle_start for event in events)
             if required_changes and not already_reworked:
                 case = self.workflow.advance(
                     case_id, CaseTransition.REQUEST_REWORK,
