@@ -21,8 +21,9 @@ Each installed pack registers explicit definitions containing:
 - a deterministic evaluator;
 - separate validation, planning, and execution capability flags.
 
-The built-in v1 packs are currently `aws-s3`, `azure-storage`, `azure-sql`, and
-`azure-key-vault`. Registration is fail-closed: duplicate provider/rule keys,
+The built-in v1 packs are currently `aws-s3`, `azure-storage`, `azure-sql`,
+`azure-key-vault`, and `azure-network`. Registration is fail-closed: duplicate
+provider/rule keys,
 mismatched pack ownership, missing evidence contracts, and mismatched resource
 types are rejected.
 
@@ -53,6 +54,25 @@ Semantics are pinned to the official [Prowler Key Vault check
 implementations](https://github.com/prowler-cloud/prowler/tree/master/prowler/providers/azure/services/keyvault)
 and fields to Microsoft's [Vaults - Get 2024-11-01 REST
 contract](https://learn.microsoft.com/rest/api/keyvault/keyvault/vaults/get?view=rest-keyvault-keyvault-2024-11-01).
+
+The first Azure Network control, `network_subnet_nsg_associated`, consumes one
+management-plane GET of the exact nested subnet resource. Its evaluator follows
+Prowler's explicit exclusions for `GatewaySubnet`, `AzureFirewallSubnet`,
+`AzureFirewallManagementSubnet`, `AzureBastionSubnet`, and
+`RouteServerSubnet`; all other subnets require a non-empty
+`networkSecurityGroup.id`. Planning and execution are disabled. Broader NSG
+port/rule analysis is intentionally a separate future contract because Azure
+priority and default-rule resolution cannot be inferred from association.
+The nested-resource parser and exact-subnet collector were run end to end on
+2026-08-28 in a no-ingress managed-identity job. The scanner held `Reader` at
+only one empty subnet; it correctly captured an omitted
+`networkSecurityGroup` as `null`. The sanitized ARM response is the regression
+fixture.
+
+Semantics are pinned to Prowler's [subnet NSG association
+check](https://github.com/prowler-cloud/prowler/tree/master/prowler/providers/azure/services/network/network_subnet_nsg_associated)
+and the Microsoft [Subnets - Get REST
+contract](https://learn.microsoft.com/rest/api/virtualnetwork/subnets/get?view=rest-virtualnetwork-2025-05-01).
 
 ## Provider adapters
 

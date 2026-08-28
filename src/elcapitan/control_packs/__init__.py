@@ -6,6 +6,7 @@ execution coverage.
 """
 from .aws_s3 import AWS_S3_PACK
 from .azure_key_vault import AZURE_KEY_VAULT_PACK
+from .azure_network import AZURE_NETWORK_PACK
 from .azure_sql import AZURE_SQL_PACK
 from .azure_storage import AZURE_STORAGE_PACK
 from .models import ControlDefinition, ControlEvaluation, ControlPack
@@ -14,6 +15,7 @@ from .registry import ControlPackRegistry
 BUILTIN_CONTROL_PACKS = (
     AWS_S3_PACK,
     AZURE_KEY_VAULT_PACK,
+    AZURE_NETWORK_PACK,
     AZURE_SQL_PACK,
     AZURE_STORAGE_PACK,
 )

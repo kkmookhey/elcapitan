@@ -21,9 +21,10 @@ def definition(*, pack_id="fixture", provider="azure", rule_id="fixture_rule"):
 
 def test_builtin_registry_is_composed_from_service_packs():
     assert {pack.pack_id for pack in BUILTIN_CONTROL_PACKS} == {
-        "aws-s3", "azure-key-vault", "azure-sql", "azure-storage"}
+        "aws-s3", "azure-key-vault", "azure-network", "azure-sql",
+        "azure-storage"}
     registry = builtin_registry()
-    assert len(registry.list()) == 8
+    assert len(registry.list()) == 9
     assert registry.get("AZURE", "sqlserver_tde_encrypted_with_cmk").pack_id == (
         "azure-sql")
     assert registry.get(
@@ -102,3 +103,35 @@ def test_key_vault_pack_matches_pinned_prowler_truth_conditions(
 def test_key_vault_pack_rejects_malformed_evidence(rule_id, values):
     with pytest.raises(ValueError, match="invalid"):
         builtin_registry().get("azure", rule_id).evaluator(values)
+
+
+@pytest.mark.parametrize(
+    ("name", "nsg_id", "confirmed"),
+    [
+        ("application", None, True),
+        ("application", "/subscriptions/sub/resourceGroups/rg/providers/"
+         "Microsoft.Network/networkSecurityGroups/app", False),
+        ("GatewaySubnet", None, False),
+        ("AzureFirewallSubnet", None, False),
+        ("AzureFirewallManagementSubnet", None, False),
+        ("AzureBastionSubnet", None, False),
+        ("RouteServerSubnet", None, False),
+    ],
+)
+def test_network_subnet_pack_matches_pinned_prowler_semantics(
+        name, nsg_id, confirmed):
+    control = builtin_registry().get("azure", "network_subnet_nsg_associated")
+    result = control.evaluator({
+        "network_subnet_name": name,
+        "network_subnet_nsg_id": nsg_id,
+    })
+    assert result.confirmed is confirmed
+
+
+def test_network_subnet_pack_rejects_malformed_nsg_id():
+    control = builtin_registry().get("azure", "network_subnet_nsg_associated")
+    with pytest.raises(ValueError, match="invalid NSG id"):
+        control.evaluator({
+            "network_subnet_name": "application",
+            "network_subnet_nsg_id": {},
+        })

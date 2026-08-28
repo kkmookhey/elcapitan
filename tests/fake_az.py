@@ -56,6 +56,10 @@ KEY_VAULT_RESOURCE_GROUP = "elcap-keyvault-fixture-rg"
 KEY_VAULT_RESOURCE_UID = (
     f"/subscriptions/{SQL_SUBSCRIPTION}/resourceGroups/{KEY_VAULT_RESOURCE_GROUP}"
     f"/providers/Microsoft.KeyVault/vaults/{KEY_VAULT_NAME}")
+NETWORK_SUBNET_RESOURCE_UID = (
+    f"/subscriptions/{SQL_SUBSCRIPTION}/resourceGroups/elcap-network-fixture-rg"
+    "/providers/Microsoft.Network/virtualNetworks/elcap-vnet-fixture"
+    "/subnets/validator-contract")
 
 # The operation key is the leading run of non-flag argv tokens, which is how
 # `az` itself names a command ("storage account show"). Building it from argv
@@ -159,6 +163,12 @@ def key_vault_lab_document() -> dict:
     return json.loads((FIXTURES / "azure-key-vault-lab-response.json").read_text())
 
 
+def network_subnet_document() -> dict:
+    """Sanitized response measured from the disposable subnet lab."""
+    return json.loads(
+        (FIXTURES / "azure-network-subnet-lab-response.json").read_text())
+
+
 def metrics_populated() -> str:
     """A REAL Transactions window containing measured activity: 15 one-minute
     points, one of them 1.0 — the health check's corpus blob read."""
@@ -243,6 +253,14 @@ def key_vault_responses(*, vault: dict | None = None) -> dict:
 
 def key_vault_lab_responses() -> dict:
     return key_vault_responses(vault=key_vault_lab_document())
+
+
+def network_subnet_responses(*, subnet: dict | None = None) -> dict:
+    return {
+        "login": {"stdout": "[]", "exit": 0},
+        "rest": {"stdout": json.dumps(
+            network_subnet_document() if subnet is None else subnet), "exit": 0},
+    }
 
 
 def observer_credentials() -> dict:

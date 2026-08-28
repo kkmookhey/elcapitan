@@ -1,0 +1,13 @@
+{
+  "etag": "W/\"00000000-0000-0000-0000-000000000002\"",
+  "id": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/elcap-network-fixture-rg/providers/Microsoft.Network/virtualNetworks/elcap-vnet-fixture/subnets/validator-contract",
+  "name": "validator-contract",
+  "properties": {
+    "addressPrefix": "10.253.1.0/24",
+    "delegations": [],
+    "privateEndpointNetworkPolicies": "Disabled",
+    "privateLinkServiceNetworkPolicies": "Enabled",
+    "provisioningState": "Succeeded"
+  },
+  "type": "Microsoft.Network/virtualNetworks/subnets"
+}

@@ -528,6 +528,82 @@ def test_azure_key_vault_managed_identity_uses_one_bounded_arm_get(monkeypatch):
     assert len(requests) == 2
 
 
+def test_azure_network_subnet_capture_supports_nested_arm_ids(azure):
+    azure.responses(fake_az.network_subnet_responses())
+    state = azure(resource_uid=fake_az.NETWORK_SUBNET_RESOURCE_UID)
+
+    assert dict(state.config) == {
+        "network_subnet_name": '"validator-contract"',
+        "network_subnet_nsg_id": "null",
+    }
+    rest_calls = [call for call in fake_az.calls(azure.bin_dir)
+                  if call["operation"] == "rest"]
+    assert len(rest_calls) == 1
+    url = rest_calls[0]["argv"][rest_calls[0]["argv"].index("--url") + 1]
+    assert "/virtualNetworks/elcap-vnet-fixture/subnets/validator-contract?" in url
+
+
+def test_azure_network_subnet_capture_records_associated_nsg(azure):
+    subnet = fake_az.network_subnet_document()
+    subnet["properties"]["networkSecurityGroup"] = {
+        "id": "/subscriptions/sub/resourceGroups/rg/providers/"
+              "Microsoft.Network/networkSecurityGroups/application",
+    }
+    azure.responses(fake_az.network_subnet_responses(subnet=subnet))
+
+    state = azure(resource_uid=fake_az.NETWORK_SUBNET_RESOURCE_UID)
+    assert json.loads(dict(state.config)["network_subnet_nsg_id"]).endswith(
+        "/networkSecurityGroups/application")
+
+
+def test_azure_network_subnet_capture_rejects_mismatched_response_id(azure):
+    subnet = fake_az.network_subnet_document()
+    subnet["id"] = subnet["id"] + "-different"
+    azure.responses(fake_az.network_subnet_responses(subnet=subnet))
+
+    with pytest.raises(ValueError, match="does not match"):
+        azure(resource_uid=fake_az.NETWORK_SUBNET_RESOURCE_UID)
+
+
+def test_azure_network_subnet_managed_identity_uses_exact_nested_arm_get(
+        monkeypatch):
+    requests = []
+
+    class Response:
+        def __init__(self, document):
+            self.payload = json.dumps(document).encode()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def read(self):
+            return self.payload
+
+    def urlopen(request, timeout):
+        requests.append(request)
+        if request.full_url.startswith("http://localhost/"):
+            return Response({"access_token": "read-only-token"})
+        assert request.get_header("Authorization") == "Bearer read-only-token"
+        assert request.full_url.startswith(
+            "https://management.azure.com" + fake_az.NETWORK_SUBNET_RESOURCE_UID)
+        return Response(fake_az.network_subnet_document())
+
+    monkeypatch.setattr("elcapitan.cloud.urllib.request.urlopen", urlopen)
+    managed_env = verification_env({
+        "ELCAP_SCANNER_AZURE_MANAGED_IDENTITY_CLIENT_ID": "scanner-client-id",
+        "IDENTITY_ENDPOINT": "http://localhost/token",
+        "IDENTITY_HEADER": "rotating-platform-header",
+    }, provider="azure")
+    state = capture_cloud_state(
+        fake_az.NETWORK_SUBNET_RESOURCE_UID, provider="azure", env=managed_env)
+
+    assert dict(state.config)["network_subnet_nsg_id"] == "null"
+    assert len(requests) == 2
+
+
 def test_azure_sql_missing_tde_state_fails_closed(azure):
     tde = fake_az.sql_tde_document()
     del tde["properties"]["state"]

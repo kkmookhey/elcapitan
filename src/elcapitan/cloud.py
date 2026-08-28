@@ -329,6 +329,7 @@ AZURE_BLOB_SERVICE_ASPECTS = {
 # while ARM ids preserve provider casing.
 AZURE_SUPPORTED_TYPES = (
     "microsoft.keyvault/vaults",
+    "microsoft.network/virtualnetworks/subnets",
     "microsoft.sql/servers",
     "microsoft.storage/storageaccounts",
 )
@@ -337,6 +338,7 @@ AZURE_STORAGE_API_VERSION = "2025-08-01"
 AZURE_BLOB_API_VERSION = "2025-06-01"
 AZURE_SQL_API_VERSION = "2023-08-01"
 AZURE_KEY_VAULT_API_VERSION = "2024-11-01"
+AZURE_NETWORK_API_VERSION = "2025-05-01"
 
 # The critical Prowler control `sqlserver_tde_encrypted_with_cmk` is not a
 # single-property check. It requires a CMK-backed server protector and TDE on
@@ -360,18 +362,24 @@ AZURE_KEY_VAULT_ASPECTS = (
 
 
 def _arm_parts(resource_uid: str) -> tuple[str, str, str, str]:
-    """(subscription, resource_group, type, name) for an ARM resource id.
+    """(subscription, resource_group, full type, leaf name) for an ARM id.
 
-    /subscriptions/<sub>/resourceGroups/<rg>/providers/<ns>/<type>/<name>
+    Supports both top-level resources and nested resources such as
+    `Microsoft.Network/virtualNetworks/subnets`. ARM places each nested type
+    immediately before its resource name.
     """
     parts = resource_uid.split("/")
-    if (len(parts) != 9 or parts[0] != "" or parts[1].lower() != "subscriptions"
+    provider_parts = parts[7:]
+    if (len(parts) < 9 or len(provider_parts) % 2 != 0
+            or parts[0] != "" or parts[1].lower() != "subscriptions"
             or parts[3].lower() != "resourcegroups" or parts[5].lower() != "providers"
             or not all(parts[2:])):
         raise ValueError(
-            f"not an ARM resource id of the form /subscriptions/<id>/resourceGroups/"
-            f"<rg>/providers/<namespace>/<type>/<name>: {resource_uid!r}")
-    return parts[2], parts[4], f"{parts[6]}/{parts[7]}", parts[8]
+            "not an ARM resource id with alternating provider type/name "
+            f"segments: {resource_uid!r}")
+    types = provider_parts[0::2]
+    names = provider_parts[1::2]
+    return parts[2], parts[4], f"{parts[6]}/{'/'.join(types)}", names[-1]
 
 
 def _az(env: dict, *args: str) -> tuple[int, str, str]:
@@ -690,6 +698,51 @@ def _capture_azure_key_vault(
         for aspect in AZURE_KEY_VAULT_ASPECTS)
 
 
+def _capture_azure_network_subnet(
+        resource_uid: str, *, read_url) -> tuple[tuple[str, str], ...]:
+    document = read_url(
+        _arm_url(resource_uid, api_version=AZURE_NETWORK_API_VERSION),
+        what=f"the network subnet {resource_uid}")
+    response_id = document.get("id")
+    if (not isinstance(response_id, str)
+            or response_id.lower() != resource_uid.lower()):
+        raise ValueError(
+            f"could not read the network subnet {resource_uid}: response id "
+            f"{response_id!r} does not match the requested resource")
+    name = document.get("name")
+    target_name = _arm_parts(resource_uid)[3]
+    if (not isinstance(name, str) or not name
+            or name.lower() != target_name.lower()):
+        raise ValueError(
+            f"could not read the network subnet {resource_uid}: response name "
+            f"{name!r} does not match {target_name!r}")
+    properties = document.get("properties")
+    if not isinstance(properties, dict):
+        raise ValueError(
+            f"could not read the network subnet {resource_uid}: response has no "
+            "properties object")
+    nsg = properties.get("networkSecurityGroup")
+    if nsg is None:
+        nsg_id = None
+    elif isinstance(nsg, dict):
+        nsg_id = nsg.get("id")
+        if not isinstance(nsg_id, str) or not nsg_id:
+            raise ValueError(
+                f"could not read the network subnet {resource_uid}: associated "
+                "networkSecurityGroup has no id")
+    else:
+        raise ValueError(
+            f"could not read the network subnet {resource_uid}: "
+            "networkSecurityGroup is not an object or null")
+    values = {
+        "network_subnet_name": name,
+        "network_subnet_nsg_id": nsg_id,
+    }
+    return tuple(
+        (aspect, canonical_json(value).decode("utf-8"))
+        for aspect, value in values.items())
+
+
 def _capture_azure(resource_uid: str, region: str, env: dict) -> tuple[tuple[str, str], ...]:
     # `region` is accepted for signature symmetry with _capture_aws and
     # deliberately unused: an ARM resource id already names the subscription
@@ -708,6 +761,11 @@ def _capture_azure(resource_uid: str, region: str, env: dict) -> tuple[tuple[str
         token = _managed_identity_token(env)
         if arm_type.lower() == "microsoft.keyvault/vaults":
             return _capture_azure_key_vault(
+                resource_uid,
+                read_url=lambda url, *, what: _arm_url_json(
+                    url, token=token, what=what))
+        if arm_type.lower() == "microsoft.network/virtualnetworks/subnets":
+            return _capture_azure_network_subnet(
                 resource_uid,
                 read_url=lambda url, *, what: _arm_url_json(
                     url, token=token, what=what))
@@ -754,6 +812,12 @@ def _capture_azure(resource_uid: str, region: str, env: dict) -> tuple[tuple[str
 
         if arm_type.lower() == "microsoft.keyvault/vaults":
             return _capture_azure_key_vault(
+                resource_uid,
+                read_url=lambda url, *, what: _az_rest_json(
+                    az_env, url, what=what))
+
+        if arm_type.lower() == "microsoft.network/virtualnetworks/subnets":
+            return _capture_azure_network_subnet(
                 resource_uid,
                 read_url=lambda url, *, what: _az_rest_json(
                     az_env, url, what=what))

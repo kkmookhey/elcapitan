@@ -16,6 +16,10 @@ from elcapitan.product_records import SqliteProductRecordStore
 
 FIXTURE = Path(__file__).parent / "fixtures" / "prowler-ocsf-azure-sample.json"
 NOW = "2026-08-25T12:00:00Z"
+NETWORK_SUBNET_UID = (
+    "/subscriptions/00000000-0000-0000-0000-000000000001/"
+    "resourceGroups/fixture/providers/Microsoft.Network/virtualNetworks/"
+    "fixture/subnets/application")
 
 
 class Ids:
@@ -48,6 +52,11 @@ def raw(rule_id="storage_account_public_network_access_disabled", *, resource_ty
         document["resources"][0]["type"] = "microsoft.sql/servers"
     elif rule_id.startswith("keyvault_"):
         document["resources"][0]["type"] = "microsoft.keyvault/vaults"
+    elif rule_id.startswith("network_subnet_"):
+        document["resources"][0]["type"] = (
+            "microsoft.network/virtualnetworks/subnets")
+        document["resources"][0]["uid"] = NETWORK_SUBNET_UID
+        document["resources"][0]["name"] = "application"
     return document
 
 
@@ -88,6 +97,15 @@ def key_vault_state(*, rbac=False, soft_delete=True,
             ("keyvault_enable_purge_protection", json.dumps(purge_protection)),
             ("keyvault_private_endpoint_connection_count",
              json.dumps(private_endpoints)),
+        ))
+
+
+def network_subnet_state(nsg_id=None):
+    return CloudState(
+        provider="azure", resource_uid=NETWORK_SUBNET_UID,
+        config=(
+            ("network_subnet_name", '"application"'),
+            ("network_subnet_nsg_id", json.dumps(nsg_id)),
         ))
 
 
@@ -209,6 +227,26 @@ def test_key_vault_findings_use_the_registered_exact_evaluator(
     opened = intake.ingest(raw(rule_id), tenant_id="TEN-001")
     outcome = validator(product, lambda finding, env: cloud_state).validate(
         opened.case.case_id, host_env={})
+    assert outcome.findings[0].status is expected
+
+
+@pytest.mark.parametrize(
+    ("nsg_id", "expected"),
+    [
+        (None, FindingValidationStatus.CONFIRMED),
+        ("/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/"
+         "networkSecurityGroups/application",
+         FindingValidationStatus.NOT_CONFIRMED),
+    ],
+)
+def test_network_subnet_finding_is_bound_to_nested_resource_type(
+        product, nsg_id, expected):
+    *_, intake = product
+    opened = intake.ingest(
+        raw("network_subnet_nsg_associated"), tenant_id="TEN-001")
+    outcome = validator(
+        product, lambda finding, env: network_subnet_state(nsg_id)).validate(
+            opened.case.case_id, host_env={})
     assert outcome.findings[0].status is expected
 
 
