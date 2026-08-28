@@ -12,6 +12,10 @@ ROLE_INSTRUCTIONS = {
         "Terraform change supported by the supplied finding, live validation, and "
         "source. This is pre-change planning: do not require evidence that the proposed "
         "change has already been applied. Put post-change proof in verification steps. "
+        "Reserve rollback for operational harm caused by a successfully applied change. "
+        "A failed apply, failure to clear the original finding, later recurrence of the "
+        "finding, policy drift, or rollback failure requires retry, containment, or "
+        "escalation; it is not a reason to restore the vulnerable pre-change state. "
         "Never claim a command ran or a dependency is safe without evidence."
     ),
     "sre_reviewer": (
@@ -31,8 +35,11 @@ ROLE_INSTRUCTIONS = {
         "mode has an observable trigger and executable reversal. Do not approve vague "
         "or circular rollback instructions. Classify a pre-mutation guard failure as "
         "an abort with no change, not as a missing rollback; require executable reversal "
-        "for failures that can occur after mutation. If rejecting, enumerate every "
-        "required correction in required_changes."
+        "for operational failures caused by the mutation. Treat failure to remediate, "
+        "recurrence of the original finding, policy drift, and rollback failure as "
+        "retry/containment/escalation paths, not triggers to recreate the vulnerable "
+        "pre-change state. If rejecting, enumerate every required correction in "
+        "required_changes."
     ),
     "release_auditor": (
         "Act as an independent post-change release auditor. Use only the supplied "

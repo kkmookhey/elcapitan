@@ -213,6 +213,7 @@ def test_prechange_and_rollback_prompts_preserve_phase_semantics():
     assert "strictly a pre-change review" in instructions(sre)
     assert "never claim" in instructions(sre)
     assert "abort with no change" in instructions(rollback)
+    assert "not triggers to recreate the vulnerable" in instructions(rollback)
     assert "required_changes" in instructions(rollback)
 
 

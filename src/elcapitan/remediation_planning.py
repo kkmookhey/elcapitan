@@ -708,9 +708,11 @@ class RemediationPlanningService:
             "This is a bounded checker rework. Address every item in "
             "review_feedback.required_changes explicitly in prerequisites, rollout, "
             "verification, rollback steps, or rollback triggers as appropriate.",
-            "Classify pre-mutation guard failures as abort-without-change and map "
-            "every post-mutation health, verification, or security-validation "
-            "failure to the executable rollback path.",
+            "Classify pre-mutation guard failures as abort-without-change. Map only "
+            "operational harm caused by the applied change to executable rollback. "
+            "Map failed apply, failed security validation, recurrence of the original "
+            "finding, policy drift, and rollback failure to retry, containment, or "
+            "owned escalation without restoring the vulnerable pre-change state.",
         ))
         task = AgentTask(
             task_id=task_id,

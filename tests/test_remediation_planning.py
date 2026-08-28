@@ -237,6 +237,8 @@ def test_checker_rework_is_bound_into_the_next_maker_task(prepared):
     assert feedback.record_id in task.input_record_ids
     assert feedback.evidence_ids[0] in task.evidence_ids
     assert any("bounded checker rework" in item for item in task.constraints)
+    assert any("without restoring the vulnerable pre-change state" in item
+               for item in task.constraints)
 
 
 def test_failed_terraform_check_is_persisted_but_does_not_advance(prepared):
