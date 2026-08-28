@@ -309,7 +309,8 @@ async function submitIntake(event) {
     });
     renderFleet(result.fleet);
     $("#intake-dialog").close();
-    showToast(`${result.received} finding(s) accepted · ${result.created_cases} new case(s) · ${result.duplicates} duplicate(s)`);
+    const skipped = result.skipped || {pass:0, manual:0};
+    showToast(`${result.received} failing finding(s) accepted · ${skipped.pass} passing and ${skipped.manual} manual skipped · ${result.created_cases} new case(s) · ${result.duplicates} duplicate(s)`);
   } finally { setBusy(false); }
 }
 

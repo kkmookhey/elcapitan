@@ -10,5 +10,6 @@
   "resources": [{ "uid": "arn:aws:s3:::anna-assets", "type": "AwsS3Bucket" }],
   "time_dt": "2026-08-08T11:00:00Z",
   "severity": "High",
+  "status_code": "FAIL",
   "unmapped": { "prowler_check_id": "s3_bucket_public_access", "compliance": ["CIS-2.1"] }
 }

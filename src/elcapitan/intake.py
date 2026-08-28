@@ -3,15 +3,24 @@ from __future__ import annotations
 
 import secrets
 import shutil
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 from .cases import (
-    CaseState, CaseTransition, RemediationCase, RiskAssessment,
+    CaseState,
+    CaseTransition,
+    RemediationCase,
+    RiskAssessment,
 )
 from .evidence import Collector
-from .finding import cloud_target, normalise_ocsf, source_identity
+from .finding import (
+    cloud_target,
+    finding_rule_id,
+    normalise_ocsf,
+    prowler_outcome,
+    source_identity,
+)
 from .finding_store import DuplicateFinding, FindingStore, StoredFinding
 from .priority import PrioritySignals, assess_priority
 from .schema import validate_doc
@@ -107,9 +116,27 @@ class RemediationIntake:
                context: IntakeContext = IntakeContext()) -> IntakeOutcome:
         if not tenant_id:
             raise ValueError("tenant_id is required")
+        outcome = prowler_outcome(raw)
+        if outcome is not None and outcome != "FAIL":
+            raise ValueError(
+                f"Prowler {outcome} records are not actionable findings")
         provider, account, original_uid = source_identity(raw)
         existing = self.finding_store.get_by_source(
             tenant_id, provider, account, original_uid)
+        # Deployments created before collision-safe Prowler keys used the raw
+        # producer UID. Preserve replay idempotency for a matching legacy row,
+        # but do not let a UID collision hide a different rule/resource.
+        raw_uid = (raw.get("finding_info") or {}).get("uid", "")
+        if existing is None and original_uid != raw_uid and raw_uid:
+            legacy = self.finding_store.get_by_source(
+                tenant_id, provider, account, raw_uid)
+            if legacy is not None:
+                same_resource = legacy.resource_uid == cloud_target(raw)[1]
+                same_rule = (
+                    str(legacy.record.get("ocsf", {}).get("rule_id", ""))
+                    == finding_rule_id(raw))
+                if same_resource and same_rule:
+                    existing = legacy
         if existing and existing.case_id:
             return IntakeOutcome(
                 finding=existing, case=self.case_store.get(existing.case_id),

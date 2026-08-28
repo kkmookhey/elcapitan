@@ -9,9 +9,10 @@ The raw event is written as evidence *inside the trial run directory*
 directory verbatim into each trial bundle, so `raw_event.artifact_path`
 must resolve there or a later validator cannot re-fetch/audit the original.
 """
+import hashlib
+
 from .evidence import Collector, write_evidence
 from .hashing import canonical_json
-
 
 # OCSF severity_id -> name (OCSF 1.1, Security Finding class). Security Hub
 # sends the id and no `severity` string; Prowler sends the string. Both are
@@ -20,6 +21,47 @@ from .hashing import canonical_json
 # challenger's context, where it looks like the scanner had no opinion.
 OCSF_SEVERITY = {0: "Unknown", 1: "Informational", 2: "Low", 3: "Medium",
                  4: "High", 5: "Critical", 6: "Fatal"}
+
+PROWLER_OUTCOMES = frozenset({"FAIL", "PASS", "MANUAL"})
+
+
+def _product_name(raw: dict) -> str:
+    metadata = raw.get("metadata") or {}
+    product = metadata.get("product") or {}
+    name = product.get("name", "")
+    return name if isinstance(name, str) else ""
+
+
+def finding_rule_id(raw: dict) -> str:
+    """Return the producer's stable control identity without parsing titles."""
+    metadata = raw.get("metadata") or {}
+    finding_info = raw.get("finding_info") or {}
+    analytic = finding_info.get("analytic") or {}
+    unmapped = raw.get("unmapped") or {}
+    return str(
+        analytic.get("uid") or metadata.get("event_code")
+        or unmapped.get("prowler_check_id") or "")
+
+
+def prowler_outcome(raw: dict) -> str | None:
+    """Classify Prowler's check result independently of OCSF severity/status.
+
+    Prowler uses ``status_code`` for PASS/FAIL/MANUAL. OCSF ``status`` is the
+    finding lifecycle (and is commonly ``New`` for all three), while severity
+    describes the control, including controls that passed. Treating either as
+    the check result creates false vulnerability cases.
+
+    Non-Prowler OCSF producers return ``None`` and retain their existing intake
+    contract. A Prowler record without a recognized result fails closed.
+    """
+    if _product_name(raw).strip().lower() != "prowler":
+        return None
+    value = raw.get("status_code")
+    outcome = value.strip().upper() if isinstance(value, str) else ""
+    if outcome not in PROWLER_OUTCOMES:
+        raise ValueError(
+            "Prowler OCSF finding must have status_code FAIL, PASS, or MANUAL")
+    return outcome
 
 
 def _severity(raw: dict) -> str:
@@ -50,7 +92,7 @@ def _observed_at(raw: dict) -> str:
     epoch = raw.get("time")
     if isinstance(epoch, bool) or not isinstance(epoch, (int, float)):
         return ""
-    from datetime import datetime, UTC
+    from datetime import UTC, datetime
     # OCSF `time` is milliseconds. Seconds would put it in 1970; the guard is
     # a sanity bound, not a parse.
     seconds = epoch / 1000 if epoch > 1e11 else epoch
@@ -99,13 +141,15 @@ def cloud_target(raw: dict) -> tuple[str, str, str]:
 
 
 def source_identity(raw: dict) -> tuple[str, str, str]:
-    """Stable producer identity: ``(provider, account, original uid)``.
+    """Stable producer identity: ``(provider, account, source key)``.
 
     Product intake uses this before writing evidence so replaying the same
     scanner event is idempotent rather than creating a second finding and a
-    second raw artifact.
+    second raw artifact. Prowler 5.x can reuse ``finding_info.uid`` for the
+    same check across several resources, so its key also binds the rule and
+    resource. The raw producer UID remains preserved in the normalized record.
     """
-    provider, _, _ = cloud_target(raw)
+    provider, resource_uid, _ = cloud_target(raw)
     cloud = raw.get("cloud") or {}
     account = cloud.get("account") or {}
     original_uid = (raw.get("finding_info") or {}).get("uid", "")
@@ -116,6 +160,18 @@ def source_identity(raw: dict) -> tuple[str, str, str]:
     if missing:
         raise ValueError(
             "OCSF finding has no stable source identity: missing " + ", ".join(missing))
+    if _product_name(raw).strip().lower() == "prowler":
+        rule_id = finding_rule_id(raw)
+        scoped = {"uid": original_uid, "rule_id": rule_id,
+                  "resource_uid": resource_uid}
+        scoped_missing = [name for name, value in scoped.items()
+                          if not isinstance(value, str) or not value]
+        if scoped_missing:
+            raise ValueError(
+                "Prowler OCSF finding has no collision-safe source identity: "
+                "missing " + ", ".join(scoped_missing))
+        digest = hashlib.sha256(canonical_json(scoped)).hexdigest()
+        return provider, values["account"], f"prowler:{digest}"
     return provider, values["account"], original_uid
 
 
@@ -127,7 +183,6 @@ def normalise_ocsf(raw: dict, *, run_dir, finding_id: str,
     metadata = raw.get("metadata", {})
     product = metadata.get("product", {})
     finding_info = raw.get("finding_info", {})
-    analytic = finding_info.get("analytic") or {}
     cloud = raw.get("cloud", {})
     resources = raw.get("resources") or [{}]
     primary = resources[0]
@@ -149,8 +204,7 @@ def normalise_ocsf(raw: dict, *, run_dir, finding_id: str,
             # OCSF producers place the rule identity in different legal
             # locations. Keep one normalized value so live validators do not
             # have to parse titles or know which producer emitted the event.
-            "rule_id": (analytic.get("uid") or metadata.get("event_code")
-                        or (raw.get("unmapped") or {}).get("prowler_check_id", "")),
+            "rule_id": finding_rule_id(raw),
         },
         "provenance": {
             "product": product.get("name", ""),

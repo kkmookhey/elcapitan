@@ -3,28 +3,34 @@ from __future__ import annotations
 
 import os
 import tempfile
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Mapping, Sequence
 
 from .asff import asff_to_ocsf
 from .case_store import SqliteCaseStore
 from .case_validation import CaseValidationService
 from .cases import case_to_dict, event_to_dict
 from .evidence import Collector
-from .finding import cloud_target, normalise_ocsf, source_identity
+from .finding import (
+    cloud_target,
+    normalise_ocsf,
+    prowler_outcome,
+    source_identity,
+)
 from .finding_store import SqliteFindingStore
 from .fleet import CapabilityRegistry, FleetSnapshotService, connector_readiness
 from .intake import IntakeContext, RemediationIntake, priority_signals
-from .product_records import SqliteProductRecordStore, product_record_to_dict
 from .postgres_store import (
-    PostgresArtifactStore, PostgresCaseStore, PostgresFindingStore,
+    PostgresArtifactStore,
+    PostgresCaseStore,
+    PostgresFindingStore,
     PostgresProductRecordStore,
 )
+from .product_records import SqliteProductRecordStore, product_record_to_dict
 from .promotion import PromotionReadinessService
 from .schema import validate_doc
-
 
 MAX_FINDINGS_PER_BATCH = 1_000
 MAX_CASES_PER_VALIDATION_BATCH = 100
@@ -42,7 +48,10 @@ def _now() -> str:
 @dataclass(frozen=True)
 class IntakeBatchOutcome:
     tenant_id: str
+    submitted: int
     received: int
+    skipped_pass: int
+    skipped_manual: int
     created_cases: int
     attached_findings: int
     duplicates: int
@@ -52,7 +61,13 @@ class IntakeBatchOutcome:
     def to_dict(self) -> dict:
         return {
             "tenant_id": self.tenant_id,
+            "submitted": self.submitted,
             "received": self.received,
+            "accepted_failures": self.received,
+            "skipped": {
+                "pass": self.skipped_pass,
+                "manual": self.skipped_manual,
+            },
             "created_cases": self.created_cases,
             "attached_findings": self.attached_findings,
             "duplicates": self.duplicates,
@@ -159,6 +174,7 @@ class ShadowFleetControlPlane:
                 f"a batch must contain 1 to {MAX_FINDINGS_PER_BATCH} findings")
 
         normalized = []
+        skipped = {"PASS": 0, "MANUAL": 0}
         for index, raw in enumerate(documents):
             if not isinstance(raw, Mapping):
                 raise ShadowControlError(f"finding {index + 1} is not a JSON object")
@@ -174,9 +190,13 @@ class ShadowFleetControlPlane:
                 raise ShadowControlError(
                     f"finding {index + 1} does not identify a cloud resource")
             try:
+                outcome = prowler_outcome(document)
                 source_identity(document)
             except ValueError as exc:
                 raise ShadowControlError(f"finding {index + 1}: {exc}") from exc
+            if outcome in skipped:
+                skipped[outcome] += 1
+                continue
             normalized.append(document)
 
         # Normalize and schema-check every finding in a disposable namespace
@@ -215,7 +235,10 @@ class ShadowFleetControlPlane:
         case_ids = tuple(dict.fromkeys(item.case.case_id for item in outcomes))
         return IntakeBatchOutcome(
             tenant_id=tenant_id,
+            submitted=len(documents),
             received=len(outcomes),
+            skipped_pass=skipped["PASS"],
+            skipped_manual=skipped["MANUAL"],
             created_cases=sum(item.case_created for item in outcomes),
             attached_findings=sum(item.finding_attached for item in outcomes),
             duplicates=sum(item.duplicate for item in outcomes),

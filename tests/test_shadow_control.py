@@ -5,10 +5,9 @@ from pathlib import Path
 import fake_az
 import pytest
 
-from elcapitan.intake import IntakeContext
 from elcapitan import shadow_control
+from elcapitan.intake import IntakeContext
 from elcapitan.shadow_control import ShadowControlError, ShadowFleetControlPlane
-
 
 FIXTURE = Path(__file__).parent / "fixtures" / "prowler-ocsf-azure-sample.json"
 
@@ -73,6 +72,36 @@ def test_shadow_intake_creates_tenant_fleet_and_is_idempotent(tmp_path):
     assert replay["duplicates"] == 2
     assert replay["fleet"]["summary"]["total_findings"] == 2
     assert control.health()["state_store"] == "sqlite"
+
+
+def test_shadow_export_intake_accepts_only_explicit_prowler_failures(tmp_path):
+    failed = findings()[0]
+    passed = json.loads(json.dumps(failed))
+    passed["finding_info"]["uid"] += "-PASS"
+    passed["resources"][0]["uid"] += "-PASS"
+    passed.update(status="New", status_code="PASS", severity="Critical")
+    manual = json.loads(json.dumps(failed))
+    manual["finding_info"]["uid"] += "-MANUAL"
+    manual["resources"][0]["uid"] += "-MANUAL"
+    manual["status_code"] = "MANUAL"
+
+    result = ShadowFleetControlPlane(tmp_path, host_env={}).intake(
+        tenant_id="TEN", documents=[failed, passed, manual]).to_dict()
+
+    assert result["submitted"] == 3
+    assert result["received"] == result["accepted_failures"] == 1
+    assert result["skipped"] == {"pass": 1, "manual": 1}
+    assert result["fleet"]["summary"]["total_findings"] == 1
+
+
+def test_shadow_export_intake_rejects_unknown_prowler_outcome(tmp_path):
+    document = findings()[0]
+    document["status_code"] = "UNKNOWN"
+    control = ShadowFleetControlPlane(tmp_path, host_env={})
+
+    with pytest.raises(ShadowControlError, match="status_code"):
+        control.intake(tenant_id="TEN", documents=[document])
+    assert control.snapshot(tenant_id="TEN")["summary"]["total_findings"] == 0
 
 
 def test_shadow_intake_rejects_entire_unsupported_provider_batch(tmp_path):

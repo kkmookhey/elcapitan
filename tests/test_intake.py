@@ -73,6 +73,29 @@ def test_replaying_same_source_finding_is_idempotent(intake):
     assert len(list((artifacts / "findings").iterdir())) == 1
 
 
+def test_same_prowler_uid_on_different_resources_is_not_deduplicated(intake):
+    service, _, _, _ = intake
+    first_raw = raw_finding()
+    second_raw = raw_finding()
+    second_raw["resources"][0]["uid"] += "-SECOND"
+
+    first = service.ingest(first_raw, tenant_id="TEN-001")
+    second = service.ingest(second_raw, tenant_id="TEN-001")
+
+    assert not second.duplicate
+    assert second.finding.finding_id != first.finding.finding_id
+    assert second.case.case_id != first.case.case_id
+
+
+def test_core_intake_rejects_non_failing_prowler_results(intake):
+    service, _, _, _ = intake
+    for outcome in ("PASS", "MANUAL"):
+        raw = raw_finding(uid=f"result-{outcome.lower()}")
+        raw["status_code"] = outcome
+        with pytest.raises(ValueError, match="not actionable"):
+            service.ingest(raw, tenant_id="TEN-001")
+
+
 def test_second_finding_on_asset_is_correlated_and_can_raise_priority(intake):
     service, case_store, _, _ = intake
     first = service.ingest(raw_finding(), tenant_id="TEN-001")

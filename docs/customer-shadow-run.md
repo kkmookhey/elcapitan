@@ -104,6 +104,19 @@ and connector readiness before the first cloud request. It remains possible
 for a cloud read to fail after preflight; that failure is retained as restricted
 evidence and the affected case fails closed.
 
+Prowler exports may contain `PASS`, `FAIL`, and `MANUAL` records together.
+El Capitan treats only an explicit `status_code == "FAIL"` as an actionable
+finding. It reports and skips `PASS` and `MANUAL`; it never infers the result
+from OCSF `status` or `severity`. `status` is commonly `New` for every check,
+and a passing control retains that control's configured severity. Missing or
+unknown Prowler outcomes reject the batch before durable writes.
+
+Prowler 5.x may also reuse `finding_info.uid` for the same check on different
+resources. Intake therefore binds Prowler idempotency to the producer UID,
+rule ID, and resource UID together. The original UID remains preserved in the
+normalized evidence record; replaying one check/resource observation remains
+idempotent without collapsing distinct resources.
+
 ## Data handling
 
 When `ELCAPITAN_DATABASE_URL` is present, cases, events, findings, product

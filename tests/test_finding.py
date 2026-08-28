@@ -1,8 +1,15 @@
 import json
 from pathlib import Path
+
 import pytest
+
 from elcapitan.evidence import Collector, EvidenceRef, verify_evidence
-from elcapitan.finding import cloud_target, normalise_ocsf, source_identity
+from elcapitan.finding import (
+    cloud_target,
+    normalise_ocsf,
+    prowler_outcome,
+    source_identity,
+)
 from elcapitan.schema import validate_doc
 
 FIXTURE = Path(__file__).parent / "fixtures" / "prowler-ocsf-sample.json"
@@ -97,5 +104,31 @@ def test_a_null_region_still_produces_a_schema_valid_finding_record(tmp_path):
 
 def test_source_identity_is_stable_across_replays():
     raw = json.loads(FIXTURE.read_text())
-    assert source_identity(raw) == (
-        "aws", "111122223333", "prowler-aws-s3-123")
+    first = source_identity(raw)
+    assert first[:2] == ("aws", "111122223333")
+    assert first[2].startswith("prowler:")
+    assert source_identity(raw) == first
+
+
+def test_prowler_source_identity_binds_the_resource_and_rule():
+    raw = json.loads(FIXTURE.read_text())
+    different_resource = json.loads(json.dumps(raw))
+    different_resource["resources"][0]["uid"] += "-SECOND"
+    different_rule = json.loads(json.dumps(raw))
+    different_rule["metadata"]["event_code"] += "-SECOND"
+
+    assert source_identity(raw)[2] != source_identity(different_resource)[2]
+    assert source_identity(raw)[2] != source_identity(different_rule)[2]
+
+
+def test_prowler_outcome_uses_status_code_not_severity_or_lifecycle_status():
+    raw = json.loads(FIXTURE.read_text())
+    raw.update(status="New", status_code="PASS", severity="Critical")
+    assert prowler_outcome(raw) == "PASS"
+
+
+def test_prowler_outcome_fails_closed_when_result_is_missing():
+    raw = json.loads(FIXTURE.read_text())
+    raw.pop("status_code")
+    with pytest.raises(ValueError, match="status_code"):
+        prowler_outcome(raw)
