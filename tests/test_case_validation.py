@@ -79,6 +79,29 @@ def state(public_network_access="Enabled"):
         config=(("public_network_access", json.dumps(public_network_access)),))
 
 
+def storage_security_state(**overrides):
+    values = {
+        "encryption": {
+            "keySource": "Microsoft.Storage",
+            "requireInfrastructureEncryption": False,
+        },
+        "sku": {"name": "Standard_LRS", "tier": "Standard"},
+        "network_rule_set": {"defaultAction": "Allow", "bypass": "None"},
+        "private_endpoint_connections": [],
+        "allow_shared_key_access": True,
+        "default_to_oauth_authentication": False,
+        "blob_container_delete_retention_policy": {"enabled": False},
+    }
+    values.update(overrides)
+    return CloudState(
+        provider="azure",
+        resource_uid=("/subscriptions/8cd2b4cc-c789-466d-a8f7-8f51fb20985d/"
+                      "resourceGroups/eiger-rg/providers/Microsoft.Storage/"
+                      "storageAccounts/eigercorpus8dlub3zy"),
+        config=tuple((key, json.dumps(value)) for key, value in values.items()),
+    )
+
+
 def sql_state(protector="AzureKeyVault", database_tde=None):
     tde = {"application": "Enabled"} if database_tde is None else database_tde
     return CloudState(
@@ -341,6 +364,30 @@ def test_cloud_read_failure_is_a_recorded_blocker(product):
     assert outcome.case.state is CaseState.BLOCKED
     assert outcome.findings[0].status is FindingValidationStatus.UNAVAILABLE
     assert outcome.record.evidence_ids == ("EVD-001",)
+
+
+@pytest.mark.parametrize(
+    "rule_id",
+    [
+        "storage_ensure_encryption_with_customer_managed_keys",
+        "storage_geo_redundant_enabled",
+        "storage_infrastructure_encryption_is_enabled",
+        "storage_default_network_access_rule_is_denied",
+        "storage_ensure_private_endpoints_in_storage_accounts",
+        "storage_account_key_access_disabled",
+        "storage_default_to_entra_authorization_enabled",
+        "storage_ensure_soft_delete_is_enabled",
+        "storage_ensure_azure_services_are_trusted_to_access_is_enabled",
+    ],
+)
+def test_expanded_storage_findings_use_registered_evaluators(
+        product, rule_id):
+    *_, intake = product
+    opened = intake.ingest(raw(rule_id), tenant_id="TEN-001")
+    outcome = validator(
+        product, lambda finding, env: storage_security_state()).validate(
+            opened.case.case_id, host_env={})
+    assert outcome.findings[0].status is FindingValidationStatus.CONFIRMED
 
 
 def test_reader_cannot_validate_a_different_resource(product):

@@ -27,6 +27,7 @@ from elcapitan.cloud import (
     to_dict,
     verification_env,
 )
+from elcapitan.control_packs import builtin_registry
 
 ARN = fake_aws.BUCKET_ARN
 REGION = "ap-south-1"
@@ -418,6 +419,30 @@ def test_azure_capture_records_the_control_attribute_from_the_blob_service(azure
     # storage_blob_versioning_is_enabled is the CONTROL case, and it lives in
     # a DIFFERENT document from every TRAP-1 attribute.
     assert dict(azure().config)["blob_versioning"] == "false"
+
+
+def test_expanded_storage_controls_evaluate_the_measured_eiger_lab_contract(azure):
+    values = {
+        aspect: json.loads(value)
+        for aspect, value in azure().config
+    }
+    expected = {
+        "storage_ensure_encryption_with_customer_managed_keys": True,
+        "storage_geo_redundant_enabled": True,
+        "storage_infrastructure_encryption_is_enabled": True,
+        "storage_default_network_access_rule_is_denied": True,
+        "storage_ensure_private_endpoints_in_storage_accounts": True,
+        "storage_account_key_access_disabled": True,
+        "storage_default_to_entra_authorization_enabled": True,
+        "storage_ensure_soft_delete_is_enabled": True,
+        # The measured lab account explicitly allows the AzureServices bypass.
+        "storage_ensure_azure_services_are_trusted_to_access_is_enabled": False,
+    }
+    registry = builtin_registry()
+    assert {
+        rule_id: registry.get("azure", rule_id).evaluator(values).confirmed
+        for rule_id in expected
+    } == expected
 
 
 def test_azure_sql_capture_reads_complete_cmk_and_user_database_tde_contract(azure):

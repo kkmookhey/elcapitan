@@ -39,6 +39,25 @@ collector recorded both facts and the control correctly remained confirmed
 because the Prowler rule requires an `AzureKeyVault` customer-managed key.
 Sanitized copies of the three ARM response shapes are regression fixtures.
 
+The Azure Storage pack also evaluates nine account-level checks from its
+already measured account and blob-service evidence: customer-managed key
+encryption, geo-redundant replication, infrastructure encryption, default
+network deny, private endpoints, Shared Key disablement, default Entra
+authorization, container soft delete, and the trusted-Azure-services bypass.
+These controls add no cloud calls and no permissions. Their evaluators pin
+Prowler's current defaults, including null Shared Key state behaving as enabled
+and only `Standard_GRS`, `Standard_GZRS`, `Standard_RAGRS`, and
+`Standard_RAGZRS` satisfying geo redundancy. The real sanitized Eiger lab
+account and blob-service fixtures are passed through all nine evaluators as one
+regression contract. Planning and execution remain disabled for the new
+controls; existing storage remediation authority is not inherited by sibling
+checks.
+
+Semantics are pinned to Prowler's [Azure Storage check
+implementations](https://github.com/prowler-cloud/prowler/tree/master/prowler/providers/azure/services/storage)
+and Microsoft's [Storage Accounts - Get REST
+contract](https://learn.microsoft.com/rest/api/storagerp/storage-accounts/get-properties?view=rest-storagerp-2025-06-01).
+
 The Azure Key Vault pack pins the current Prowler truth conditions for
 `keyvault_rbac_enabled`, `keyvault_private_endpoints`, and
 `keyvault_recoverable`. All three consume one Key Vault management-plane GET;

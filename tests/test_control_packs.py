@@ -24,7 +24,7 @@ def test_builtin_registry_is_composed_from_service_packs():
         "aws-s3", "azure-app-service", "azure-key-vault", "azure-network", "azure-sql",
         "azure-storage"}
     registry = builtin_registry()
-    assert len(registry.list()) == 16
+    assert len(registry.list()) == 25
     assert registry.get("AZURE", "sqlserver_tde_encrypted_with_cmk").pack_id == (
         "azure-sql")
     assert registry.get(
@@ -54,6 +54,80 @@ def test_duplicate_provider_rule_registration_fails_closed():
 def test_pack_rejects_a_definition_owned_by_another_pack():
     with pytest.raises(ValueError, match="containing pack"):
         ControlPack("expected", (definition(pack_id="different"),))
+
+
+@pytest.mark.parametrize(
+    ("rule_id", "values", "confirmed"),
+    [
+        ("storage_ensure_encryption_with_customer_managed_keys", {
+            "encryption": {"keySource": "Microsoft.Storage"}}, True),
+        ("storage_ensure_encryption_with_customer_managed_keys", {
+            "encryption": {"keySource": "Microsoft.Keyvault"}}, False),
+        ("storage_geo_redundant_enabled", {
+            "sku": {"name": "Standard_LRS"}}, True),
+        ("storage_geo_redundant_enabled", {
+            "sku": {"name": "Standard_GZRS"}}, False),
+        ("storage_infrastructure_encryption_is_enabled", {
+            "encryption": {"requireInfrastructureEncryption": None}}, True),
+        ("storage_infrastructure_encryption_is_enabled", {
+            "encryption": {"requireInfrastructureEncryption": True}}, False),
+        ("storage_default_network_access_rule_is_denied", {
+            "network_rule_set": {"defaultAction": "Allow"}}, True),
+        ("storage_default_network_access_rule_is_denied", {
+            "network_rule_set": {"defaultAction": "Deny"}}, False),
+        ("storage_ensure_private_endpoints_in_storage_accounts", {
+            "private_endpoint_connections": []}, True),
+        ("storage_ensure_private_endpoints_in_storage_accounts", {
+            "private_endpoint_connections": [{"id": "/privateEndpoints/one"}]},
+         False),
+        ("storage_account_key_access_disabled", {
+            "allow_shared_key_access": None}, True),
+        ("storage_account_key_access_disabled", {
+            "allow_shared_key_access": False}, False),
+        ("storage_default_to_entra_authorization_enabled", {
+            "default_to_oauth_authentication": False}, True),
+        ("storage_default_to_entra_authorization_enabled", {
+            "default_to_oauth_authentication": True}, False),
+        ("storage_ensure_soft_delete_is_enabled", {
+            "blob_container_delete_retention_policy": {"enabled": False}}, True),
+        ("storage_ensure_soft_delete_is_enabled", {
+            "blob_container_delete_retention_policy": {"enabled": True}}, False),
+        ("storage_ensure_azure_services_are_trusted_to_access_is_enabled", {
+            "network_rule_set": {"bypass": "None"}}, True),
+        ("storage_ensure_azure_services_are_trusted_to_access_is_enabled", {
+            "network_rule_set": {"bypass": "Logging,AzureServices"}}, False),
+    ],
+)
+def test_storage_pack_matches_pinned_prowler_truth_conditions(
+        rule_id, values, confirmed):
+    assert builtin_registry().get("azure", rule_id).evaluator(values).confirmed is (
+        confirmed)
+
+
+@pytest.mark.parametrize(
+    ("rule_id", "values"),
+    [
+        ("storage_ensure_encryption_with_customer_managed_keys", {
+            "encryption": []}),
+        ("storage_geo_redundant_enabled", {"sku": {"name": None}}),
+        ("storage_infrastructure_encryption_is_enabled", {
+            "encryption": {"requireInfrastructureEncryption": "false"}}),
+        ("storage_default_network_access_rule_is_denied", {
+            "network_rule_set": {"defaultAction": "Unknown"}}),
+        ("storage_ensure_private_endpoints_in_storage_accounts", {
+            "private_endpoint_connections": ["bad"]}),
+        ("storage_account_key_access_disabled", {"allow_shared_key_access": 0}),
+        ("storage_default_to_entra_authorization_enabled", {
+            "default_to_oauth_authentication": "true"}),
+        ("storage_ensure_soft_delete_is_enabled", {
+            "blob_container_delete_retention_policy": {"enabled": 1}}),
+        ("storage_ensure_azure_services_are_trusted_to_access_is_enabled", {
+            "network_rule_set": {"bypass": None}}),
+    ],
+)
+def test_storage_pack_rejects_malformed_evidence(rule_id, values):
+    with pytest.raises(ValueError, match="invalid|no keySource|no name|not an"):
+        builtin_registry().get("azure", rule_id).evaluator(values)
 
 
 def test_sql_pack_rejects_partial_database_evidence():
