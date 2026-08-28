@@ -5,6 +5,7 @@ evidence semantics explicit and testable without implying remediation or
 execution coverage.
 """
 from .aws_s3 import AWS_S3_PACK
+from .azure_app_service import AZURE_APP_SERVICE_PACK
 from .azure_key_vault import AZURE_KEY_VAULT_PACK
 from .azure_network import AZURE_NETWORK_PACK
 from .azure_sql import AZURE_SQL_PACK
@@ -14,6 +15,7 @@ from .registry import ControlPackRegistry
 
 BUILTIN_CONTROL_PACKS = (
     AWS_S3_PACK,
+    AZURE_APP_SERVICE_PACK,
     AZURE_KEY_VAULT_PACK,
     AZURE_NETWORK_PACK,
     AZURE_SQL_PACK,

@@ -60,6 +60,10 @@ NETWORK_SUBNET_RESOURCE_UID = (
     f"/subscriptions/{SQL_SUBSCRIPTION}/resourceGroups/elcap-network-fixture-rg"
     "/providers/Microsoft.Network/virtualNetworks/elcap-vnet-fixture"
     "/subnets/validator-contract")
+APP_SERVICE_RESOURCE_UID = (
+    f"/subscriptions/{SQL_SUBSCRIPTION}/resourceGroups/elcap-app-fixture-rg"
+    "/providers/Microsoft.Web/sites/elcap-app-fixture")
+APP_SERVICE_CONFIG_RESOURCE_UID = APP_SERVICE_RESOURCE_UID + "/config/web"
 
 # The operation key is the leading run of non-flag argv tokens, which is how
 # `az` itself names a command ("storage account show"). Building it from argv
@@ -169,6 +173,24 @@ def network_subnet_document() -> dict:
         (FIXTURES / "azure-network-subnet-lab-response.json").read_text())
 
 
+def app_site_document() -> dict:
+    """Sanitized response measured from the disposable App Service lab."""
+    return json.loads((FIXTURES / "azure-app-site-contract.json").read_text())
+
+
+def app_web_config_document() -> dict:
+    return json.loads((FIXTURES / "azure-app-web-config-contract.json").read_text())
+
+
+def app_auth_v2_document() -> dict:
+    return json.loads((FIXTURES / "azure-app-auth-v2-contract.json").read_text())
+
+
+def app_diagnostic_settings_document() -> dict:
+    return json.loads(
+        (FIXTURES / "azure-app-diagnostic-settings-contract.json").read_text())
+
+
 def metrics_populated() -> str:
     """A REAL Transactions window containing measured activity: 15 one-minute
     points, one of them 1.0 — the health check's corpus blob read."""
@@ -260,6 +282,27 @@ def network_subnet_responses(*, subnet: dict | None = None) -> dict:
         "login": {"stdout": "[]", "exit": 0},
         "rest": {"stdout": json.dumps(
             network_subnet_document() if subnet is None else subnet), "exit": 0},
+    }
+
+
+def app_service_responses(*, site: dict | None = None,
+                          web_config: dict | None = None,
+                          auth: dict | None = None,
+                          diagnostics: dict | None = None) -> dict:
+    return {
+        "login": {"stdout": "[]", "exit": 0},
+        "rest": {"sequence": [
+            {"stdout": json.dumps(
+                app_site_document() if site is None else site), "exit": 0},
+            {"stdout": json.dumps(
+                app_web_config_document() if web_config is None else web_config),
+             "exit": 0},
+            {"stdout": json.dumps(
+                app_auth_v2_document() if auth is None else auth), "exit": 0},
+            {"stdout": json.dumps(
+                app_diagnostic_settings_document()
+                if diagnostics is None else diagnostics), "exit": 0},
+        ]},
     }
 
 

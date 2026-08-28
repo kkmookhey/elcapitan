@@ -29,10 +29,10 @@ Three properties are deliberate:
   comparable value that would then match itself before and after and score the
   run green without checking anything.
 
-- **Honestly scoped.** AWS S3, Azure Storage accounts, and the bounded Azure
-  SQL TDE contract are implemented. Every other provider and resource type
-  raises a named error rather than returning an empty state that would compare
-  equal to itself.
+- **Honestly scoped.** AWS S3 and the explicitly registered Azure service
+  contracts are implemented. Every other provider and resource type raises a
+  named error rather than returning an empty state that would compare equal to
+  itself.
 """
 import json
 import re
@@ -332,6 +332,8 @@ AZURE_SUPPORTED_TYPES = (
     "microsoft.network/virtualnetworks/subnets",
     "microsoft.sql/servers",
     "microsoft.storage/storageaccounts",
+    "microsoft.web/sites",
+    "microsoft.web/sites/config",
 )
 AZURE_RESOURCE_MANAGER = "https://management.azure.com"
 AZURE_STORAGE_API_VERSION = "2025-08-01"
@@ -339,6 +341,8 @@ AZURE_BLOB_API_VERSION = "2025-06-01"
 AZURE_SQL_API_VERSION = "2023-08-01"
 AZURE_KEY_VAULT_API_VERSION = "2024-11-01"
 AZURE_NETWORK_API_VERSION = "2025-05-01"
+AZURE_APP_SERVICE_API_VERSION = "2024-11-01"
+AZURE_DIAGNOSTIC_SETTINGS_API_VERSION = "2021-05-01-preview"
 
 # The critical Prowler control `sqlserver_tde_encrypted_with_cmk` is not a
 # single-property check. It requires a CMK-backed server protector and TDE on
@@ -358,6 +362,15 @@ AZURE_KEY_VAULT_ASPECTS = (
     "keyvault_enable_soft_delete",
     "keyvault_enable_purge_protection",
     "keyvault_private_endpoint_connection_count",
+)
+
+AZURE_APP_SERVICE_ASPECTS = (
+    "app_kind",
+    "app_client_cert_enabled",
+    "app_client_cert_mode",
+    "app_auth_platform_enabled",
+    "app_http20_enabled",
+    "app_diagnostic_log_settings",
 )
 
 
@@ -743,6 +756,166 @@ def _capture_azure_network_subnet(
         for aspect, value in values.items())
 
 
+def _azure_app_site_id(resource_uid: str) -> str:
+    """Resolve a site or its ``config`` child to the parent site ARM id."""
+    _, _, arm_type, _ = _arm_parts(resource_uid)
+    lowered = arm_type.lower()
+    if lowered == "microsoft.web/sites":
+        return resource_uid
+    if lowered != "microsoft.web/sites/config":
+        raise ValueError(f"not an App Service site resource id: {resource_uid!r}")
+    parts = resource_uid.split("/")
+    # /providers/Microsoft.Web/sites/{site}/config/{name}
+    if len(parts) != 11 or parts[9].lower() != "config":
+        raise ValueError(f"not an exact App Service config child id: {resource_uid!r}")
+    return "/".join(parts[:9])
+
+
+def _optional_arm_boolean(properties: dict, key: str, *, what: str):
+    value = properties.get(key)
+    if value is not None and not isinstance(value, bool):
+        raise ValueError(f"could not read {what}: {key} is not a boolean or null")
+    return value
+
+
+def _capture_azure_app_service(
+        resource_uid: str, *, read_url) -> tuple[tuple[str, str], ...]:
+    """Capture the minimized evidence contract for four Prowler web-app checks."""
+    site_id = _azure_app_site_id(resource_uid)
+    site = read_url(
+        _arm_url(site_id, api_version=AZURE_APP_SERVICE_API_VERSION),
+        what=f"the App Service site {site_id}")
+    response_id = site.get("id")
+    if (not isinstance(response_id, str)
+            or response_id.lower() != site_id.lower()):
+        raise ValueError(
+            f"could not read the App Service site {site_id}: response id "
+            f"{response_id!r} does not match the requested resource")
+    kind = site.get("kind")
+    if not isinstance(kind, str) or not kind:
+        raise ValueError(
+            f"could not read the App Service site {site_id}: response has no kind")
+    site_properties = site.get("properties")
+    if not isinstance(site_properties, dict):
+        raise ValueError(
+            f"could not read the App Service site {site_id}: response has no "
+            "properties object")
+    cert_enabled = _optional_arm_boolean(
+        site_properties, "clientCertEnabled", what=f"the App Service site {site_id}")
+    cert_mode = site_properties.get("clientCertMode")
+    if cert_mode is not None and not isinstance(cert_mode, str):
+        raise ValueError(
+            f"could not read the App Service site {site_id}: clientCertMode is "
+            "not a string or null")
+
+    web_config_id = f"{site_id}/config/web"
+    web_config = read_url(
+        _arm_url(web_config_id, api_version=AZURE_APP_SERVICE_API_VERSION),
+        what=f"the web configuration of {site_id}")
+    web_response_id = web_config.get("id")
+    if (not isinstance(web_response_id, str)
+            or web_response_id.lower() != web_config_id.lower()):
+        raise ValueError(
+            f"could not read the web configuration of {site_id}: response id "
+            f"{web_response_id!r} does not match {web_config_id!r}")
+    web_properties = web_config.get("properties")
+    if not isinstance(web_properties, dict):
+        raise ValueError(
+            f"could not read the web configuration of {site_id}: response has no "
+            "properties object")
+    http20_enabled = _optional_arm_boolean(
+        web_properties, "http20Enabled", what=f"the web configuration of {site_id}")
+
+    auth_id = f"{site_id}/config/authsettingsV2"
+    auth = read_url(
+        _arm_url(f"{auth_id}/list",
+                 api_version=AZURE_APP_SERVICE_API_VERSION),
+        what=f"the Auth Settings V2 platform state of {site_id}")
+    auth_response_id = auth.get("id")
+    if (not isinstance(auth_response_id, str)
+            or auth_response_id.lower() != auth_id.lower()):
+        raise ValueError(
+            f"could not read Auth Settings V2 of {site_id}: response id "
+            f"{auth_response_id!r} does not match {auth_id!r}")
+    auth_properties = auth.get("properties")
+    if not isinstance(auth_properties, dict):
+        raise ValueError(
+            f"could not read Auth Settings V2 of {site_id}: response has no "
+            "properties object")
+    platform = auth_properties.get("platform")
+    if platform is None:
+        auth_enabled = None
+    elif isinstance(platform, dict):
+        auth_enabled = _optional_arm_boolean(
+            platform, "enabled", what=f"Auth Settings V2 of {site_id}")
+    else:
+        raise ValueError(
+            f"could not read Auth Settings V2 of {site_id}: platform is not an "
+            "object or null")
+
+    diagnostics_path = (
+        f"{site_id}/providers/Microsoft.Insights/diagnosticSettings")
+    diagnostic_settings = _read_arm_collection(
+        _arm_url(diagnostics_path,
+                 api_version=AZURE_DIAGNOSTIC_SETTINGS_API_VERSION),
+        scope_path=diagnostics_path, read_url=read_url,
+        what=f"the diagnostic settings of {site_id}")
+    log_entries: list[dict] = []
+    for position, setting in enumerate(diagnostic_settings):
+        setting_name = setting.get("name")
+        properties = setting.get("properties")
+        if not isinstance(setting_name, str) or not setting_name:
+            raise ValueError(
+                f"could not read diagnostic settings of {site_id}: setting "
+                f"{position} has no name")
+        if not isinstance(properties, dict):
+            raise ValueError(
+                f"could not read diagnostic settings of {site_id}: setting "
+                f"{setting_name!r} has no properties object")
+        logs = properties.get("logs")
+        if logs is None:
+            logs = []
+        if (not isinstance(logs, list)
+                or any(not isinstance(item, dict) for item in logs)):
+            raise ValueError(
+                f"could not read diagnostic settings of {site_id}: logs for "
+                f"{setting_name!r} are not an object list")
+        for log_position, log in enumerate(logs):
+            category = log.get("category")
+            category_group = log.get("categoryGroup")
+            enabled = log.get("enabled")
+            if category is not None and not isinstance(category, str):
+                raise ValueError(
+                    f"could not read diagnostic settings of {site_id}: log "
+                    f"{log_position} in {setting_name!r} has invalid category")
+            if category_group is not None and not isinstance(category_group, str):
+                raise ValueError(
+                    f"could not read diagnostic settings of {site_id}: log "
+                    f"{log_position} in {setting_name!r} has invalid category group")
+            if enabled is not None and not isinstance(enabled, bool):
+                raise ValueError(
+                    f"could not read diagnostic settings of {site_id}: log "
+                    f"{log_position} in {setting_name!r} has invalid enabled state")
+            log_entries.append({
+                "setting": setting_name,
+                "category": category,
+                "category_group": category_group,
+                "enabled": enabled,
+            })
+
+    values = {
+        "app_kind": kind,
+        "app_client_cert_enabled": cert_enabled,
+        "app_client_cert_mode": cert_mode,
+        "app_auth_platform_enabled": auth_enabled,
+        "app_http20_enabled": http20_enabled,
+        "app_diagnostic_log_settings": log_entries,
+    }
+    return tuple(
+        (aspect, canonical_json(values[aspect]).decode("utf-8"))
+        for aspect in AZURE_APP_SERVICE_ASPECTS)
+
+
 def _capture_azure(resource_uid: str, region: str, env: dict) -> tuple[tuple[str, str], ...]:
     # `region` is accepted for signature symmetry with _capture_aws and
     # deliberately unused: an ARM resource id already names the subscription
@@ -759,6 +932,12 @@ def _capture_azure(resource_uid: str, region: str, env: dict) -> tuple[tuple[str
         env.get("ELCAP_AZURE_AUTH_MODE") == AZURE_MANAGED_IDENTITY_AUTH_MODE)
     if managed_identity:
         token = _managed_identity_token(env)
+        if arm_type.lower() in {
+                "microsoft.web/sites", "microsoft.web/sites/config"}:
+            return _capture_azure_app_service(
+                resource_uid,
+                read_url=lambda url, *, what: _arm_url_json(
+                    url, token=token, what=what))
         if arm_type.lower() == "microsoft.keyvault/vaults":
             return _capture_azure_key_vault(
                 resource_uid,
@@ -812,6 +991,13 @@ def _capture_azure(resource_uid: str, region: str, env: dict) -> tuple[tuple[str
 
         if arm_type.lower() == "microsoft.keyvault/vaults":
             return _capture_azure_key_vault(
+                resource_uid,
+                read_url=lambda url, *, what: _az_rest_json(
+                    az_env, url, what=what))
+
+        if arm_type.lower() in {
+                "microsoft.web/sites", "microsoft.web/sites/config"}:
+            return _capture_azure_app_service(
                 resource_uid,
                 read_url=lambda url, *, what: _az_rest_json(
                     az_env, url, what=what))

@@ -21,15 +21,21 @@ def definition(*, pack_id="fixture", provider="azure", rule_id="fixture_rule"):
 
 def test_builtin_registry_is_composed_from_service_packs():
     assert {pack.pack_id for pack in BUILTIN_CONTROL_PACKS} == {
-        "aws-s3", "azure-key-vault", "azure-network", "azure-sql",
+        "aws-s3", "azure-app-service", "azure-key-vault", "azure-network", "azure-sql",
         "azure-storage"}
     registry = builtin_registry()
-    assert len(registry.list()) == 9
+    assert len(registry.list()) == 13
     assert registry.get("AZURE", "sqlserver_tde_encrypted_with_cmk").pack_id == (
         "azure-sql")
     assert registry.get(
         "azure", "sqlserver_tde_encrypted_with_cmk",
         "microsoft.storage/storageaccounts") is None
+    assert registry.get(
+        "azure", "app_client_certificates_on",
+        "microsoft.web/sites/config") is not None
+    assert registry.get(
+        "azure", "app_client_certificates_on",
+        "microsoft.web/sites") is None
 
 
 def test_control_definition_serialization_never_exposes_executable_callable():
@@ -135,3 +141,76 @@ def test_network_subnet_pack_rejects_malformed_nsg_id():
             "network_subnet_name": "application",
             "network_subnet_nsg_id": {},
         })
+
+
+@pytest.mark.parametrize(
+    ("rule_id", "values", "confirmed"),
+    [
+        ("app_client_certificates_on", {
+            "app_client_cert_enabled": True,
+            "app_client_cert_mode": "Required",
+         }, False),
+        ("app_client_certificates_on", {
+            "app_client_cert_enabled": False,
+            "app_client_cert_mode": "Required",
+         }, True),
+        ("app_ensure_auth_is_set_up", {
+            "app_auth_platform_enabled": True,
+         }, False),
+        ("app_ensure_auth_is_set_up", {
+            "app_auth_platform_enabled": None,
+         }, True),
+        ("app_ensure_using_http20", {
+            "app_http20_enabled": True,
+         }, False),
+        ("app_ensure_using_http20", {
+            "app_http20_enabled": False,
+         }, True),
+        ("app_http_logs_enabled", {
+            "app_kind": "app,linux",
+            "app_diagnostic_log_settings": [{
+                "setting": "security",
+                "category": "AppServiceHTTPLogs",
+                "category_group": None,
+                "enabled": True,
+            }],
+         }, False),
+        ("app_http_logs_enabled", {
+            "app_kind": "app,linux",
+            "app_diagnostic_log_settings": [{
+                "setting": "security",
+                "category": None,
+                "category_group": "allLogs",
+                "enabled": True,
+            }],
+         }, False),
+        ("app_http_logs_enabled", {
+            "app_kind": "app,linux",
+            "app_diagnostic_log_settings": [],
+         }, True),
+        ("app_http_logs_enabled", {
+            "app_kind": "functionapp,linux",
+            "app_diagnostic_log_settings": [],
+         }, False),
+    ],
+)
+def test_app_service_pack_matches_pinned_prowler_truth_conditions(
+        rule_id, values, confirmed):
+    control = builtin_registry().get("azure", rule_id)
+    assert control.evaluator(values).confirmed is confirmed
+
+
+@pytest.mark.parametrize(
+    ("rule_id", "values"),
+    [
+        ("app_client_certificates_on", {
+            "app_client_cert_enabled": "true", "app_client_cert_mode": "Required"}),
+        ("app_ensure_auth_is_set_up", {"app_auth_platform_enabled": 1}),
+        ("app_ensure_using_http20", {"app_http20_enabled": "false"}),
+        ("app_http_logs_enabled", {
+            "app_kind": "app", "app_diagnostic_log_settings": [{}]}),
+    ],
+)
+def test_app_service_pack_rejects_malformed_evidence(rule_id, values):
+    with pytest.raises(ValueError, match="invalid|not a"):
+        builtin_registry().get("azure", rule_id).evaluator(values)

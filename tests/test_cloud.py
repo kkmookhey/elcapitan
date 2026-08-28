@@ -604,6 +604,166 @@ def test_azure_network_subnet_managed_identity_uses_exact_nested_arm_get(
     assert len(requests) == 2
 
 
+def test_azure_app_service_capture_matches_disposable_lab_measurement(
+        azure):
+    azure.responses(fake_az.app_service_responses())
+    state = azure(resource_uid=fake_az.APP_SERVICE_RESOURCE_UID)
+
+    assert dict(state.config) == {
+        "app_kind": '"app,linux"',
+        "app_client_cert_enabled": "false",
+        "app_client_cert_mode": '"Required"',
+        "app_auth_platform_enabled": "false",
+        "app_http20_enabled": "false",
+        "app_diagnostic_log_settings": "[]",
+    }
+    rest_calls = [call for call in fake_az.calls(azure.bin_dir)
+                  if call["operation"] == "rest"]
+    assert len(rest_calls) == 4
+    urls = [call["argv"][call["argv"].index("--url") + 1]
+            for call in rest_calls]
+    assert urls[0].startswith(
+        "https://management.azure.com" + fake_az.APP_SERVICE_RESOURCE_UID + "?")
+    assert "/config/web?api-version=2024-11-01" in urls[1]
+    assert "/config/authsettingsV2/list?api-version=2024-11-01" in urls[2]
+    assert ("/providers/Microsoft.Insights/diagnosticSettings?"
+            "api-version=2021-05-01-preview") in urls[3]
+    assert all(call["argv"][call["argv"].index("--method") + 1] == "get"
+               for call in rest_calls)
+
+
+def test_azure_app_service_capture_accepts_an_exact_config_child_id(azure):
+    azure.responses(fake_az.app_service_responses())
+    state = azure(resource_uid=fake_az.APP_SERVICE_CONFIG_RESOURCE_UID)
+
+    assert state.resource_uid == fake_az.APP_SERVICE_CONFIG_RESOURCE_UID
+    first_rest = next(call for call in fake_az.calls(azure.bin_dir)
+                      if call["operation"] == "rest")
+    url = first_rest["argv"][first_rest["argv"].index("--url") + 1]
+    assert url.startswith(
+        "https://management.azure.com" + fake_az.APP_SERVICE_RESOURCE_UID + "?")
+
+
+def test_azure_app_service_capture_minimizes_diagnostic_settings(azure):
+    diagnostics = {
+        "value": [{
+            "id": fake_az.APP_SERVICE_RESOURCE_UID +
+                  "/providers/Microsoft.Insights/diagnosticSettings/security",
+            "name": "security",
+            "properties": {
+                "workspaceId": "/subscriptions/redacted/resourceGroups/redacted/"
+                               "providers/Microsoft.OperationalInsights/workspaces/secret",
+                "logs": [
+                    {"category": "AppServiceHTTPLogs", "enabled": True,
+                     "retentionPolicy": {"days": 0, "enabled": False}},
+                    {"categoryGroup": "audit", "enabled": False},
+                ],
+                "metrics": [{"category": "AllMetrics", "enabled": True}],
+            },
+        }],
+    }
+    azure.responses(fake_az.app_service_responses(diagnostics=diagnostics))
+
+    logs = json.loads(dict(azure(
+        resource_uid=fake_az.APP_SERVICE_RESOURCE_UID).config)[
+            "app_diagnostic_log_settings"])
+    assert logs == [
+        {"category": "AppServiceHTTPLogs", "category_group": None,
+         "enabled": True, "setting": "security"},
+        {"category": None, "category_group": "audit",
+         "enabled": False, "setting": "security"},
+    ]
+    assert "workspaceId" not in json.dumps(logs)
+    assert "retentionPolicy" not in json.dumps(logs)
+
+
+@pytest.mark.parametrize(
+    ("document_name", "mutate", "message"),
+    [
+        ("site", lambda value: value.update({"kind": None}), "no kind"),
+        ("web_config", lambda value: value.update({"id": value["id"] + "-other"}),
+         "does not match"),
+        ("web_config", lambda value: value["properties"].update(
+            {"http20Enabled": "false"}), "not a boolean"),
+        ("auth", lambda value: value.update({"id": value["id"] + "-other"}),
+         "does not match"),
+        ("auth", lambda value: value["properties"].update(
+            {"platform": []}), "platform is not"),
+        ("diagnostics", lambda value: value.update({"value": ["bad"]}),
+         "object-list"),
+    ],
+)
+def test_azure_app_service_capture_rejects_malformed_documents(
+        azure, document_name, mutate, message):
+    documents = {
+        "site": fake_az.app_site_document(),
+        "web_config": fake_az.app_web_config_document(),
+        "auth": fake_az.app_auth_v2_document(),
+        "diagnostics": fake_az.app_diagnostic_settings_document(),
+    }
+    mutate(documents[document_name])
+    azure.responses(fake_az.app_service_responses(**documents))
+
+    with pytest.raises(ValueError, match=message):
+        azure(resource_uid=fake_az.APP_SERVICE_RESOURCE_UID)
+
+
+def test_azure_app_service_denied_diagnostic_read_is_not_partial_evidence(azure):
+    responses = fake_az.app_service_responses()
+    responses["rest"]["sequence"][3] = {
+        "stdout": "", "exit": 1,
+        "stderr": "ERROR: (AuthorizationFailed) reader cannot list diagnostics\n",
+    }
+    azure.responses(responses)
+
+    with pytest.raises(ValueError, match="AuthorizationFailed"):
+        azure(resource_uid=fake_az.APP_SERVICE_RESOURCE_UID)
+
+
+def test_azure_app_service_managed_identity_uses_four_bounded_arm_gets(monkeypatch):
+    requests = []
+    documents = iter([
+        fake_az.app_site_document(),
+        fake_az.app_web_config_document(),
+        fake_az.app_auth_v2_document(),
+        fake_az.app_diagnostic_settings_document(),
+    ])
+
+    class Response:
+        def __init__(self, document):
+            self.payload = json.dumps(document).encode()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def read(self):
+            return self.payload
+
+    def urlopen(request, timeout):
+        requests.append(request)
+        if request.full_url.startswith("http://localhost/"):
+            return Response({"access_token": "read-only-token"})
+        assert request.get_header("Authorization") == "Bearer read-only-token"
+        assert request.full_url.startswith(
+            "https://management.azure.com" + fake_az.APP_SERVICE_RESOURCE_UID)
+        return Response(next(documents))
+
+    monkeypatch.setattr("elcapitan.cloud.urllib.request.urlopen", urlopen)
+    managed_env = verification_env({
+        "ELCAP_SCANNER_AZURE_MANAGED_IDENTITY_CLIENT_ID": "scanner-client-id",
+        "IDENTITY_ENDPOINT": "http://localhost/token",
+        "IDENTITY_HEADER": "rotating-platform-header",
+    }, provider="azure")
+    state = capture_cloud_state(
+        fake_az.APP_SERVICE_RESOURCE_UID, provider="azure", env=managed_env)
+
+    assert dict(state.config)["app_auth_platform_enabled"] == "false"
+    assert len(requests) == 5
+
+
 def test_azure_sql_missing_tde_state_fails_closed(azure):
     tde = fake_az.sql_tde_document()
     del tde["properties"]["state"]

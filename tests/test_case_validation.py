@@ -20,6 +20,9 @@ NETWORK_SUBNET_UID = (
     "/subscriptions/00000000-0000-0000-0000-000000000001/"
     "resourceGroups/fixture/providers/Microsoft.Network/virtualNetworks/"
     "fixture/subnets/application")
+APP_SERVICE_UID = (
+    "/subscriptions/00000000-0000-0000-0000-000000000001/"
+    "resourceGroups/fixture/providers/Microsoft.Web/sites/application")
 
 
 class Ids:
@@ -56,6 +59,13 @@ def raw(rule_id="storage_account_public_network_access_disabled", *, resource_ty
         document["resources"][0]["type"] = (
             "microsoft.network/virtualnetworks/subnets")
         document["resources"][0]["uid"] = NETWORK_SUBNET_UID
+        document["resources"][0]["name"] = "application"
+    elif rule_id.startswith("app_"):
+        document["resources"][0]["type"] = (
+            "microsoft.web/sites/config"
+            if rule_id == "app_client_certificates_on"
+            else "microsoft.web/sites")
+        document["resources"][0]["uid"] = APP_SERVICE_UID
         document["resources"][0]["name"] = "application"
     return document
 
@@ -106,6 +116,20 @@ def network_subnet_state(nsg_id=None):
         config=(
             ("network_subnet_name", '"application"'),
             ("network_subnet_nsg_id", json.dumps(nsg_id)),
+        ))
+
+
+def app_service_state(*, client_cert_enabled=False, client_cert_mode="Required",
+                      auth_enabled=False, http20_enabled=False, logs=None):
+    return CloudState(
+        provider="azure", resource_uid=APP_SERVICE_UID,
+        config=(
+            ("app_kind", '"app,linux"'),
+            ("app_client_cert_enabled", json.dumps(client_cert_enabled)),
+            ("app_client_cert_mode", json.dumps(client_cert_mode)),
+            ("app_auth_platform_enabled", json.dumps(auth_enabled)),
+            ("app_http20_enabled", json.dumps(http20_enabled)),
+            ("app_diagnostic_log_settings", json.dumps(logs or [])),
         ))
 
 
@@ -247,6 +271,38 @@ def test_network_subnet_finding_is_bound_to_nested_resource_type(
     outcome = validator(
         product, lambda finding, env: network_subnet_state(nsg_id)).validate(
             opened.case.case_id, host_env={})
+    assert outcome.findings[0].status is expected
+
+
+@pytest.mark.parametrize(
+    ("rule_id", "cloud_state", "expected"),
+    [
+        ("app_client_certificates_on", app_service_state(),
+         FindingValidationStatus.CONFIRMED),
+        ("app_client_certificates_on", app_service_state(client_cert_enabled=True),
+         FindingValidationStatus.NOT_CONFIRMED),
+        ("app_ensure_auth_is_set_up", app_service_state(),
+         FindingValidationStatus.CONFIRMED),
+        ("app_ensure_auth_is_set_up", app_service_state(auth_enabled=True),
+         FindingValidationStatus.NOT_CONFIRMED),
+        ("app_ensure_using_http20", app_service_state(),
+         FindingValidationStatus.CONFIRMED),
+        ("app_ensure_using_http20", app_service_state(http20_enabled=True),
+         FindingValidationStatus.NOT_CONFIRMED),
+        ("app_http_logs_enabled", app_service_state(),
+         FindingValidationStatus.CONFIRMED),
+        ("app_http_logs_enabled", app_service_state(logs=[{
+            "setting": "security", "category": "AppServiceHTTPLogs",
+            "category_group": None, "enabled": True,
+         }]), FindingValidationStatus.NOT_CONFIRMED),
+    ],
+)
+def test_app_service_findings_are_bound_to_exact_ocsf_resource_types(
+        product, rule_id, cloud_state, expected):
+    *_, intake = product
+    opened = intake.ingest(raw(rule_id), tenant_id="TEN-001")
+    outcome = validator(product, lambda finding, env: cloud_state).validate(
+        opened.case.case_id, host_env={})
     assert outcome.findings[0].status is expected
 
 

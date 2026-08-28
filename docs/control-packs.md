@@ -22,7 +22,7 @@ Each installed pack registers explicit definitions containing:
 - separate validation, planning, and execution capability flags.
 
 The built-in v1 packs are currently `aws-s3`, `azure-storage`, `azure-sql`,
-`azure-key-vault`, and `azure-network`. Registration is fail-closed: duplicate
+`azure-key-vault`, `azure-network`, and `azure-app-service`. Registration is fail-closed: duplicate
 provider/rule keys,
 mismatched pack ownership, missing evidence contracts, and mismatched resource
 types are rejected.
@@ -73,6 +73,37 @@ Semantics are pinned to Prowler's [subnet NSG association
 check](https://github.com/prowler-cloud/prowler/tree/master/prowler/providers/azure/services/network/network_subnet_nsg_associated)
 and the Microsoft [Subnets - Get REST
 contract](https://learn.microsoft.com/rest/api/virtualnetwork/subnets/get?view=rest-virtualnetwork-2025-05-01).
+
+The first Azure App Service pack covers four web-app checks:
+`app_client_certificates_on`, `app_ensure_auth_is_set_up`,
+`app_ensure_using_http20`, and `app_http_logs_enabled`. Collection is bounded
+to the site, web configuration, Auth Settings V2, and diagnostic-settings ARM
+documents. Persisted evidence contains only app kind, client-certificate
+enablement/mode, authentication-platform enablement, HTTP/2 enablement, and
+normalized diagnostic log category states. It excludes application settings,
+authentication provider configuration, destinations, code, and content. The
+client-certificate control deliberately accepts Prowler's
+`microsoft.web/sites/config` OCSF type even though Prowler retains the parent
+site ARM id. Function-app checks remain unsupported until their separate
+contract and lab are complete. Planning and execution are disabled.
+
+The collector was run end to end on 2026-08-28 in a no-ingress Container Apps
+job. Its managed identity held `Reader` at one tagged, empty disposable web app
+and nowhere broader. The lab measured Azure's counterintuitive default of
+`clientCertMode: Required` together with `clientCertEnabled: false`, explicit
+disabled Auth Settings V2, and an empty diagnostic-settings collection. HTTP/2
+was deliberately disabled on the disposable app to exercise the failing
+branch. The job returned only the six normalized evidence aspects, succeeded,
+and the job, role assignment, web app, plan, and candidate image were deleted
+and independently confirmed absent. Sanitized ARM documents preserve those
+shapes as regression fixtures.
+
+Semantics are pinned to Prowler's [App Service check
+implementations](https://github.com/prowler-cloud/prowler/tree/master/prowler/providers/azure/services/app),
+Microsoft's [web configuration REST
+contract](https://learn.microsoft.com/rest/api/appservice/web-apps/get-configuration?view=rest-appservice-2024-11-01),
+and the [diagnostic settings list
+contract](https://learn.microsoft.com/rest/api/monitor/diagnostic-settings/list?view=rest-monitor-2021-05-01-preview).
 
 ## Provider adapters
 
