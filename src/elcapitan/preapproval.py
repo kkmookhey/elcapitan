@@ -331,6 +331,43 @@ class ChangeWindowService(_AgentStage):
                          artifact_root=artifact_root, runtime=runtime, now=now,
                          id_factory=id_factory)
 
+    def reselect_started(self, case_id: str) -> bool:
+        """Invalidate a started window and its dependent rollback approval."""
+        case = self.case_store.get(case_id)
+        if case.state is not CaseState.ROLLBACK_READY:
+            return False
+        if case.change_window is None:
+            raise PreApprovalError(
+                f"case {case_id} has no change window to evaluate")
+        now = self.now()
+        if (parse_timestamp(case.change_window.starts_at)
+                > parse_timestamp(now)):
+            return False
+        window_id = case.record_ids.get("change_window_id", "")
+        rollback_id = case.record_ids.get("rollback_review_id", "")
+        window = self.record_store.get(window_id)
+        rollback = self.record_store.get(rollback_id)
+        if (window.case_id != case_id
+                or window.record_type != "ChangeWindowRecommendation.v1"):
+            raise PreApprovalError(
+                "case change window has the wrong owner or record type")
+        if (rollback.case_id != case_id
+                or rollback.record_type != "RollbackReview.v1"):
+            raise PreApprovalError(
+                "case rollback review has the wrong owner or record type")
+        evidence_ids = tuple(dict.fromkeys(
+            (*window.evidence_ids, *rollback.evidence_ids)))
+        self.workflow.advance(
+            case_id, CaseTransition.RESELECT_WINDOW,
+            event_id=self.id_factory("EVT"), occurred_at=now,
+            actor="change-window-policy", evidence_ids=evidence_ids,
+            detail=(
+                f"window {window_id} started at {case.change_window.starts_at} "
+                f"before the human gate; rollback review {rollback_id} must be "
+                "repeated for a newly selected window"),
+        )
+        return True
+
     def select(self, case_id: str, *, samples: tuple[UsageSample, ...],
                policy: WindowPolicy) -> WindowOutcome:
         case = self.case_store.get(case_id)

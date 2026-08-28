@@ -40,6 +40,9 @@ class Stage:
     def retry_invalid_approval(self, case_id):
         return False
 
+    def reselect_started(self, case_id):
+        return False
+
 
 def test_durable_preapproval_resumes_after_completed_planning_stage():
     cases, calls = Cases(CaseState.PLAN_READY), []
@@ -103,6 +106,45 @@ def test_durable_preapproval_allows_one_checker_to_maker_rework():
     assert calls == [
         "planning", "sre", "window", "rollback",
         "planning", "sre", "window", "rollback", "gate"]
+
+
+def test_durable_preapproval_reselects_a_started_window():
+    cases, calls = Cases(CaseState.ROLLBACK_READY), []
+    orchestrator = object.__new__(PreApprovalOrchestrator)
+    orchestrator.case_store = cases
+    orchestrator.planning = Stage(cases, CaseState.PLAN_READY, calls, "planning")
+    orchestrator.sre = Stage(cases, CaseState.SRE_APPROVED, calls, "sre")
+
+    class Window(Stage):
+        reselected = False
+
+        def reselect_started(self, case_id):
+            if self.reselected:
+                return False
+            self.reselected = True
+            calls.append("reselect_window")
+            cases.state = CaseState.SRE_APPROVED
+            return True
+
+    orchestrator.window = Window(
+        cases, CaseState.WINDOW_SELECTED, calls, "window")
+    orchestrator.rollback = Stage(
+        cases, CaseState.ROLLBACK_READY, calls, "rollback")
+    expected = object()
+
+    class Gate:
+        @staticmethod
+        def prepare(case_id):
+            calls.append("gate")
+            return expected
+
+    orchestrator.gate = Gate()
+    outcome = orchestrator.advance_to_human_review(
+        "CASE-1", repository="repo", state_document={}, service_context={},
+        usage_samples=(), window_policy=object())
+
+    assert outcome is expected
+    assert calls == ["reselect_window", "window", "rollback", "gate"]
 
 
 def test_agent_stage_retries_once_when_mandatory_citations_are_omitted(tmp_path):

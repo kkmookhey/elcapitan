@@ -16,7 +16,7 @@ must not be committed, supplied as container arguments, or printed in deployment
 logs. The non-secret configuration is:
 
 ```text
-image: ca7b25e7d425acr.azurecr.io/elcapitan-demo:20260828-review.33
+image: ca7b25e7d425acr.azurecr.io/elcapitan-demo:20260828-review.34
 trigger: Manual
 retry limit: 0
 timeout: 1800 seconds
@@ -35,6 +35,11 @@ The plan is accepted only if JSON inspection proves exactly one in-place change:
 `false`. The binary plan and state are deleted before the container exits. The
 worker is resumable from any completed preapproval stage and stops before approval
 or execution.
+
+If review consumes the selected lead time, the worker invalidates the started
+window and its dependent rollback approval, retains the verified plan and SRE
+approval, and repeats window selection and rollback review before opening the
+human gate.
 
 If the rollback checker rejects with concrete `required_changes`, the durable case
 records an immutable feedback decision, clears only the superseded plan projection,

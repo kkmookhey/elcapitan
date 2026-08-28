@@ -60,6 +60,7 @@ class CaseTransition(StrEnum):
     RETRY_SRE = "retry_sre"
     SELECT_WINDOW = "select_window"
     REVIEW_ROLLBACK = "review_rollback"
+    RESELECT_WINDOW = "reselect_window"
     REQUEST_REWORK = "request_rework"
     REQUEST_APPROVAL = "request_approval"
     APPROVE_CHANGE = "approve_change"
@@ -315,6 +316,14 @@ def transition_case(case: RemediationCase, transition: CaseTransition, *,
             raise ValueError("review rework requires concrete reviewer feedback")
         to_state = CaseState.VALIDATED
         blocked_from = None
+    elif transition is CaseTransition.RESELECT_WINDOW:
+        if case.state is not CaseState.ROLLBACK_READY:
+            raise ValueError(
+                "window reselection is allowed only after rollback review")
+        if not detail:
+            raise ValueError("window reselection requires a concrete timing reason")
+        to_state = CaseState.SRE_APPROVED
+        blocked_from = None
     elif transition is CaseTransition.BLOCK:
         if case.state is CaseState.BLOCKED:
             raise ValueError("an already blocked case cannot be blocked again")
@@ -388,6 +397,12 @@ def transition_case(case: RemediationCase, transition: CaseTransition, *,
             "policy_decision_id", "human_review_package_id",
         ):
             merged_records.pop(name, None)
+    if transition is CaseTransition.RESELECT_WINDOW:
+        for name in (
+            "change_window_id", "rollback_review_id",
+            "policy_decision_id", "human_review_package_id",
+        ):
+            merged_records.pop(name, None)
     merged_records.update(records)
     event = CaseEvent(
         event_id=event_id,
@@ -413,6 +428,7 @@ def transition_case(case: RemediationCase, transition: CaseTransition, *,
                      else change_plan or case.change_plan),
         change_window=(None if transition in {
                            CaseTransition.RETRY_SRE,
+                           CaseTransition.RESELECT_WINDOW,
                            CaseTransition.REQUEST_REWORK,
                        }
                        else change_window or case.change_window),

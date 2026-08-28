@@ -61,8 +61,9 @@ class PreApprovalOrchestrator:
                                 window_policy: WindowPolicy) -> HumanReviewOutcome:
         """Resume the durable case from its last completed preapproval stage."""
         # Five stage advances reach the gate normally. One bounded checker-to-maker
-        # rework adds four more; a second rejection is terminal.
-        for _ in range(10):
+        # rework adds four more. A started window can be invalidated and selected
+        # once more without weakening the plan or SRE review; all loops remain bounded.
+        for _ in range(14):
             state = self.case_store.get(case_id).state
             if state is CaseState.VALIDATED:
                 self.planning.prepare(
@@ -87,6 +88,8 @@ class PreApprovalOrchestrator:
                     raise PreApprovalError(
                         f"rollback review stopped workflow in {outcome.case.state}")
             elif state is CaseState.ROLLBACK_READY:
+                if self.window.reselect_started(case_id):
+                    continue
                 return self.gate.prepare(case_id)
             else:
                 raise PreApprovalError(

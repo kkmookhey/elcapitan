@@ -189,6 +189,38 @@ def test_invalid_sre_approval_retry_clears_dependent_window():
     assert "change_window_id" not in retried.record_ids
 
 
+def test_started_window_can_be_reselected_without_replanning():
+    current = case()
+    current = advance(current, CaseTransition.PRIORITIZE, 1,
+                      record_ids={"risk_assessment_id": "RISK-001"}, priority=risk())
+    current = advance(current, CaseTransition.VALIDATE, 2,
+                      record_ids={"validation_result_id": "VAL-001"})
+    current = advance(current, CaseTransition.PREPARE_PLAN, 3,
+                      record_ids={"change_plan_id": "PLAN-001",
+                                  "iac_link_id": "LINK-001"}, change_plan=plan())
+    current = advance(current, CaseTransition.APPROVE_SRE, 4,
+                      record_ids={"sre_review_id": "SRE-001"})
+    current = advance(current, CaseTransition.SELECT_WINDOW, 5,
+                      record_ids={"change_window_id": "WIN-STALE"},
+                      change_window=window())
+    current = advance(current, CaseTransition.REVIEW_ROLLBACK, 6,
+                      record_ids={"rollback_review_id": "RBK-STALE"})
+
+    reselected, event = transition_case(
+        current, CaseTransition.RESELECT_WINDOW, event_id="EVT-007",
+        occurred_at=NOW, actor="change-window-policy",
+        detail="window began before human review completed")
+
+    assert reselected.state is CaseState.SRE_APPROVED
+    assert reselected.change_plan == current.change_plan
+    assert reselected.record_ids["sre_review_id"] == "SRE-001"
+    assert reselected.change_window is None
+    assert "change_window_id" not in reselected.record_ids
+    assert "rollback_review_id" not in reselected.record_ids
+    assert event.from_state is CaseState.ROLLBACK_READY
+    assert event.to_state is CaseState.SRE_APPROVED
+
+
 def test_records_are_copied_into_immutable_mappings():
     records = {"risk_assessment_id": "RISK-001"}
     updated, event = transition_case(
