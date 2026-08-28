@@ -195,6 +195,14 @@ def _parser() -> argparse.ArgumentParser:
     shadow.add_argument("--host", default="127.0.0.1")
     shadow.add_argument("--port", type=int, default=8770)
     shadow.add_argument("--workdir", type=Path, default=Path(".elcapitan-shadow"))
+    bootstrap_postgres = sub.add_parser(
+        "bootstrap-postgres",
+        help="bootstrap one isolated PostgreSQL database from secret environment values",
+    )
+    bootstrap_postgres.add_argument("expected_host")
+    bootstrap_postgres.add_argument("app_role")
+    bootstrap_postgres.add_argument("app_database")
+    bootstrap_postgres.add_argument("confirmation")
     review_server = sub.add_parser(
         "serve-review", help="serve the authenticated human decision plane")
     review_server.add_argument("--host", default="127.0.0.1")
@@ -1020,6 +1028,17 @@ def main(argv=None) -> int:
             raise ValueError("--port must be between 0 and 65535")
         from .shadow_web import run_shadow_server
         run_shadow_server(host=args.host, port=args.port, workdir=args.workdir)
+        return 0
+    if args.command == "bootstrap-postgres":
+        from .postgres_bootstrap import BootstrapTarget, bootstrap
+        target = BootstrapTarget.from_environment(
+            expected_host=args.expected_host,
+            role=args.app_role,
+            database=args.app_database,
+            confirmation=args.confirmation,
+        )
+        json.dump(bootstrap(target), sys.stdout, indent=2)
+        sys.stdout.write("\n")
         return 0
     if args.command == "serve-review":
         if not 0 <= args.port <= 65535:

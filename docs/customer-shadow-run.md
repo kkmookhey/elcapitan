@@ -147,6 +147,18 @@ The checked-in `deploy/azure/shadow-app.yaml` deliberately defaults to internal
 ingress. Enable HTTPS-only external ingress only after database health,
 anonymous denial, and authenticated UI/API checks pass.
 
+The guarded lab bootstrap is split into explicit phases under `deploy/azure`.
+`bootstrap-shadow-database.sh` creates or rotates one non-privileged login and
+an application-owned schema through a temporary no-ingress job, deletes that
+job and its secrets, and reseals the server administrator. The scoped password
+is handed to `create-customer-shadow-app.sh` through macOS Keychain and removed
+after the internal app is created. `repair-customer-shadow-database.sh` is the
+fail-closed recovery path when a scoped password or immutable image must be
+rebound; it deliberately retains the Keychain handoff until health is proven.
+All three scripts pin the El Capitan lab subscription and refuse an unconfirmed
+operation. They are reference automation, not authorization to use a customer
+subscription.
+
 For a real customer, put Entra ID, an identity-aware proxy, or equivalent SSO
 in front of the app, use customer-controlled encryption and retention, and
 centralize audit logs. The access-token boundary is appropriate for this
