@@ -14,12 +14,16 @@ REQUIRED_FILES = (
     "CHANGELOG.md",
     "CODE_OF_CONDUCT.md",
     "CONTRIBUTING.md",
+    "compose.yaml",
     "SECURITY.md",
     "SUPPORT.md",
     "VERSIONING.md",
     "docs/public-release-v0.1.md",
+    "docs/quickstart.md",
     "docs/generated/capability-matrix.json",
     "docs/generated/capability-matrix.md",
+    "examples/synthetic-shadow-intake.json",
+    "requirements-runtime.txt",
 )
 FORBIDDEN_TRACKED_PARTS = {
     ".env",

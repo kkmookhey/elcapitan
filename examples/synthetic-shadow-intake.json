@@ -1,0 +1,51 @@
+{
+  "tenant_id": "SYNTHETIC-QUICKSTART",
+  "identity": "synthetic-quickstart",
+  "context": {
+    "asset_criticality": 0.7,
+    "exploit_probability": 0.4,
+    "reachable": true,
+    "service_ids": ["synthetic-storage"]
+  },
+  "findings": [
+    {
+      "class_uid": 2004,
+      "severity": "High",
+      "time_dt": "2026-08-28T12:00:00Z",
+      "metadata": {
+        "version": "1.5.0",
+        "event_code": "storage_account_public_network_access_disabled",
+        "product": {
+          "name": "El Capitan synthetic quickstart",
+          "version": "0.1.0"
+        }
+      },
+      "cloud": {
+        "provider": "azure",
+        "region": "example-region",
+        "account": {
+          "uid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "finding_info": {
+        "uid": "shadow-sample-quickstart-001",
+        "title": "Synthetic storage public network access is enabled",
+        "analytic": {
+          "uid": "storage_account_public_network_access_disabled"
+        }
+      },
+      "resources": [
+        {
+          "uid": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/synthetic-quickstart/providers/Microsoft.Storage/storageAccounts/syntheticpreview",
+          "type": "microsoft.storage/storageaccounts",
+          "name": "syntheticpreview"
+        }
+      ],
+      "status_code": "FAIL",
+      "unmapped": {
+        "categories": ["synthetic", "internet-exposed"],
+        "elcapitan_synthetic": true
+      }
+    }
+  ]
+}

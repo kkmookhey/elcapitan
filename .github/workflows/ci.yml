@@ -29,6 +29,10 @@ jobs:
         run: uv run python scripts/check_release_tree.py
       - name: Verify generated capability and evidence matrix
         run: uv run python scripts/generate_capability_matrix.py --check
+      - name: Verify hash-locked runtime dependency export
+        run: |
+          uv export --locked --no-dev --no-emit-project --no-header --format requirements-txt --output-file /tmp/requirements-runtime.txt
+          diff -u requirements-runtime.txt /tmp/requirements-runtime.txt
       - name: Check syntax and high-confidence static errors
         run: |
           uv run python -m compileall -q src tests scripts
@@ -75,3 +79,10 @@ jobs:
           exit-code: "1"
           ignore-unfixed: true
           severity: HIGH,CRITICAL
+
+  quickstart:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run the PostgreSQL synthetic acceptance journey
+        run: ./scripts/accept_quickstart.sh

@@ -14,11 +14,12 @@ be tagged or published.
 | Dependency review | implemented | GitHub dependency review rejects moderate-or-higher vulnerabilities on pull requests |
 | Secret scanning | blocked | CI prevents new leaks, but 22 historical findings are baselined pending credential adjudication, rotation, and history cleaning |
 | Container scan | implemented | CI builds the runtime image and Trivy rejects fixed high/critical vulnerabilities |
+| Reproducible container inputs | verified | Python, Terraform, and PostgreSQL images are digest-pinned; runtime Python dependencies are version/hash locked and CI checks export drift |
 | Governance policies | implemented | Security, contributing, conduct, support, versioning, and changelog files exist |
 | Threat model | implemented | `docs/threat-model.md` covers the required trust and failure boundaries |
 | Lifecycle operations | implemented | `docs/operations.md` covers upgrade, backup, restore, retention, deletion, and uninstall |
 | Capability/evidence matrix | verified | Registry generates checked-in JSON/Markdown; CI rejects drift; CLI reports the same 36-control contract |
-| Docker Compose quickstart | pending | Add PostgreSQL quickstart and clean-machine acceptance test |
+| Docker Compose quickstart | implemented | Local-only PostgreSQL stack and timed synthetic acceptance script; clean-machine run evidence remains |
 | UI release labels | implemented | Fleet API/browser separate synthetic/real input, live outcomes, validation/planning/execution, and evidence grade; clean-machine UI acceptance remains |
 | Local RC rehearsal | pending | Run from a clean checkout with no cloud/model credentials |
 

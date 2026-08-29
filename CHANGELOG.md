@@ -9,6 +9,8 @@ All notable changes to El Capitan are recorded here. Dates use ISO 8601.
 - Release governance, CI security gates, and guarded artifact provenance.
 - Registry-generated capability/evidence matrix and explicit browser labels for
   source type, live outcome, validation, planning, execution, and evidence grade.
+- Local-only Docker Compose quickstart with PostgreSQL and a timed synthetic
+  acceptance journey that receives no cloud or model credentials.
 
 ## [0.1.0] - Unreleased
 

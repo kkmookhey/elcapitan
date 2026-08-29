@@ -6,7 +6,21 @@ through live validation, risk prioritization, remediation planning, SRE review,
 change-window selection, rollback review, human approval, deployment,
 monitoring, verification, certificate issuance, and originator handoff.
 
-## Browser demo
+## Five-minute local quickstart
+
+Start the read-only shadow console and PostgreSQL with no cloud or model
+credentials:
+
+```bash
+docker compose up --build --detach --wait
+```
+
+Open `http://127.0.0.1:8770` and use the local-only token documented in the
+[quickstart](docs/quickstart.md). The checked-in sample is synthetic; the UI
+keeps source type, live outcome, capability authority, and evidence grade
+separate. Run `docker compose down --volumes` when finished.
+
+## Browser lifecycle demo
 
 Run the complete staged product demonstration:
 
