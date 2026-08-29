@@ -16,6 +16,7 @@ def _object_versioning(values) -> ControlEvaluation:
 
 AWS_S3_PACK = ControlPack(
     pack_id="aws-s3",
+    evidence_grade="e2e_measured",
     controls=(
         ControlDefinition(
             pack_id="aws-s3", provider="aws",

@@ -196,6 +196,7 @@ def _secure_smb_channel_encryption(values) -> ControlEvaluation:
 
 AZURE_STORAGE_PACK = ControlPack(
     pack_id="azure-storage",
+    evidence_grade="e2e_measured",
     controls=(
         ControlDefinition(
             pack_id="azure-storage", provider="azure",

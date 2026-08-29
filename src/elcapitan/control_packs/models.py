@@ -1,7 +1,7 @@
 """Provider-neutral contracts for deterministic service control packs."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Callable, Mapping
 
 
@@ -13,6 +13,14 @@ class ControlEvaluation:
 
 
 ControlEvaluator = Callable[[Mapping[str, object]], ControlEvaluation]
+
+EVIDENCE_GRADES = frozenset({
+    "contract_tested",
+    "contract_tested_export_observed",
+    "e2e_measured",
+    "export_observed",
+    "unverified",
+})
 
 
 @dataclass(frozen=True)
@@ -34,6 +42,7 @@ class ControlDefinition:
     live_execution: bool
     evidence_aspects: tuple[str, ...]
     evaluator: ControlEvaluator
+    evidence_grade: str = ""
 
     def __post_init__(self) -> None:
         if not self.pack_id or not self.provider or not self.rule_id:
@@ -48,17 +57,22 @@ class ControlDefinition:
             raise ValueError("control evidence aspects must be unique")
         if not self.live_validation:
             raise ValueError("registered deterministic controls must support validation")
+        if self.evidence_grade and self.evidence_grade not in EVIDENCE_GRADES:
+            raise ValueError(f"unknown evidence grade: {self.evidence_grade}")
 
     def to_dict(self) -> dict:
         # Compatibility projection consumed by the fleet API. The callable is
         # intentionally not serialised; executable policy is never API data.
         return {
+            "pack_id": self.pack_id,
             "provider": self.provider,
             "rule_id": self.rule_id,
             "resource_family": self.resource_family,
+            "resource_types": list(self.resource_types),
             "live_validation": self.live_validation,
             "remediation_planning": self.remediation_planning,
             "live_execution": self.live_execution,
+            "evidence_grade": self.evidence_grade,
             "evidence_aspects": list(self.evidence_aspects),
         }
 
@@ -67,12 +81,25 @@ class ControlDefinition:
 class ControlPack:
     pack_id: str
     controls: tuple[ControlDefinition, ...]
+    evidence_grade: str = "unverified"
 
     def __post_init__(self) -> None:
         if not self.pack_id or not self.controls:
             raise ValueError("control packs require an id and at least one control")
         if any(item.pack_id != self.pack_id for item in self.controls):
             raise ValueError("every control definition must belong to its containing pack")
+        if self.evidence_grade not in EVIDENCE_GRADES:
+            raise ValueError(f"unknown evidence grade: {self.evidence_grade}")
+        object.__setattr__(
+            self,
+            "controls",
+            tuple(
+                item
+                if item.evidence_grade
+                else replace(item, evidence_grade=self.evidence_grade)
+                for item in self.controls
+            ),
+        )
 
 
 def require(values: Mapping[str, object], aspect: str):

@@ -27,6 +27,8 @@ jobs:
         run: uv sync --locked --dev
       - name: Check release-tree invariants
         run: uv run python scripts/check_release_tree.py
+      - name: Verify generated capability and evidence matrix
+        run: uv run python scripts/generate_capability_matrix.py --check
       - name: Check syntax and high-confidence static errors
         run: |
           uv run python -m compileall -q src tests scripts

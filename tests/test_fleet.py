@@ -154,6 +154,14 @@ def test_fleet_snapshot_includes_supported_and_unsupported_cases(tmp_path):
     assert document["cases"][0]["portfolio_rank"] == 1
     assert document["cases"][0]["scheduling_status"] == "awaiting_plan"
     assert document["cases"][0]["synthetic"] is False
+    assert document["cases"][0]["capabilities"] == [
+        CapabilityRegistry().get(
+            "azure", "storage_account_public_network_access_disabled"
+        ).to_dict()
+    ]
+    assert document["cases"][0]["capabilities"][0]["evidence_grade"] == (
+        "e2e_measured")
+    assert document["cases"][1]["capabilities"] == []
     assert document["cases"][1]["portfolio_rank"] is None
     assert document["cases"][1]["scheduling_status"] == "awaiting_validation"
     assert document["shadow_policy"]["allow_execution"] is False

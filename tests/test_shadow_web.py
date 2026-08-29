@@ -51,6 +51,9 @@ def test_shadow_api_intake_fleet_and_case_detail_are_authenticated(tmp_path):
         assert b"Current approval package" in content
         assert b"Superseded history" in content
         assert b"Only records marked CURRENT" in content
+        assert b"Evidence grade" in content
+        assert b"REAL INPUT" in content
+        assert b"SYNTHETIC INPUT" in content
         body = json.dumps({
             "tenant_id": "TEN-API",
             "findings": [json.loads(FIXTURE.read_text())],
@@ -68,7 +71,12 @@ def test_shadow_api_intake_fleet_and_case_detail_are_authenticated(tmp_path):
         status, _, content = request(
             server, "GET", "/api/fleet?tenant=TEN-API", headers={"Cookie": cookie})
         assert status == 200
-        assert json.loads(content)["cases"][0]["case_id"] == case_id
+        fleet_case = json.loads(content)["cases"][0]
+        assert fleet_case["case_id"] == case_id
+        assert fleet_case["capabilities"][0]["live_validation"] is True
+        assert fleet_case["capabilities"][0]["remediation_planning"] is True
+        assert fleet_case["capabilities"][0]["live_execution"] is True
+        assert fleet_case["capabilities"][0]["evidence_grade"] == "e2e_measured"
 
         status, _, content = request(
             server, "GET", f"/api/cases/{case_id}?tenant=TEN-API",

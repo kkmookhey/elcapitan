@@ -35,3 +35,15 @@ def test_final_release_check_rejects_version_mismatched_tag():
 
     assert result.returncode == 1
     assert "release tag must be v0.1.0" in result.stderr
+
+
+def test_generated_capability_matrix_is_current():
+    result = subprocess.run(
+        [sys.executable, "scripts/generate_capability_matrix.py", "--check"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "generated capability matrix is current\n"

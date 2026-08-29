@@ -7,6 +7,8 @@ All notable changes to El Capitan are recorded here. Dates use ISO 8601.
 ### Added
 
 - Release governance, CI security gates, and guarded artifact provenance.
+- Registry-generated capability/evidence matrix and explicit browser labels for
+  source type, live outcome, validation, planning, execution, and evidence grade.
 
 ## [0.1.0] - Unreleased
 

@@ -18,6 +18,8 @@ REQUIRED_FILES = (
     "SUPPORT.md",
     "VERSIONING.md",
     "docs/public-release-v0.1.md",
+    "docs/generated/capability-matrix.json",
+    "docs/generated/capability-matrix.md",
 )
 FORBIDDEN_TRACKED_PARTS = {
     ".env",

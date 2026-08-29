@@ -162,6 +162,7 @@ def _function_vnet(values) -> ControlEvaluation:
 
 AZURE_APP_SERVICE_PACK = ControlPack(
     pack_id="azure-app-service",
+    evidence_grade="e2e_measured",
     controls=(
         ControlDefinition(
             pack_id="azure-app-service", provider="azure",

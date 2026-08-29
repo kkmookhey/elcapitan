@@ -25,6 +25,7 @@ def _public_network(values) -> ControlEvaluation:
 
 AZURE_OPENAI_PACK = ControlPack(
     pack_id="azure-openai",
+    evidence_grade="contract_tested_export_observed",
     controls=(
         ControlDefinition(
             pack_id="azure-openai", provider="azure",

@@ -50,6 +50,7 @@ def _tde_encrypted_with_cmk(values) -> ControlEvaluation:
 
 AZURE_SQL_PACK = ControlPack(
     pack_id="azure-sql",
+    evidence_grade="e2e_measured",
     controls=(
         ControlDefinition(
             pack_id="azure-sql", provider="azure",

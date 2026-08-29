@@ -70,11 +70,28 @@ async function post(path, body) {
 function validationSummary(item) {
   const counts = item.validation_counts || {};
   if (counts.confirmed) return ["good", `${counts.confirmed} confirmed`, "Live configuration confirms the finding"];
-  if (counts.not_confirmed) return ["good", `${counts.not_confirmed} not confirmed`, "Live configuration no longer reproduces it"];
+  if (counts.not_confirmed) return ["good", `${counts.not_confirmed} cleared`, "Live configuration no longer reproduces the scanner finding"];
   if (counts.unavailable) return ["bad", "Evidence unavailable", "The case failed closed"];
   if (counts.unsupported) return ["bad", "Unsupported", "No deterministic evaluator exists"];
   if (item.unsupported_findings) return ["bad", "Unsupported control", "No validation capability is registered"];
   return ["warn", "Awaiting validation", "No live cloud request has been made"];
+}
+
+function evidenceGrade(value) {
+  return ({
+    e2e_measured:"E2E measured",
+    contract_tested_export_observed:"Contract tested + export observed",
+    contract_tested:"Contract tested",
+    export_observed:"Export observed",
+    unverified:"Unverified",
+  })[value] || "Unverified";
+}
+
+function capabilitySummary(item) {
+  const capabilities = item.capabilities || [];
+  if (!capabilities.length) return "Validation 0 · planning 0 · execution 0 · evidence unverified";
+  const grades = [...new Set(capabilities.map(value => evidenceGrade(value.evidence_grade)))];
+  return `Validation ${capabilities.length} · planning ${capabilities.filter(value => value.remediation_planning).length} · execution ${capabilities.filter(value => value.live_execution).length} · evidence ${grades.join(" / ")}`;
 }
 
 function schedulingSummary(item) {
@@ -131,8 +148,8 @@ function renderFleet(document) {
     const rank = item.portfolio_rank ? `#${item.portfolio_rank}` : "—";
     return `<tr>
       <td><span class="risk">${escapeHtml(Math.round(item.risk_score))}</span><span class="urgency">${escapeHtml(item.urgency)} · ${rank}</span></td>
-      <td><span class="title">${item.synthetic ? '<span class="sample-tag">SYNTHETIC</span>' : ""}${escapeHtml(title)}</span><span class="asset" title="${escapeHtml(item.resource_uids[0])}">${escapeHtml(shortId(item.resource_uids[0]))}</span></td>
-      <td><span class="provider">${escapeHtml(item.provider)}</span><span class="state">${escapeHtml(humanize(item.state))}</span></td>
+      <td><span class="title">${item.synthetic ? '<span class="sample-tag">SYNTHETIC INPUT</span>' : '<span class="sample-tag">REAL INPUT</span>'}${escapeHtml(title)}</span><span class="asset" title="${escapeHtml(item.resource_uids[0])}">${escapeHtml(shortId(item.resource_uids[0]))}</span></td>
+      <td><span class="provider">${escapeHtml(item.provider)}</span><span class="state">${escapeHtml(humanize(item.state))}</span><span class="reason">${escapeHtml(capabilitySummary(item))}</span></td>
       <td><span class="status ${validationTone}"><i></i>${escapeHtml(validationLabel)}</span><span class="reason">${escapeHtml(validationReason)}</span></td>
       <td><span class="status ${scheduleTone}"><i></i>${escapeHtml(scheduleLabel)}</span><span class="reason">${escapeHtml(scheduleReason)}</span></td>
       <td><div class="row-actions">${canValidate(item) ? `<button class="primary small" data-validate="${escapeHtml(item.case_id)}">Validate live</button>` : ""}<button class="ghost small" data-case="${escapeHtml(item.case_id)}">Inspect</button></div></td>
@@ -247,12 +264,14 @@ async function openCase(caseId) {
   const [tone, validation] = validationSummary(item || {validation_counts:{}, unsupported_findings:0});
   const safety = detail.safety_boundary;
   const promotion = detail.promotion || {};
+  const capability = (item?.capabilities || []).find(value => value.rule_id === ocsf.rule_id);
   $("#detail-content").innerHTML = `
     <div class="detail-hero"><div><span class="status ${tone}"><i></i>${escapeHtml(validation)}</span><h2>${escapeHtml(displayTitle)}</h2></div><div class="detail-meta"><strong>${escapeHtml(Math.round(caseDoc.priority?.score || 0))}</strong><span>${escapeHtml(humanize(caseDoc.priority?.urgency || "unassessed"))} risk</span></div></div>
-    <div class="detail-actions">${item && canValidate(item) ? `<button class="primary" data-validate="${escapeHtml(caseId)}">Validate against live ${escapeHtml(item.provider.toUpperCase())}</button>` : ""}<span class="pill">${escapeHtml(humanize(caseDoc.state))}</span>${item?.synthetic ? '<span class="pill sample-pill">Synthetic sample</span>' : ""}</div>
+    <div class="detail-actions">${item && canValidate(item) ? `<button class="primary" data-validate="${escapeHtml(caseId)}">Validate against live ${escapeHtml(item.provider.toUpperCase())}</button>` : ""}<span class="pill">${escapeHtml(humanize(caseDoc.state))}</span><span class="pill sample-pill">${item?.synthetic ? "Synthetic input" : "Real scanner input"}</span></div>
     <div class="detail-grid">
       <section class="detail-section"><h3>Case identity</h3>${fact("Case", caseDoc.case_id)}${fact("Tenant", caseDoc.tenant_id)}${fact("Provider", finding.provider)}${fact("Account", finding.account)}${fact("Service", (caseDoc.service_ids || []).join(", ") || "Unmapped")}</section>
       <section class="detail-section"><h3>Control & target</h3>${fact("Rule", ocsf.rule_id)}${fact("Resource", finding.resource_uid)}${fact("Severity", finding.record?.severity)}${fact("Scanner observations", caseDoc.finding_ids.length)}${fact("Confirmed controls", (promotion.confirmed_rule_ids || []).length)}</section>
+      <section class="detail-section"><h3>Capability contract</h3>${fact("Live validation", capability?.live_validation ? "Registered" : "Unsupported")}${fact("Remediation planning", capability?.remediation_planning ? "Registered" : "Unavailable")}${fact("Live execution", capability?.live_execution ? "Separately gated" : "Unavailable")}${fact("Evidence grade", evidenceGrade(capability?.evidence_grade))}</section>
       <section class="detail-section"><h3>Risk rationale</h3>${(caseDoc.priority?.factors || []).map(value => `<div class="record"><p>${escapeHtml(value)}</p></div>`).join("") || '<p class="empty compact">Not assessed.</p>'}</section>
       <section class="detail-section"><h3>Shadow safety boundary</h3>${fact("Live validation", safety.mode === "shadow" ? "Allowed" : "Unknown")}${fact("External models", safety.external_models ? "Allowed" : "Disabled")}${fact("Approval", safety.approval ? "Allowed" : "Unavailable")}${fact("Scheduling", safety.scheduling ? "Allowed" : "Unavailable")}${fact("Execution", safety.execution ? "Allowed" : "Unavailable")}</section>
       <section class="detail-section full"><h3>Operational review</h3>${fact("Status", humanize(promotion.status))}${fact("Promotion token", shortId(promotion.promotion_token, 48))}${fact("Confirmed controls", (promotion.confirmed_rule_ids || []).join(", ") || "None")}${(promotion.blockers || []).map(value => `<div class="record"><p>${escapeHtml(value)}</p></div>`).join("")}${promotion.status === "ready_for_preapproval" ? (promotion.required_inputs || []).map(value => `<div class="record"><p>${escapeHtml(value)}</p></div>`).join("") : ""}</section>

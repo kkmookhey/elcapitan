@@ -1,0 +1,615 @@
+{
+  "authority": "elcapitan capabilities / installed control-pack registry",
+  "capabilities": [
+    {
+      "evidence_aspects": [
+        "versioning"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-s3",
+      "provider": "aws",
+      "remediation_planning": true,
+      "resource_family": "s3_bucket",
+      "resource_types": [
+        "awss3bucket"
+      ],
+      "rule_id": "s3_bucket_object_versioning"
+    },
+    {
+      "evidence_aspects": [
+        "app_kind",
+        "app_client_cert_enabled",
+        "app_client_cert_mode"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-app-service",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "app_service_web_app",
+      "resource_types": [
+        "microsoft.web/sites/config"
+      ],
+      "rule_id": "app_client_certificates_on"
+    },
+    {
+      "evidence_aspects": [
+        "app_kind",
+        "app_auth_platform_enabled"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-app-service",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "app_service_web_app",
+      "resource_types": [
+        "microsoft.web/sites"
+      ],
+      "rule_id": "app_ensure_auth_is_set_up"
+    },
+    {
+      "evidence_aspects": [
+        "app_kind",
+        "app_http20_enabled"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-app-service",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "app_service_web_app",
+      "resource_types": [
+        "microsoft.web/sites"
+      ],
+      "rule_id": "app_ensure_using_http20"
+    },
+    {
+      "evidence_aspects": [
+        "app_kind",
+        "app_ftps_state"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-app-service",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "azure_function_app",
+      "resource_types": [
+        "microsoft.web/sites"
+      ],
+      "rule_id": "app_function_ftps_deployment_disabled"
+    },
+    {
+      "evidence_aspects": [
+        "app_kind",
+        "app_public_network_access"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-app-service",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "azure_function_app",
+      "resource_types": [
+        "microsoft.web/sites"
+      ],
+      "rule_id": "app_function_not_publicly_accessible"
+    },
+    {
+      "evidence_aspects": [
+        "app_kind",
+        "app_virtual_network_subnet_id"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-app-service",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "azure_function_app",
+      "resource_types": [
+        "microsoft.web/sites"
+      ],
+      "rule_id": "app_function_vnet_integration_enabled"
+    },
+    {
+      "evidence_aspects": [
+        "app_kind",
+        "app_diagnostic_log_settings"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-app-service",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "app_service_web_app",
+      "resource_types": [
+        "microsoft.web/sites"
+      ],
+      "rule_id": "app_http_logs_enabled"
+    },
+    {
+      "evidence_aspects": [
+        "azureopenai_kind",
+        "azureopenai_public_network_access"
+      ],
+      "evidence_grade": "contract_tested_export_observed",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-openai",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "azure_openai",
+      "resource_types": [
+        "microsoft.cognitiveservices/accounts"
+      ],
+      "rule_id": "azureopenai_account_public_network_access_disabled"
+    },
+    {
+      "evidence_aspects": [
+        "acr_admin_user_enabled"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-container-registry",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "container_registry",
+      "resource_types": [
+        "microsoft.containerregistry/registries"
+      ],
+      "rule_id": "containerregistry_admin_user_disabled"
+    },
+    {
+      "evidence_aspects": [
+        "acr_public_network_access"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-container-registry",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "container_registry",
+      "resource_types": [
+        "microsoft.containerregistry/registries"
+      ],
+      "rule_id": "containerregistry_not_publicly_accessible"
+    },
+    {
+      "evidence_aspects": [
+        "acr_private_endpoint_connection_count"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-container-registry",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "container_registry",
+      "resource_types": [
+        "microsoft.containerregistry/registries"
+      ],
+      "rule_id": "containerregistry_uses_private_link"
+    },
+    {
+      "evidence_aspects": [
+        "cosmosdb_enable_automatic_failover"
+      ],
+      "evidence_grade": "contract_tested_export_observed",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-cosmos-db",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "cosmos_db",
+      "resource_types": [
+        "microsoft.documentdb/databaseaccounts"
+      ],
+      "rule_id": "cosmosdb_account_automatic_failover_enabled"
+    },
+    {
+      "evidence_aspects": [
+        "cosmosdb_backup_policy_type"
+      ],
+      "evidence_grade": "contract_tested_export_observed",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-cosmos-db",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "cosmos_db",
+      "resource_types": [
+        "microsoft.documentdb/databaseaccounts"
+      ],
+      "rule_id": "cosmosdb_account_backup_policy_continuous"
+    },
+    {
+      "evidence_aspects": [
+        "cosmosdb_minimum_tls_version"
+      ],
+      "evidence_grade": "contract_tested_export_observed",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-cosmos-db",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "cosmos_db",
+      "resource_types": [
+        "microsoft.documentdb/databaseaccounts"
+      ],
+      "rule_id": "cosmosdb_account_minimum_tls_version"
+    },
+    {
+      "evidence_aspects": [
+        "cosmosdb_public_network_access"
+      ],
+      "evidence_grade": "contract_tested_export_observed",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-cosmos-db",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "cosmos_db",
+      "resource_types": [
+        "microsoft.documentdb/databaseaccounts"
+      ],
+      "rule_id": "cosmosdb_account_public_network_access_disabled"
+    },
+    {
+      "evidence_aspects": [
+        "keyvault_diagnostic_settings_status",
+        "keyvault_diagnostic_log_settings"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-key-vault",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "key_vault",
+      "resource_types": [
+        "microsoft.keyvault/vaults"
+      ],
+      "rule_id": "keyvault_logging_enabled"
+    },
+    {
+      "evidence_aspects": [
+        "keyvault_private_endpoint_connection_count"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-key-vault",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "key_vault",
+      "resource_types": [
+        "microsoft.keyvault/vaults"
+      ],
+      "rule_id": "keyvault_private_endpoints"
+    },
+    {
+      "evidence_aspects": [
+        "keyvault_enable_rbac_authorization"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-key-vault",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "key_vault",
+      "resource_types": [
+        "microsoft.keyvault/vaults"
+      ],
+      "rule_id": "keyvault_rbac_enabled"
+    },
+    {
+      "evidence_aspects": [
+        "keyvault_enable_soft_delete",
+        "keyvault_enable_purge_protection"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-key-vault",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "key_vault",
+      "resource_types": [
+        "microsoft.keyvault/vaults"
+      ],
+      "rule_id": "keyvault_recoverable"
+    },
+    {
+      "evidence_aspects": [
+        "network_subnet_name",
+        "network_subnet_nsg_id"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-network",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "network_subnet",
+      "resource_types": [
+        "microsoft.network/virtualnetworks/subnets"
+      ],
+      "rule_id": "network_subnet_nsg_associated"
+    },
+    {
+      "evidence_aspects": [
+        "sql_tde_protector_type",
+        "sql_database_inventory",
+        "sql_user_database_tde"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-sql",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "sql_server",
+      "resource_types": [
+        "microsoft.sql/servers"
+      ],
+      "rule_id": "sqlserver_tde_encrypted_with_cmk"
+    },
+    {
+      "evidence_aspects": [
+        "allow_shared_key_access"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-storage",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "storage_account",
+      "resource_types": [
+        "microsoft.storage/storageaccounts"
+      ],
+      "rule_id": "storage_account_key_access_disabled"
+    },
+    {
+      "evidence_aspects": [
+        "public_network_access",
+        "network_rule_set",
+        "private_endpoint_connections"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": true,
+      "live_validation": true,
+      "pack_id": "azure-storage",
+      "provider": "azure",
+      "remediation_planning": true,
+      "resource_family": "storage_account",
+      "resource_types": [
+        "microsoft.storage/storageaccounts"
+      ],
+      "rule_id": "storage_account_public_network_access_disabled"
+    },
+    {
+      "evidence_aspects": [
+        "allow_blob_public_access"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": true,
+      "live_validation": true,
+      "pack_id": "azure-storage",
+      "provider": "azure",
+      "remediation_planning": true,
+      "resource_family": "storage_account",
+      "resource_types": [
+        "microsoft.storage/storageaccounts"
+      ],
+      "rule_id": "storage_blob_public_access_level_is_disabled"
+    },
+    {
+      "evidence_aspects": [
+        "blob_versioning"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-storage",
+      "provider": "azure",
+      "remediation_planning": true,
+      "resource_family": "storage_account",
+      "resource_types": [
+        "microsoft.storage/storageaccounts"
+      ],
+      "rule_id": "storage_blob_versioning_is_enabled"
+    },
+    {
+      "evidence_aspects": [
+        "network_rule_set"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-storage",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "storage_account",
+      "resource_types": [
+        "microsoft.storage/storageaccounts"
+      ],
+      "rule_id": "storage_default_network_access_rule_is_denied"
+    },
+    {
+      "evidence_aspects": [
+        "default_to_oauth_authentication"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-storage",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "storage_account",
+      "resource_types": [
+        "microsoft.storage/storageaccounts"
+      ],
+      "rule_id": "storage_default_to_entra_authorization_enabled"
+    },
+    {
+      "evidence_aspects": [
+        "network_rule_set"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-storage",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "storage_account",
+      "resource_types": [
+        "microsoft.storage/storageaccounts"
+      ],
+      "rule_id": "storage_ensure_azure_services_are_trusted_to_access_is_enabled"
+    },
+    {
+      "evidence_aspects": [
+        "encryption"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-storage",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "storage_account",
+      "resource_types": [
+        "microsoft.storage/storageaccounts"
+      ],
+      "rule_id": "storage_ensure_encryption_with_customer_managed_keys"
+    },
+    {
+      "evidence_aspects": [
+        "private_endpoint_connections"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-storage",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "storage_account",
+      "resource_types": [
+        "microsoft.storage/storageaccounts"
+      ],
+      "rule_id": "storage_ensure_private_endpoints_in_storage_accounts"
+    },
+    {
+      "evidence_aspects": [
+        "blob_container_delete_retention_policy"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-storage",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "storage_account",
+      "resource_types": [
+        "microsoft.storage/storageaccounts"
+      ],
+      "rule_id": "storage_ensure_soft_delete_is_enabled"
+    },
+    {
+      "evidence_aspects": [
+        "sku"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-storage",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "storage_account",
+      "resource_types": [
+        "microsoft.storage/storageaccounts"
+      ],
+      "rule_id": "storage_geo_redundant_enabled"
+    },
+    {
+      "evidence_aspects": [
+        "encryption"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-storage",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "storage_account",
+      "resource_types": [
+        "microsoft.storage/storageaccounts"
+      ],
+      "rule_id": "storage_infrastructure_encryption_is_enabled"
+    },
+    {
+      "evidence_aspects": [
+        "key_policy"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-storage",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "storage_account",
+      "resource_types": [
+        "microsoft.storage/storageaccounts"
+      ],
+      "rule_id": "storage_key_rotation_90_days"
+    },
+    {
+      "evidence_aspects": [
+        "file_service_status",
+        "file_smb_channel_encryption"
+      ],
+      "evidence_grade": "e2e_measured",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "azure-storage",
+      "provider": "azure",
+      "remediation_planning": false,
+      "resource_family": "storage_account",
+      "resource_types": [
+        "microsoft.storage/storageaccounts"
+      ],
+      "rule_id": "storage_smb_channel_encryption_with_secure_algorithm"
+    }
+  ],
+  "project_version": "0.1.0",
+  "schema_version": 1,
+  "summary": {
+    "controls": 36,
+    "evidence_grades": {
+      "contract_tested": 1,
+      "contract_tested_export_observed": 5,
+      "e2e_measured": 30
+    },
+    "live_execution": 2,
+    "live_validation": 36,
+    "providers": {
+      "aws": 1,
+      "azure": 35
+    },
+    "remediation_planning": 4
+  }
+}

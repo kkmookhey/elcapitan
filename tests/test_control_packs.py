@@ -16,7 +16,8 @@ def definition(*, pack_id="fixture", provider="azure", rule_id="fixture_rule"):
         pack_id=pack_id, provider=provider, rule_id=rule_id,
         resource_family="fixture", resource_types=("fixture/type",),
         live_validation=True, remediation_planning=False, live_execution=False,
-        evidence_aspects=("fixture",), evaluator=_evaluation)
+        evidence_aspects=("fixture",), evaluator=_evaluation,
+        evidence_grade="contract_tested")
 
 
 def test_builtin_registry_is_composed_from_service_packs():
@@ -37,12 +38,27 @@ def test_builtin_registry_is_composed_from_service_packs():
     assert registry.get(
         "azure", "app_client_certificates_on",
         "microsoft.web/sites") is None
+    assert {item.evidence_grade for item in registry.list()} == {
+        "contract_tested", "contract_tested_export_observed", "e2e_measured"}
+    assert sum(item.evidence_grade == "e2e_measured"
+               for item in registry.list()) == 30
+    assert sum(item.evidence_grade == "contract_tested_export_observed"
+               for item in registry.list()) == 5
+    assert registry.get(
+        "azure", "keyvault_logging_enabled").evidence_grade == "contract_tested"
 
 
 def test_control_definition_serialization_never_exposes_executable_callable():
     value = definition().to_dict()
     assert "evaluator" not in value
     assert value["evidence_aspects"] == ["fixture"]
+    assert value["evidence_grade"] == "contract_tested"
+    assert value["resource_types"] == ["fixture/type"]
+
+
+def test_unknown_evidence_grade_fails_closed():
+    with pytest.raises(ValueError, match="unknown evidence grade"):
+        ControlPack("bad", (definition(pack_id="bad"),), "inferred")
 
 
 def test_duplicate_provider_rule_registration_fails_closed():

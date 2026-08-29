@@ -27,7 +27,10 @@ The intended first public release is a self-hosted `v0.1.0` technical preview:
 read-only shadow validation by default, explicit capability boundaries, and a
 human-gated remediation package. See the [public release
 blueprint](docs/public-release-v0.1.md) for its product promise, distribution,
-security gates, and launch checklist.
+security gates, and launch checklist. The
+[generated capability/evidence matrix](docs/generated/capability-matrix.md)
+keeps validation, planning, execution, and proof grade separate for every
+registered control.
 
 ## AWS/Azure customer shadow fleet
 

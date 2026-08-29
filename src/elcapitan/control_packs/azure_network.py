@@ -33,6 +33,7 @@ def _subnet_nsg_associated(values) -> ControlEvaluation:
 
 AZURE_NETWORK_PACK = ControlPack(
     pack_id="azure-network",
+    evidence_grade="e2e_measured",
     controls=(
         ControlDefinition(
             pack_id="azure-network", provider="azure",

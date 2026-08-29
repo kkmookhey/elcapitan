@@ -17,9 +17,9 @@ be tagged or published.
 | Governance policies | implemented | Security, contributing, conduct, support, versioning, and changelog files exist |
 | Threat model | implemented | `docs/threat-model.md` covers the required trust and failure boundaries |
 | Lifecycle operations | implemented | `docs/operations.md` covers upgrade, backup, restore, retention, deletion, and uninstall |
-| Capability/evidence matrix | pending | Generate deterministically from the installed registry and verify it in CI |
+| Capability/evidence matrix | verified | Registry generates checked-in JSON/Markdown; CI rejects drift; CLI reports the same 36-control contract |
 | Docker Compose quickstart | pending | Add PostgreSQL quickstart and clean-machine acceptance test |
-| UI release labels | pending | Verify synthetic/live, outcome, capability columns, and evidence grade end to end |
+| UI release labels | implemented | Fleet API/browser separate synthetic/real input, live outcomes, validation/planning/execution, and evidence grade; clean-machine UI acceptance remains |
 | Local RC rehearsal | pending | Run from a clean checkout with no cloud/model credentials |
 
 ## External authorization gates

@@ -64,6 +64,7 @@ def _public_network(values) -> ControlEvaluation:
 
 AZURE_COSMOS_DB_PACK = ControlPack(
     pack_id="azure-cosmos-db",
+    evidence_grade="contract_tested_export_observed",
     controls=(
         ControlDefinition(
             pack_id="azure-cosmos-db", provider="azure",

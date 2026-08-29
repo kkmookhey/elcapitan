@@ -115,6 +115,7 @@ def _diagnostic_logging(values) -> ControlEvaluation:
 
 AZURE_KEY_VAULT_PACK = ControlPack(
     pack_id="azure-key-vault",
+    evidence_grade="e2e_measured",
     controls=(
         ControlDefinition(
             pack_id="azure-key-vault", provider="azure",
@@ -128,6 +129,7 @@ AZURE_KEY_VAULT_PACK = ControlPack(
                 "keyvault_diagnostic_log_settings",
             ),
             evaluator=_diagnostic_logging,
+            evidence_grade="contract_tested",
         ),
         ControlDefinition(
             pack_id="azure-key-vault", provider="azure",

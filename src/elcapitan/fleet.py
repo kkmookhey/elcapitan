@@ -161,6 +161,7 @@ class FleetCase:
     finding_ids: tuple[str, ...]
     finding_titles: tuple[str, ...]
     rule_ids: tuple[str, ...]
+    capabilities: tuple[Mapping, ...]
     synthetic: bool
     supported_findings: int
     unsupported_findings: int
@@ -177,8 +178,8 @@ class FleetCase:
     def to_dict(self) -> dict:
         value = asdict(self)
         for name in (
-            "resource_uids", "finding_ids", "finding_titles", "rule_ids", "service_ids",
-            "scheduling_reasons",
+            "resource_uids", "finding_ids", "finding_titles", "rule_ids",
+            "capabilities", "service_ids", "scheduling_reasons",
         ):
             value[name] = list(value[name])
         value["validation_counts"] = dict(self.validation_counts)
@@ -226,11 +227,20 @@ class FleetSnapshotService:
     def _case(self, case: RemediationCase,
               portfolio: PortfolioItem | None) -> FleetCase:
         findings = self.finding_store.list_for_case(case.case_id)
-        supported = sum(
+        controls = tuple(
             self.registry.get(
-                finding.provider, self._rule(finding),
-                str(finding.record.get("resource", {}).get("type", ""))) is not None
+                finding.provider,
+                self._rule(finding),
+                str(finding.record.get("resource", {}).get("type", "")),
+            )
             for finding in findings
+        )
+        supported = sum(control is not None for control in controls)
+        capabilities = tuple(
+            dict(control.to_dict())
+            for control in dict.fromkeys(
+                control for control in controls if control is not None
+            )
         )
         validation_counts: Counter[str] = Counter()
         validation_records = self.record_store.list_for_case(
@@ -253,6 +263,7 @@ class FleetSnapshotService:
             finding_titles=tuple(
                 str(item.record["ocsf"].get("title", "")) for item in findings),
             rule_ids=tuple(dict.fromkeys(self._rule(item) for item in findings)),
+            capabilities=capabilities,
             synthetic=any(self._is_synthetic(item) for item in findings),
             supported_findings=supported,
             unsupported_findings=len(findings) - supported,

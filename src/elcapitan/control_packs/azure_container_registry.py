@@ -38,6 +38,7 @@ def _private_link(values) -> ControlEvaluation:
 
 AZURE_CONTAINER_REGISTRY_PACK = ControlPack(
     pack_id="azure-container-registry",
+    evidence_grade="e2e_measured",
     controls=(
         ControlDefinition(
             pack_id="azure-container-registry", provider="azure",

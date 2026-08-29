@@ -251,6 +251,7 @@ def test_cli_reports_capabilities_connector_preflight_and_full_fleet(
     assert sql["live_validation"] is True
     assert sql["remediation_planning"] is False
     assert sql["live_execution"] is False
+    assert sql["evidence_grade"] == "e2e_measured"
     key_vault = [
         item for item in capabilities["capabilities"]
         if item["rule_id"].startswith("keyvault_")]
@@ -306,6 +307,8 @@ def test_cli_reports_capabilities_connector_preflight_and_full_fleet(
     assert all(item["live_validation"] is True for item in cosmos_db)
     assert all(item["remediation_planning"] is False for item in cosmos_db)
     assert all(item["live_execution"] is False for item in cosmos_db)
+    assert all(item["evidence_grade"] == "contract_tested_export_observed"
+               for item in cosmos_db)
     assert all(item["provider"] == "azure" for item in capabilities["capabilities"])
 
     monkeypatch.setenv("PATH", "")
