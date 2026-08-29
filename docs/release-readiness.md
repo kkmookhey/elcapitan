@@ -21,7 +21,7 @@ be tagged or published.
 | Capability/evidence matrix | verified | Registry generates checked-in JSON/Markdown; CI rejects drift; CLI reports the same 36-control contract |
 | Docker Compose quickstart | verified | Clean local clone reached authenticated synthetic PostgreSQL result in 9 seconds at `bf4e6d3`; independent new-host evidence remains |
 | UI release labels | implemented | Fleet API/browser separate synthetic/real input, live outcomes, validation/planning/execution, and evidence grade; clean-machine UI acceptance remains |
-| Local RC rehearsal | pending | `scripts/rehearse_release_candidate.sh` runs a clean local clone with an empty environment, offline Python cache, full suite/build, secret scan, PostgreSQL quickstart, checksums, CycloneDX SBOM, and OCI provenance; dated run evidence remains |
+| Local RC rehearsal | pending | `scripts/rehearse_release_candidate.sh` runs a clean local clone without cloud-provider, model, or customer-data access, using an empty application environment and offline Python cache; full suite/build, secret scan, PostgreSQL quickstart, checksums, CycloneDX SBOM, and OCI provenance are included; dated run evidence remains |
 
 ## External authorization gates
 

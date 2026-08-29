@@ -81,7 +81,7 @@ if ! (
   cd "$checkout"
   docker buildx build \
     --load \
-    --network=none \
+    --pull=false \
     --provenance=mode=max \
     --metadata-file "$evidence/oci-build-metadata.json" \
     --tag "$image" \

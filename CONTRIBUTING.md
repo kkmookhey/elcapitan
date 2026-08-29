@@ -17,9 +17,12 @@ uv build --out-dir dist-ci
 uv run python scripts/check_distributions.py dist-ci
 ```
 
-Maintainers can run the complete cloud-free clean-checkout gate with
-`./scripts/rehearse_release_candidate.sh`. It requires Docker, the local Docker
-SBOM plugin, Gitleaks, and already populated offline `uv` and Docker caches.
+Maintainers can run the complete clean-checkout gate without cloud-provider,
+model, or customer-data access with `./scripts/rehearse_release_candidate.sh`.
+It requires Docker, the local Docker SBOM plugin, Gitleaks, and an already
+populated offline `uv` cache. Container base images and runtime dependencies are
+digest/hash pinned; Docker may resolve them from their public registries when
+the local build cache is empty.
 
 Tests must use synthetic, sanitized fixtures. Do not use customer data, live
 cloud credentials, external model calls, or personal cloud sessions. A change
