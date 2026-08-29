@@ -152,7 +152,7 @@ function renderFleet(document) {
       <td><span class="provider">${escapeHtml(item.provider)}</span><span class="state">${escapeHtml(humanize(item.state))}</span><span class="reason">${escapeHtml(capabilitySummary(item))}</span></td>
       <td><span class="status ${validationTone}"><i></i>${escapeHtml(validationLabel)}</span><span class="reason">${escapeHtml(validationReason)}</span></td>
       <td><span class="status ${scheduleTone}"><i></i>${escapeHtml(scheduleLabel)}</span><span class="reason">${escapeHtml(scheduleReason)}</span></td>
-      <td><div class="row-actions">${canValidate(item) ? `<button class="primary small" data-validate="${escapeHtml(item.case_id)}">Validate live</button>` : ""}<button class="ghost small" data-case="${escapeHtml(item.case_id)}">Inspect</button></div></td>
+      <td><div class="row-actions">${canValidate(item) ? `<button type="button" class="primary small" data-validate="${escapeHtml(item.case_id)}">Validate live</button>` : ""}<button type="button" class="ghost small" data-case="${escapeHtml(item.case_id)}">Inspect</button></div></td>
     </tr>`;
   }).join("");
 }
@@ -266,8 +266,8 @@ async function openCase(caseId) {
   const promotion = detail.promotion || {};
   const capability = (item?.capabilities || []).find(value => value.rule_id === ocsf.rule_id);
   $("#detail-content").innerHTML = `
-    <div class="detail-hero"><div><span class="status ${tone}"><i></i>${escapeHtml(validation)}</span><h2>${escapeHtml(displayTitle)}</h2></div><div class="detail-meta"><strong>${escapeHtml(Math.round(caseDoc.priority?.score || 0))}</strong><span>${escapeHtml(humanize(caseDoc.priority?.urgency || "unassessed"))} risk</span></div></div>
-    <div class="detail-actions">${item && canValidate(item) ? `<button class="primary" data-validate="${escapeHtml(caseId)}">Validate against live ${escapeHtml(item.provider.toUpperCase())}</button>` : ""}<span class="pill">${escapeHtml(humanize(caseDoc.state))}</span><span class="pill sample-pill">${item?.synthetic ? "Synthetic input" : "Real scanner input"}</span></div>
+    <div class="detail-hero"><div><span class="status ${tone}"><i></i>${escapeHtml(validation)}</span><h2 id="detail-title">${escapeHtml(displayTitle)}</h2></div><div class="detail-meta"><strong>${escapeHtml(Math.round(caseDoc.priority?.score || 0))}</strong><span>${escapeHtml(humanize(caseDoc.priority?.urgency || "unassessed"))} risk</span></div></div>
+    <div class="detail-actions">${item && canValidate(item) ? `<button type="button" class="primary" data-validate="${escapeHtml(caseId)}">Validate against live ${escapeHtml(item.provider.toUpperCase())}</button>` : ""}<span class="pill">${escapeHtml(humanize(caseDoc.state))}</span><span class="pill sample-pill">${item?.synthetic ? "Synthetic input" : "Real scanner input"}</span></div>
     <div class="detail-grid">
       <section class="detail-section"><h3>Case identity</h3>${fact("Case", caseDoc.case_id)}${fact("Tenant", caseDoc.tenant_id)}${fact("Provider", finding.provider)}${fact("Account", finding.account)}${fact("Service", (caseDoc.service_ids || []).join(", ") || "Unmapped")}</section>
       <section class="detail-section"><h3>Control & target</h3>${fact("Rule", ocsf.rule_id)}${fact("Resource", finding.resource_uid)}${fact("Severity", finding.record?.severity)}${fact("Scanner observations", caseDoc.finding_ids.length)}${fact("Confirmed controls", (promotion.confirmed_rule_ids || []).length)}</section>

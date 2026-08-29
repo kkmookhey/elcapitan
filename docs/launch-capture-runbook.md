@@ -44,7 +44,10 @@ PNG files and record the commit that produced them.
 
 ## Current capture status
 
-The written sequence is ready. Actual screenshots and the recording remain
-pending because this session had no connected browser surface, and the live-lab
-segment is outside the current no-cloud objective. Do not replace either with a
-fabricated image or an unlabeled synthetic claim.
+The written sequence is ready. The authenticated PostgreSQL quickstart and UI
+HTTP/accessibility contract passed on 2026-08-29, including hardened cookies,
+read-only route boundaries, dialog semantics, keyboard-focus styling, and
+reduced-motion behavior. Rendered interaction, actual screenshots, and the
+recording remain pending because no browser surface was connected. The live-lab
+segment is outside the current no-cloud objective. Do not replace browser proof
+with HTTP assertions, a fabricated image, or an unlabeled synthetic claim.

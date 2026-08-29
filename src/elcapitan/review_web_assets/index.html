@@ -14,7 +14,7 @@
   <main>
     <section class="hero">
       <div><p class="eyebrow">Evidence-bound change authority</p><h1>Approve exactly what was reviewed.</h1><p>Inspect the verified change, operational impact, window, rollback, and policy chain before recording a human decision.</p></div>
-      <div class="tenant-control"><label for="tenant">Customer tenant</label><div><input id="tenant" value="ASSURANCE-LAB" maxlength="100"><button id="load-queue" class="primary">Open review queue</button></div></div>
+      <div class="tenant-control"><label for="tenant">Customer tenant</label><div><input id="tenant" value="ASSURANCE-LAB" maxlength="100"><button type="button" id="load-queue" class="primary">Open review queue</button></div></div>
     </section>
     <section class="auth-notice"><strong>DEMO AUTHENTICATION</strong><span>This shared-token gate is suitable for non-production assurance only. Entra ID will replace it before customer approvals.</span></section>
     <section class="workspace">
@@ -28,10 +28,10 @@
     </section>
   </main>
 
-  <dialog id="approve-dialog">
-    <button class="dialog-close" data-close="approve-dialog" aria-label="Close">×</button>
-    <p class="section-label">Package-bound approval</p><h2>Approve this exact change?</h2>
-    <p class="dialog-copy">Approval creates an immutable decision record and durable schedule. It does not execute the change.</p>
+  <dialog id="approve-dialog" aria-labelledby="approve-title" aria-describedby="approve-description">
+    <button type="button" class="dialog-close" data-close="approve-dialog" aria-label="Close">×</button>
+    <p class="section-label">Package-bound approval</p><h2 id="approve-title">Approve this exact change?</h2>
+    <p id="approve-description" class="dialog-copy">Approval creates an immutable decision record and durable schedule. It does not execute the change.</p>
     <form id="approve-form">
       <label>Approver name<input id="approve-name" required maxlength="200" autocomplete="name"></label>
       <label>Type the confirmation phrase<input id="approve-confirmation" required autocomplete="off"></label>
@@ -41,10 +41,10 @@
     </form>
   </dialog>
 
-  <dialog id="reject-dialog">
-    <button class="dialog-close" data-close="reject-dialog" aria-label="Close">×</button>
-    <p class="section-label danger-label">Package rejection</p><h2>Reject this exact change?</h2>
-    <p class="dialog-copy">Rejection is terminal for this package and guarantees that no execution job is created.</p>
+  <dialog id="reject-dialog" aria-labelledby="reject-title" aria-describedby="reject-description">
+    <button type="button" class="dialog-close" data-close="reject-dialog" aria-label="Close">×</button>
+    <p class="section-label danger-label">Package rejection</p><h2 id="reject-title">Reject this exact change?</h2>
+    <p id="reject-description" class="dialog-copy">Rejection is terminal for this package and guarantees that no execution job is created.</p>
     <form id="reject-form">
       <label>Approver name<input id="reject-name" required maxlength="200" autocomplete="name"></label>
       <label>Reason<textarea id="reject-reason" required minlength="20" maxlength="2000"></textarea></label>
@@ -54,7 +54,7 @@
       <div class="dialog-actions"><button type="button" class="ghost" data-close="reject-dialog">Cancel</button><button class="danger" type="submit">Record rejection</button></div>
     </form>
   </dialog>
-  <div id="toast" class="toast" role="status"></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="/review.js"></script>
 </body>
 </html>

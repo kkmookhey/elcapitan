@@ -54,7 +54,7 @@ function renderQueue(document) {
     $("#queue-list").innerHTML = '<p class="empty">No human-review packages exist for this tenant.</p>';
     return;
   }
-  $("#queue-list").innerHTML = document.cases.map(item => `<button class="queue-item ${selected?.case?.case_id === item.case_id ? "selected" : ""}" data-case="${escapeHtml(item.case_id)}"><header><strong>${escapeHtml(Math.round(item.risk_score))} · ${escapeHtml(humanize(item.urgency))}</strong><span class="state ${escapeHtml(item.state)}">${escapeHtml(humanize(item.state))}</span></header><p>${escapeHtml(shortId(item.resource_uid, 56))}</p><code>${escapeHtml(shortId(item.review_package_id))}</code></button>`).join("");
+  $("#queue-list").innerHTML = document.cases.map(item => `<button type="button" class="queue-item ${selected?.case?.case_id === item.case_id ? "selected" : ""}" data-case="${escapeHtml(item.case_id)}"><header><strong>${escapeHtml(Math.round(item.risk_score))} · ${escapeHtml(humanize(item.urgency))}</strong><span class="state ${escapeHtml(item.state)}">${escapeHtml(humanize(item.state))}</span></header><p>${escapeHtml(shortId(item.resource_uid, 56))}</p><code>${escapeHtml(shortId(item.review_package_id))}</code></button>`).join("");
 }
 
 function list(items, empty = "None") {
@@ -102,7 +102,7 @@ function renderDetail(document) {
       </div>
       <section class="section"><header><h3>Deterministic policy gate</h3><span class="badge">${escapeHtml(humanize(policy.body.decision))}</span></header>${checks(policy.body.checks || [])}</section>
       <section class="section"><header><h3>Maker / checker provenance</h3><span class="badge">${escapeHtml(new Set(models.map(item => `${item.runtime}:${item.model}`)).size)} model identities</span></header><div class="models">${models.map(item => `<span class="model">${escapeHtml(item.runtime)} · ${escapeHtml(item.model)}</span>`).join("")}</div></section>
-      ${terminal ? `<div class="decision-bar terminal"><div><strong>Decision recorded: ${escapeHtml(humanize(caseDoc.state))}</strong><p>This package can no longer accept another decision.</p></div></div>` : `<div class="decision-bar"><div><strong>Human decision required</strong><p>Both actions bind to this exact package hash. Neither endpoint can execute infrastructure.</p></div><div class="decision-actions"><button class="ghost" data-action="reject">Reject package</button><button class="primary" data-action="approve">Review approval</button></div></div>`}
+      ${terminal ? `<div class="decision-bar terminal"><div><strong>Decision recorded: ${escapeHtml(humanize(caseDoc.state))}</strong><p>This package can no longer accept another decision.</p></div></div>` : `<div class="decision-bar"><div><strong>Human decision required</strong><p>Both actions bind to this exact package hash. Neither endpoint can execute infrastructure.</p></div><div class="decision-actions"><button type="button" class="ghost" data-action="reject">Reject package</button><button type="button" class="primary" data-action="approve">Review approval</button></div></div>`}
     </div>`;
 }
 

@@ -93,6 +93,15 @@ because no browser surface was connected.
 The completed Azure E2E/deployment-hardening slice passes **540 tests**, the
 release-tree and shell-syntax checks, and both Python distribution builds.
 
+The current browser/release-gate slice passes **542 tests**. The authenticated
+PostgreSQL quickstart now checks the hardened session cookie, UI assets and
+semantic labels, cross-origin rejection, and absence of a shadow execution
+route. The public runtime rebuilds pinned Terraform 1.16.0 source with patched
+Go 1.26.6 and a refreshed Python base; Trivy 0.70.0 reports zero fixed
+high/critical findings in the local Linux arm64 image. See
+`docs/release-verification-2026-08-29.md`. Rendered browser acceptance is still
+pending because no in-app browser surface was connected.
+
 Run the complete suite with:
 
 ```bash
@@ -156,7 +165,7 @@ into one generic "supported" claim.
   yet been run against a lab vault; the other three Key Vault controls retain
   their existing E2E-measured evidence grade.
 - License and project-name clearance, historical-secret adjudication, protected
-  release-environment configuration, remote CI evidence, signing, and public
+  release-environment configuration, committed remote CI evidence, signing, and public
   artifact publication/provenance remain external release gates.
 
 ## Non-negotiable safety boundaries
@@ -337,6 +346,10 @@ and remaining visual-browser limitation are in
    the live-lab demo segment only after its exact non-production resource and
    read-only identity are approved. Recording and publication are external
    writes and remain unapproved.
+5. The private repository's current GitHub plan does not expose protected
+   environments or rulesets. Do not weaken the guarded release workflow; an
+   owner must upgrade the plan or separately authorize public visibility before
+   configuring required `release` reviewers.
 
 The retired Claude/Hermes capability probe remains on
 `archive/claude-code-probe-2026-08-25`. It is not part of the product runtime,

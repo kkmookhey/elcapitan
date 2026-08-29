@@ -1,6 +1,7 @@
-from pathlib import Path
+import re
 import subprocess
 import sys
+from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -74,3 +75,23 @@ def test_azure_worker_image_is_pinned_and_non_root():
     assert "--require-hashes -r requirements-runtime.txt" in dockerfile
     assert "USER 10001" in dockerfile
     assert 'ENTRYPOINT ["elcapitan"]' in dockerfile
+
+
+def test_public_runtime_rebuilds_pinned_terraform_with_patched_go():
+    dockerfile = (ROOT / "Dockerfile").read_text()
+
+    assert "golang:1.26.6-alpine@sha256:" in dockerfile
+    assert "terraform/archive/bfe8a941dc45f9f39227b2cd0adc21069ba99319" in dockerfile
+    assert "ADD --checksum=sha256:" in dockerfile
+    assert "GOTOOLCHAIN=local go build" in dockerfile
+    assert "python:3.12-slim-bookworm@sha256:" in dockerfile
+    assert "USER 10001" in dockerfile
+
+
+def test_workflow_actions_are_commit_pinned():
+    uses = []
+    for workflow in (ROOT / ".github/workflows").glob("*.yml"):
+        uses.extend(re.findall(r"uses:\s*[^@\s]+@([^\s#]+)", workflow.read_text()))
+
+    assert uses
+    assert all(re.fullmatch(r"[0-9a-f]{40}", reference) for reference in uses)

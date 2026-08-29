@@ -31,7 +31,12 @@ def authenticated_server(tmp_path):
         server, "POST", "/login", body=encoded,
         headers={"Content-Type": "application/x-www-form-urlencoded"})
     assert status == 303
-    return server, headers["Set-Cookie"].split(";", 1)[0]
+    set_cookie = headers["Set-Cookie"]
+    assert "HttpOnly" in set_cookie
+    assert "Secure" in set_cookie
+    assert "SameSite=Strict" in set_cookie
+    assert "Max-Age=28800" in set_cookie
+    return server, set_cookie.split(";", 1)[0]
 
 
 def test_shadow_api_intake_fleet_and_case_detail_are_authenticated(tmp_path):
@@ -44,6 +49,16 @@ def test_shadow_api_intake_fleet_and_case_detail_are_authenticated(tmp_path):
         assert status == 200
         assert headers["Content-Type"].startswith("text/html")
         assert b"Customer shadow fleet" in content
+        assert b'<caption class="sr-only">' in content
+        assert b'<th scope="col">Priority</th>' in content
+        assert b'aria-labelledby="intake-title"' in content
+        assert b'aria-describedby="intake-description"' in content
+        assert b'aria-labelledby="detail-title"' in content
+        status, _, content = request(
+            server, "GET", "/fleet.css", headers={"Cookie": cookie})
+        assert status == 200
+        assert b":focus-visible" in content
+        assert b"prefers-reduced-motion:reduce" in content
         status, headers, content = request(
             server, "GET", "/fleet.js", headers={"Cookie": cookie})
         assert status == 200
@@ -54,6 +69,8 @@ def test_shadow_api_intake_fleet_and_case_detail_are_authenticated(tmp_path):
         assert b"Evidence grade" in content
         assert b"REAL INPUT" in content
         assert b"SYNTHETIC INPUT" in content
+        assert b'<h2 id="detail-title">' in content
+        assert b'<button type="button"' in content
         body = json.dumps({
             "tenant_id": "TEN-API",
             "findings": [json.loads(FIXTURE.read_text())],

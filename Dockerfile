@@ -1,6 +1,15 @@
-FROM hashicorp/terraform:1.15.8@sha256:7ae513256f7ce67879e218ae8593d6fbe216ec9e123abe6c94e4e10704857963 AS terraform
+FROM golang:1.26.6-alpine@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS terraform
 
-FROM python:3.12.11-slim-bookworm@sha256:519591d6871b7bc437060736b9f7456b8731f1499a57e22e6c285135ae657bf7
+WORKDIR /src
+ADD --checksum=sha256:df8bcacb10dcb2b1083a564356b55bfd73c14a32959fbf39bc1bf6659daa5fb8 \
+    https://github.com/hashicorp/terraform/archive/bfe8a941dc45f9f39227b2cd0adc21069ba99319.tar.gz \
+    /tmp/terraform.tar.gz
+RUN tar -xzf /tmp/terraform.tar.gz --strip-components=1 -C /src \
+    && CGO_ENABLED=0 GOTOOLCHAIN=local go build -trimpath \
+      -ldflags="-s -w -X github.com/hashicorp/terraform/version.dev=no" \
+      -o /bin/terraform .
+
+FROM python:3.12-slim-bookworm@sha256:0f5b26b9518d002b6173fd61daad821fa340635ebfec5bba471013f9ca114579
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

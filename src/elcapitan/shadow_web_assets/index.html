@@ -25,13 +25,13 @@
       </div>
       <div class="tenant-control">
         <label for="tenant">Customer tenant</label>
-        <div><input id="tenant" maxlength="100" value="DEMO-CUSTOMER" autocomplete="off"><button class="primary" id="load-fleet">Open fleet</button></div>
+        <div><input id="tenant" maxlength="100" value="DEMO-CUSTOMER" autocomplete="off"><button type="button" class="primary" id="load-fleet">Open fleet</button></div>
       </div>
     </section>
 
     <section class="control-strip">
       <div><p class="section-label">Fleet mission</p><h2 id="mission">Waiting for a tenant</h2><p id="mission-detail">Select a tenant to load its isolated portfolio.</p></div>
-      <div class="actions"><button class="ghost" id="refresh">Refresh</button><button class="ghost" id="validate-eligible">Validate eligible</button><button class="primary" id="open-intake">Import findings</button></div>
+      <div class="actions"><button type="button" class="ghost" id="refresh">Refresh</button><button type="button" class="ghost" id="validate-eligible">Validate eligible</button><button type="button" class="primary" id="open-intake">Import findings</button></div>
     </section>
 
     <section class="metrics" aria-label="Fleet metrics">
@@ -49,7 +49,8 @@
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Priority</th><th>Finding / asset</th><th>Cloud</th><th>Validation</th><th>Scheduling intelligence</th><th></th></tr></thead>
+            <caption class="sr-only">Prioritized customer findings and available read-only actions</caption>
+            <thead><tr><th scope="col">Priority</th><th scope="col">Finding / asset</th><th scope="col">Cloud</th><th scope="col">Validation</th><th scope="col">Scheduling intelligence</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
             <tbody id="fleet-body"><tr><td colspan="6" class="empty">Open a tenant or import findings to begin.</td></tr></tbody>
           </table>
         </div>
@@ -73,12 +74,12 @@
     </section>
   </main>
 
-  <dialog id="intake-dialog">
+  <dialog id="intake-dialog" aria-labelledby="intake-title" aria-describedby="intake-description">
     <form id="intake-form">
       <button type="button" class="dialog-close" data-close="intake-dialog" aria-label="Close">×</button>
       <p class="section-label">Finding intake</p>
-      <h2>Import AWS or Azure findings</h2>
-      <p>Paste OCSF, AWS Security Hub ASFF, an array of findings, or a Security Hub response containing <code>Findings</code>. Provider scope, resource identity, normalization, schema, and priority inputs are checked for the entire batch before anything is written.</p>
+      <h2 id="intake-title">Import AWS or Azure findings</h2>
+      <p id="intake-description">Paste OCSF, AWS Security Hub ASFF, an array of findings, or a Security Hub response containing <code>Findings</code>. Provider scope, resource identity, normalization, schema, and priority inputs are checked for the entire batch before anything is written.</p>
       <label class="upload-zone" for="finding-file"><strong>Choose a JSON export</strong><span id="file-label">or paste findings below · maximum 10 MiB / 1,000 findings</span><input id="finding-file" type="file" accept=".json,application/json"></label>
       <label>Finding JSON<textarea id="finding-json" required spellcheck="false" placeholder='[{"class_uid":2004,...}]'></textarea></label>
       <div class="form-grid">
@@ -91,7 +92,7 @@
     </form>
   </dialog>
 
-  <dialog id="detail-dialog" class="detail-dialog">
+  <dialog id="detail-dialog" class="detail-dialog" aria-labelledby="detail-title">
     <button type="button" class="dialog-close" data-close="detail-dialog" aria-label="Close">×</button>
     <p class="section-label">Case evidence</p>
     <div id="detail-content"></div>

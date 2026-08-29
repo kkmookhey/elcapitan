@@ -27,7 +27,12 @@ def authenticated_server(tmp_path):
         server, "POST", "/login", body=encoded,
         headers={"Content-Type": "application/x-www-form-urlencoded"})
     assert status == 303
-    return server, headers["Set-Cookie"].split(";", 1)[0]
+    set_cookie = headers["Set-Cookie"]
+    assert "HttpOnly" in set_cookie
+    assert "Secure" in set_cookie
+    assert "SameSite=Strict" in set_cookie
+    assert "Max-Age=28800" in set_cookie
+    return server, set_cookie.split(";", 1)[0]
 
 
 def test_review_web_is_authenticated_and_has_no_execution_route(tmp_path):
@@ -42,11 +47,22 @@ def test_review_web_is_authenticated_and_has_no_execution_route(tmp_path):
         assert status == 200
         assert headers["Content-Type"].startswith("text/html")
         assert b"Human decision gate" in content
+        assert b'aria-labelledby="approve-title"' in content
+        assert b'aria-describedby="approve-description"' in content
+        assert b'aria-labelledby="reject-title"' in content
+        assert b'aria-describedby="reject-description"' in content
+        assert b'role="status" aria-live="polite"' in content
+        status, _, content = request(
+            server, "GET", "/review.css", headers={"Cookie": cookie})
+        assert status == 200
+        assert b":focus-visible" in content
+        assert b"prefers-reduced-motion:reduce" in content
 
         status, _, content = request(
             server, "GET", "/review.js", headers={"Cookie": cookie})
         assert status == 200
         assert b"execution has not started" in content
+        assert b'<button type="button"' in content
 
         status, _, content = request(
             server, "GET", "/api/reviews?tenant=TEN", headers={"Cookie": cookie})

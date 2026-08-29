@@ -6,6 +6,7 @@ project="elcapitan-acceptance-$$"
 token="local-acceptance-not-a-secret-00000000"
 temporary=$(mktemp -d "${TMPDIR:-/tmp}/elcapitan-acceptance.XXXXXX")
 cookie="$temporary/cookie.txt"
+headers="$temporary/headers.txt"
 intake="$temporary/intake.json"
 fleet="$temporary/fleet.json"
 started=$(date +%s)
@@ -13,7 +14,7 @@ started=$(date +%s)
 cleanup() {
   docker compose --project-directory "$repository" --project-name "$project" \
     down --volumes --remove-orphans >/dev/null 2>&1 || true
-  rm -f -- "$cookie" "$intake" "$fleet"
+  rm -f -- "$cookie" "$headers" "$intake" "$fleet"
   rmdir -- "$temporary" 2>/dev/null || true
 }
 trap cleanup EXIT HUP INT TERM
@@ -28,10 +29,34 @@ printf '%s' "$health" | grep -q '"status":"ok"'
 printf '%s' "$health" | grep -q '"state_store":"postgresql"'
 
 login_status=$(curl --silent --show-error --output /dev/null \
-  --write-out '%{http_code}' --cookie-jar "$cookie" \
+  --write-out '%{http_code}' --cookie-jar "$cookie" --dump-header "$headers" \
   --header 'Content-Type: application/x-www-form-urlencoded' \
   --data-urlencode "token=$token" http://127.0.0.1:8770/login)
 test "$login_status" = "303"
+grep -Eiq '^Set-Cookie:.*HttpOnly' "$headers"
+grep -Eiq '^Set-Cookie:.*Secure' "$headers"
+grep -Eiq '^Set-Cookie:.*SameSite=Strict' "$headers"
+grep -Eiq '^Set-Cookie:.*Max-Age=28800' "$headers"
+
+curl --fail --silent --show-error --cookie "$cookie" \
+  http://127.0.0.1:8770/ | grep -q 'aria-labelledby="intake-title"'
+curl --fail --silent --show-error --cookie "$cookie" \
+  http://127.0.0.1:8770/fleet.css | grep -q ':focus-visible'
+curl --fail --silent --show-error --cookie "$cookie" \
+  http://127.0.0.1:8770/fleet.js | grep -q 'Current approval package'
+
+cross_origin_status=$(curl --silent --show-error --output /dev/null \
+  --write-out '%{http_code}' --cookie "$cookie" \
+  --header 'Content-Type: application/json' \
+  --header 'Origin: https://attacker.invalid' --data '{}' \
+  http://127.0.0.1:8770/api/intake)
+test "$cross_origin_status" = "403"
+
+execution_status=$(curl --silent --show-error --output /dev/null \
+  --write-out '%{http_code}' --cookie "$cookie" \
+  --header 'Content-Type: application/json' --data '{}' \
+  http://127.0.0.1:8770/api/execute)
+test "$execution_status" = "404"
 
 curl --fail --silent --show-error --cookie "$cookie" \
   --header 'Content-Type: application/json' \
