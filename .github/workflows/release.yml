@@ -7,6 +7,10 @@ on:
         description: Type RELEASE APPROVED after license and name approval are recorded
         required: true
         type: string
+      approval_record_sha256:
+        description: SHA-256 of the committed RELEASE_APPROVAL.json reviewed by the operator
+        required: true
+        type: string
 
 concurrency:
   group: release-${{ github.ref }}
@@ -38,7 +42,12 @@ jobs:
           terraform_version: "1.16.0"
           terraform_wrapper: false
       - name: Enforce the final release gate
-        run: uv run python scripts/check_release_tree.py --release --tag "${GITHUB_REF_NAME}"
+        env:
+          APPROVAL_RECORD_SHA256: ${{ inputs.approval_record_sha256 }}
+        run: >-
+          uv run python scripts/check_release_tree.py --release
+          --tag "${GITHUB_REF_NAME}"
+          --approval-sha256 "${APPROVAL_RECORD_SHA256}"
       - name: Test and build distributions
         run: |
           uv sync --locked --dev

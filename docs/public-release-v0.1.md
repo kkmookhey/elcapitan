@@ -131,6 +131,11 @@ or arbitrary agent graph designer.
 - The license and project name have explicit legal/business approval. The
   repository currently has no license, so publication must not occur by
   accident.
+- The exact license, project-name decision, completed historical-secret
+  response, and protected-environment reviewer configuration are recorded in a
+  committed `RELEASE_APPROVAL.json`. The manual workflow must receive and
+  verify that file's SHA-256; free-form operator confirmation alone is
+  insufficient.
 - Git history and built artifacts pass a customer-name, credential, private
   endpoint, and secret audit.
 - Safe sample fixtures contain synthetic identifiers only; measured lab

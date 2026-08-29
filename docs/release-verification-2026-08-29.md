@@ -8,7 +8,7 @@ this document. It is evidence for review, not authorization to tag or publish.
 
 | Check | Result |
 |---|---|
-| Python suite | 542 passed in 29.57 seconds under the locked Python 3.12 environment |
+| Python suite | 545 passed in 28.68 seconds under the locked Python 3.12 environment |
 | PostgreSQL quickstart | Passed in 10 seconds with synthetic input and no cloud/model credentials |
 | Authenticated UI contract | Login, hardened session cookie, fleet HTML/JS/CSS, intake, capability labels, and read-only boundary passed |
 | Write-boundary checks | Cross-origin intake returned 403; the shadow execution route returned 404 |
@@ -27,6 +27,11 @@ Terraform 1.16.0 source commit with digest-pinned Go 1.26.6. Docker verifies the
 source archive checksum before the build. No vulnerability waiver was added.
 Every workflow action is commit-pinned, and the manual release job now repeats
 the high/critical runtime scan before registry login and publication.
+Publication also fails closed unless the operator supplies the SHA-256 of an
+exact committed `RELEASE_APPROVAL.json` recording the license and name
+approvals, completed historical-secret response, and protected `release`
+environment reviewers. The checked-in example remains pending and cannot pass
+the gate; no owner decision was inferred during this technical verification.
 
 The complete-history result does not adjudicate the 22 legacy fingerprints in
 `.gitleaksignore`. A newer detector no longer reproducing an old match is not

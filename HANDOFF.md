@@ -342,7 +342,10 @@ and remaining visual-browser limitation are in
 2. Do not tag or publish until authorized owners approve the license and name,
    adjudicate and remediate the historical secret baseline, configure the
    protected release environment, and obtain successful remote CI/container
-   scan evidence.
+   scan evidence. Record those decisions in a committed
+   `RELEASE_APPROVAL.json` based on the checked-in example and pass its exact
+   SHA-256 to the manual release workflow; the release-tree check now rejects
+   missing, pending, mismatched, or baseline-waiving records.
 3. The remaining customer shadow pilot requires a separately authorized
    read-only customer boundary, identities, data handling, and consent. It is
    prohibited under the current no-customer-data objective.

@@ -8,7 +8,7 @@ be tagged or published.
 
 | Gate | Status | Evidence or next proof |
 |---|---|---|
-| Full Python suite | verified | 542 tests passed in the dated UI/release-gate verification; 538 passed independently in the clean-clone rehearsal at `44dd79e` |
+| Full Python suite | verified | 545 tests passed in the dated UI/release-gate verification; 538 passed independently in the clean-clone rehearsal at `44dd79e` |
 | Wheel and source distribution | verified | The post-E2E slice and clean-clone rehearsal both built wheel and source distributions successfully; rehearsal artifacts were inspected and checksummed at `44dd79e` |
 | Syntax/static checks | verified | Clean-clone compile and narrow Ruff error checks passed at `44dd79e`; repository-wide Ruff formatting remains migration debt |
 | Dependency review | implemented | GitHub dependency review rejects moderate-or-higher vulnerabilities on pull requests |
@@ -38,10 +38,28 @@ be tagged or published.
 | Public launch materials | blocked | Architecture/trust-boundary README, article drafts, release notes, and capture runbook exist; real screenshots, authorized live-lab recording, consent, and publication remain external gates |
 
 The release workflow is manual-only. It runs only on a tag, requires the exact
-`RELEASE APPROVED` input, uses the protected `release` environment, and then
+`RELEASE APPROVED` input and the SHA-256 of the committed
+`RELEASE_APPROVAL.json`, uses the protected `release` environment, and then
 rechecks the license, changelog date, tag/version match, tests, distribution,
 checksums, SBOM, provenance, and signed attestations before pushing the
 multi-architecture GHCR image. Its existence is not release approval.
+
+Copy `docs/release-approval-record.example.json` to `RELEASE_APPROVAL.json`
+only after every named owner has made the recorded decision. Replace every
+placeholder, commit the completed record before creating the tag, and calculate
+the workflow input from that exact checkout:
+
+```console
+sha256sum RELEASE_APPROVAL.json
+uv run python scripts/check_release_tree.py --release --tag v0.1.0 \
+  --approval-sha256 <64-character digest>
+```
+
+The final check rejects a mismatched digest, pending or missing decisions, a
+license mismatch, any remaining historical-secret baseline, an incomplete
+credential response, or a `release` environment without required reviewers.
+Do not commit the example as if it were an approval or infer owner decisions
+from technical test results.
 
 ## Historical-secret response
 
@@ -63,9 +81,10 @@ old matches are safe. Before public release, an authorized security owner must:
 The final evidence bundle must contain the commit and tag, exact tool versions,
 test and clean-machine logs, generated capability matrix, wheel/sdist and image
 digests, `SHA256SUMS`, CycloneDX SBOM, GitHub provenance/SBOM attestations,
-container scan result, secret audit adjudication, license/name approvals, threat
-model review, and dated changelog/release notes. Verification instructions must
-use immutable digests and `gh attestation verify`.
+container scan result, the committed `RELEASE_APPROVAL.json` and its SHA-256,
+secret audit adjudication, license/name approvals, threat model review, and
+dated changelog/release notes. Verification instructions must use immutable
+digests and `gh attestation verify`.
 
 The current cloud-free UI/runtime evidence is recorded in
 [`release-verification-2026-08-29.md`](release-verification-2026-08-29.md).

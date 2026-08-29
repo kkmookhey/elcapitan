@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "release_tag": "v0.1.0",
+  "license": {
+    "spdx_id": "<approved SPDX identifier>",
+    "decision": "pending",
+    "approved_by": "<legal or business owner>",
+    "approved_at": "<YYYY-MM-DD>",
+    "evidence_ref": "<durable approval reference>"
+  },
+  "project_name": {
+    "value": "El Capitan",
+    "decision": "pending",
+    "approved_by": "<legal or business owner>",
+    "approved_at": "<YYYY-MM-DD>",
+    "evidence_ref": "<durable approval reference>"
+  },
+  "historical_secret_response": {
+    "decision": "pending",
+    "legacy_fingerprints_reviewed": 0,
+    "remaining_baseline_fingerprints": 22,
+    "potential_credentials_dispositioned": false,
+    "history_rewrite": "pending",
+    "zero_finding_history_scan": false,
+    "approved_by": "<security owner>",
+    "approved_at": "<YYYY-MM-DD>",
+    "evidence_ref": "<sanitized response record>"
+  },
+  "release_environment": {
+    "name": "release",
+    "decision": "pending",
+    "required_reviewers_configured": false,
+    "approved_by": "<repository owner>",
+    "approved_at": "<YYYY-MM-DD>",
+    "evidence_ref": "<repository settings evidence>"
+  }
+}
