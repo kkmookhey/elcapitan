@@ -4,8 +4,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Mapping
 
+from .agent_runs import AgentRunPolicy, AgentRunRuntime, AgentRunStopped
 from .agents import AgentRuntime
-from .cases import CaseState
+from .cases import CaseState, CaseTransition
 from .finding_store import FindingStore
 from .intake import numeric_id
 from .observability import UsageSample, WindowPolicy
@@ -17,7 +18,7 @@ from .product_records import ProductRecordStore
 from .remediation_planning import (
     RemediationPlanOutcome, RemediationPlanningService, TerraformRunner,
 )
-from .workflow import CaseStore
+from .workflow import CaseStore, WorkflowCoordinator
 
 
 @dataclass(frozen=True)
@@ -34,17 +35,25 @@ class PreApprovalOrchestrator:
                  record_store: ProductRecordStore, artifact_root,
                  runtime: AgentRuntime, runner: TerraformRunner,
                  now: Callable[[], str],
+                 agent_run_policy: AgentRunPolicy | None = None,
                  minimum_distinct_agent_models: int = 1,
                  require_state_grounded_plan: bool = False,
                  id_factory: Callable[[str], str] = numeric_id) -> None:
+        managed_runtime = (runtime if getattr(runtime, "agent_run_managed", False)
+                           else AgentRunRuntime(
+                               runtime, record_store=record_store,
+                               artifact_root=artifact_root, now=now,
+                               policy=agent_run_policy))
         common = dict(case_store=case_store, record_store=record_store,
-                      artifact_root=artifact_root, runtime=runtime, now=now,
+                      artifact_root=artifact_root, runtime=managed_runtime, now=now,
                       id_factory=id_factory)
         self.case_store = case_store
+        self.now = now
+        self.id_factory = id_factory
         self.planning = RemediationPlanningService(
             case_store=case_store, finding_store=finding_store,
             record_store=record_store, artifact_root=artifact_root,
-            runtime=runtime, runner=runner, now=now, id_factory=id_factory)
+            runtime=managed_runtime, runner=runner, now=now, id_factory=id_factory)
         self.sre = SREReviewService(**common)
         self.window = ChangeWindowService(**common)
         self.rollback = RollbackReviewService(**common)
@@ -53,6 +62,25 @@ class PreApprovalOrchestrator:
             now=now, id_factory=id_factory,
             minimum_distinct_agent_models=minimum_distinct_agent_models,
             require_state_grounded_plan=require_state_grounded_plan)
+
+    def _block_agent_run(self, case_id: str, stopped: AgentRunStopped) -> None:
+        case = self.case_store.get(case_id)
+        if case.state is CaseState.BLOCKED:
+            return
+        WorkflowCoordinator(self.case_store).advance(
+            case_id, CaseTransition.BLOCK,
+            event_id=self.id_factory("EVT"), occurred_at=self.now(),
+            actor="agent-run-policy",
+            record_ids={"agent_run_terminal_id": stopped.record.record_id},
+            detail=("agent run requires human review: "
+                    + str(stopped.record.body.get("reason", "needs_human"))))
+
+    def _guard_agent_run(self, case_id: str, operation):
+        try:
+            return operation()
+        except AgentRunStopped as stopped:
+            self._block_agent_run(case_id, stopped)
+            raise PreApprovalError(str(stopped)) from stopped
 
     def advance_to_human_review(self, case_id: str, *, repository,
                                 state_document: Mapping | None,
@@ -66,22 +94,25 @@ class PreApprovalOrchestrator:
         for _ in range(14):
             state = self.case_store.get(case_id).state
             if state is CaseState.VALIDATED:
-                self.planning.prepare(
-                    case_id, repository=repository, state_document=state_document)
+                self._guard_agent_run(case_id, lambda: self.planning.prepare(
+                    case_id, repository=repository, state_document=state_document))
             elif state is CaseState.PLAN_READY:
-                outcome = self.sre.review(case_id, service_context=service_context)
+                outcome = self._guard_agent_run(
+                    case_id, lambda: self.sre.review(
+                        case_id, service_context=service_context))
                 if outcome.case.state is not CaseState.SRE_APPROVED:
                     raise PreApprovalError(
                         f"SRE review stopped workflow in {outcome.case.state}")
             elif state is CaseState.SRE_APPROVED:
                 if self.sre.retry_invalid_approval(case_id):
                     continue
-                self.window.select(
-                    case_id, samples=usage_samples, policy=window_policy)
+                self._guard_agent_run(case_id, lambda: self.window.select(
+                    case_id, samples=usage_samples, policy=window_policy))
             elif state is CaseState.WINDOW_SELECTED:
                 if self.sre.retry_invalid_approval(case_id):
                     continue
-                outcome = self.rollback.review(case_id)
+                outcome = self._guard_agent_run(
+                    case_id, lambda: self.rollback.review(case_id))
                 if outcome.case.state is CaseState.VALIDATED:
                     continue
                 if outcome.case.state is not CaseState.ROLLBACK_READY:
@@ -101,14 +132,19 @@ class PreApprovalOrchestrator:
                 state_document: Mapping | None, service_context: Mapping,
                 usage_samples: tuple[UsageSample, ...],
                 window_policy: WindowPolicy) -> PreApprovalOutcome:
-        planning = self.planning.prepare(
-            case_id, repository=repository, state_document=state_document)
-        sre = self.sre.review(case_id, service_context=service_context)
+        planning = self._guard_agent_run(
+            case_id, lambda: self.planning.prepare(
+                case_id, repository=repository, state_document=state_document))
+        sre = self._guard_agent_run(
+            case_id, lambda: self.sre.review(
+                case_id, service_context=service_context))
         if sre.case.state is not CaseState.SRE_APPROVED:
             raise RuntimeError(f"SRE review stopped workflow in {sre.case.state}")
-        window = self.window.select(
-            case_id, samples=usage_samples, policy=window_policy)
-        rollback = self.rollback.review(case_id)
+        window = self._guard_agent_run(
+            case_id, lambda: self.window.select(
+                case_id, samples=usage_samples, policy=window_policy))
+        rollback = self._guard_agent_run(
+            case_id, lambda: self.rollback.review(case_id))
         if rollback.case.state is not CaseState.ROLLBACK_READY:
             raise RuntimeError(
                 f"rollback review stopped workflow in {rollback.case.state}")

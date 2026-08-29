@@ -272,6 +272,13 @@ provenance. Workflow transitions, candidate generation, Terraform
 verification, approval, scheduling, execution, and rollback remain
 deterministic product code; models never receive deployment credentials.
 
+Every preapproval runtime dispatch is also protected by a durable per-case
+budget and role/package circuit breaker. Successful package replay does not
+call the runtime again; every attempt and terminal needs-human outcome is an
+immutable product record, and exhaustion blocks the case instead of silently
+restarting it. Defaults, command overrides, recovery, and limitations are
+documented in the [agent-run policy](docs/agent-run-policy.md).
+
 Verify one live provider without running a customer case:
 
 ```bash

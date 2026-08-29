@@ -18,6 +18,7 @@ from .action_plane import (
     HealthObservation, RecordedHealthMonitor, RecordedVerificationProbe,
     VerifiedApproval,
 )
+from .agent_runs import AgentRunPolicy
 from .agents import AgentRole, AgentTask, RecordedContractRuntime, RoleRoutedRuntime
 from .asff import asff_to_ocsf
 from .azure_action import (
@@ -44,6 +45,7 @@ from .observability import (
 from .openai_runtime import OpenAIResponsesRuntime
 from .orchestration import PreApprovalOrchestrator
 from .portfolio import PortfolioPolicy, PortfolioService
+from .preapproval import PreApprovalError
 from .promotion import PromotionReadinessService
 from .provider_runtimes import AnthropicMessagesRuntime, GeminiGenerateContentRuntime
 from .product_records import (
@@ -149,6 +151,11 @@ def _parser() -> argparse.ArgumentParser:
         help="optional ignored dotenv file from which only provider API keys are loaded")
     review.add_argument("--terraform-bin", default="terraform")
     review.add_argument("--terraform-timeout", type=float, default=300)
+    review.add_argument("--agent-max-model-calls", type=int, default=42)
+    review.add_argument("--agent-max-attempts-per-package", type=int, default=3)
+    review.add_argument("--agent-max-elapsed-seconds", type=int, default=3600)
+    review.add_argument("--agent-failure-threshold", type=int, default=2)
+    review.add_argument("--agent-override-terminal-record", action="append", default=[])
     worker = sub.add_parser(
         "prepare-review-worker",
         help="run the isolated PostgreSQL-backed planning worker to human review",
@@ -167,6 +174,11 @@ def _parser() -> argparse.ArgumentParser:
     worker.add_argument("--terraform-bin", default="terraform")
     worker.add_argument("--terraform-timeout", type=float, default=300)
     worker.add_argument("--minimum-distinct-models", type=int, default=2)
+    worker.add_argument("--agent-max-model-calls", type=int, default=42)
+    worker.add_argument("--agent-max-attempts-per-package", type=int, default=3)
+    worker.add_argument("--agent-max-elapsed-seconds", type=int, default=3600)
+    worker.add_argument("--agent-failure-threshold", type=int, default=2)
+    worker.add_argument("--agent-override-terminal-record", action="append", default=[])
     demo = sub.add_parser(
         "demo-review", help="run a safe local end-to-end demo through human review")
     demo.add_argument("--workdir", type=Path)
@@ -331,6 +343,16 @@ def _window_policy(path: Path | None) -> WindowPolicy:
     return WindowPolicy(**document)
 
 
+def _agent_run_policy(args) -> AgentRunPolicy:
+    return AgentRunPolicy(
+        max_model_calls=args.agent_max_model_calls,
+        max_attempts_per_role_package=args.agent_max_attempts_per_package,
+        max_elapsed_seconds=args.agent_max_elapsed_seconds,
+        equivalent_failure_threshold=args.agent_failure_threshold,
+        override_terminal_record_ids=tuple(args.agent_override_terminal_record),
+    )
+
+
 def _load_provider_keys(path: Path | None) -> None:
     if path is None:
         return
@@ -420,18 +442,34 @@ def _prepare_review(args) -> int:
         usage_samples = capture_azure_monitor_usage(
             resource_uid, start=utc_text(start), end=utc_text(end),
             host_env=os.environ, metric=args.azure_metric)
-    outcome = PreApprovalOrchestrator(
-        case_store=cases, finding_store=findings,
-        record_store=records, artifact_root=args.artifacts, runtime=runtime,
-        runner=SubprocessTerraformRunner(
-            args.terraform_bin, timeout_seconds=args.terraform_timeout),
-        now=_now, minimum_distinct_agent_models=args.minimum_distinct_models,
-    ).prepare(
-        args.case, repository=args.repo, state_document=state,
-        service_context=service_context,
-        usage_samples=usage_samples,
-        window_policy=_window_policy(args.window_policy_json),
-    )
+    try:
+        outcome = PreApprovalOrchestrator(
+            case_store=cases, finding_store=findings,
+            record_store=records, artifact_root=args.artifacts, runtime=runtime,
+            runner=SubprocessTerraformRunner(
+                args.terraform_bin, timeout_seconds=args.terraform_timeout),
+            now=_now, agent_run_policy=_agent_run_policy(args),
+            minimum_distinct_agent_models=args.minimum_distinct_models,
+        ).prepare(
+            args.case, repository=args.repo, state_document=state,
+            service_context=service_context,
+            usage_samples=usage_samples,
+            window_policy=_window_policy(args.window_policy_json),
+        )
+    except PreApprovalError:
+        blocked = cases.get(args.case)
+        terminal_id = blocked.record_ids.get("agent_run_terminal_id")
+        if blocked.state is not CaseState.BLOCKED or not terminal_id:
+            raise
+        json.dump({
+            "status": "needs_human",
+            "case": case_to_dict(blocked),
+            "agent_run_terminal": product_record_to_dict(records.get(terminal_id)),
+            "promotion_token": promotion.promotion_token,
+            "safety_boundary": "No infrastructure change has been applied.",
+        }, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 2
     json.dump({
         "status": outcome.human_review.case.state.value,
         "case": case_to_dict(outcome.human_review.case),
@@ -1017,6 +1055,7 @@ def main(argv=None) -> int:
             terraform_bin=args.terraform_bin,
             terraform_timeout=args.terraform_timeout,
             minimum_distinct_models=args.minimum_distinct_models,
+            agent_run_policy=_agent_run_policy(args),
         )
         json.dump(result, sys.stdout, indent=2)
         sys.stdout.write("\n")

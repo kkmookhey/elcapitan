@@ -51,6 +51,9 @@ At the baseline commit:
   Azure coverage claim);
 - the worktree was clean and synchronized with `origin/main`.
 
+The completed agent-run budget slice following that baseline passes **484
+tests**, and both the Python wheel and source distribution build successfully.
+
 Run the complete suite with:
 
 ```bash
@@ -130,7 +133,7 @@ into one generic "supported" claim.
   authorization naming the provider and bounded evidence fields.
 - Validation capability never grants planning or execution authority.
 
-## Current bounded objective: agent-run budgets and circuit breakers
+## Completed bounded objective: agent-run budgets and circuit breakers
 
 Before adding another Azure control pack, implement durable protection against
 open-ended or repeatedly failing model work.
@@ -177,6 +180,27 @@ introduce a second workflow engine.
 - The completed slice is one reviewable commit. Do not add Cosmos DB or another
   cloud control in the same slice.
 
+### Completion status
+
+This objective is complete. Do not reconstruct or repeat it in a fresh
+session. The implementation now:
+
+- enforces central per-case model-call, role/package attempt, elapsed-time, and
+  equivalent-failure limits at the provider-neutral runtime boundary;
+- binds idempotent replay to the case, role, task contract, and immutable
+  input-record/evidence package hash;
+- persists `AgentInvocation.v1`, `AgentInvocationOutcome.v1`, and
+  `AgentRunTerminal.v1` records, while keeping complete result payloads in the
+  existing hashed case-artifact boundary;
+- blocks the durable case with an operator-visible needs-human outcome on
+  exhaustion, an open circuit, ambiguous interrupted work, or unavailable
+  replay evidence;
+- exposes explicit CLI limit and terminal-record overrides without weakening
+  the existing provider, semantic, orchestration, pagination, or timeout caps;
+- is documented in `docs/agent-run-policy.md` and covered by cloud-free,
+  provider-free tests for success, replay, exhaustion, circuit opening,
+  restart, elapsed limits, invalid runtime identity, and independent cases.
+
 ### Stop and retry rules
 
 - Do not retry the same development blocker more than twice. On the third
@@ -188,7 +212,7 @@ introduce a second workflow engine.
   explicitly authorized in the fresh-session request, cloud mutations, model
   calls, new credentials, purchases, or material scope expansion.
 
-## Subsequent roadmap — do not start during the current objective
+## Subsequent roadmap — not started by the completed objective
 
 1. Add an Azure Cosmos DB validation pack for the high-yield management-plane
    controls observed in authorized offline output.

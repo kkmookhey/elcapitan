@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Mapping
 
+from .agent_runs import AgentRunPolicy, AgentRunRuntime
 from .agents import AgentRole, RoleRoutedRuntime, validate_result
 from .cases import CaseState, case_to_dict
 from .model_egress import ModelEgressRuntime
@@ -38,6 +39,10 @@ class _SemanticRetryRuntime:
     @property
     def name(self) -> str:
         return f"semantic-retry:{self.runtime.name}"
+
+    @property
+    def agent_run_managed(self) -> bool:
+        return bool(getattr(self.runtime, "agent_run_managed", False))
 
     def run(self, task):
         dispatched = task
@@ -110,22 +115,22 @@ def _required_env(name: str) -> str:
     return value
 
 
-def _runtime(now=_now):
+def _runtime(*, record_store, artifact_root, policy: AgentRunPolicy, now=_now):
     routes = {
-        AgentRole.REMEDIATION_ENGINEER: _SemanticRetryRuntime(
-            OpenAIResponsesRuntime.from_environment(
-                model=_required_env("ELCAP_REMEDIATION_MODEL"), now=now)),
-        AgentRole.SRE_REVIEWER: _SemanticRetryRuntime(
-            AnthropicMessagesRuntime.from_environment(
-                model=_required_env("ELCAP_SRE_MODEL"), now=now)),
-        AgentRole.WINDOW_PLANNER: _SemanticRetryRuntime(
-            OpenAIResponsesRuntime.from_environment(
-                model=_required_env("ELCAP_WINDOW_MODEL"), now=now)),
-        AgentRole.ROLLBACK_VERIFIER: _SemanticRetryRuntime(
-            AnthropicMessagesRuntime.from_environment(
-                model=_required_env("ELCAP_ROLLBACK_MODEL"), now=now)),
+        AgentRole.REMEDIATION_ENGINEER: OpenAIResponsesRuntime.from_environment(
+            model=_required_env("ELCAP_REMEDIATION_MODEL"), now=now),
+        AgentRole.SRE_REVIEWER: AnthropicMessagesRuntime.from_environment(
+            model=_required_env("ELCAP_SRE_MODEL"), now=now),
+        AgentRole.WINDOW_PLANNER: OpenAIResponsesRuntime.from_environment(
+            model=_required_env("ELCAP_WINDOW_MODEL"), now=now),
+        AgentRole.ROLLBACK_VERIFIER: AnthropicMessagesRuntime.from_environment(
+            model=_required_env("ELCAP_ROLLBACK_MODEL"), now=now),
     }
-    return ModelEgressRuntime(RoleRoutedRuntime(routes))
+    managed = AgentRunRuntime(
+        ModelEgressRuntime(RoleRoutedRuntime(routes)),
+        record_store=record_store, artifact_root=artifact_root,
+        now=now, policy=policy)
+    return _SemanticRetryRuntime(managed)
 
 
 def _agent_routes() -> dict[str, str]:
@@ -140,6 +145,18 @@ def _agent_routes() -> dict[str, str]:
 
 def _policy_stop_payload(case, records) -> Mapping | None:
     """Represent an evidence-backed reviewer rejection as a normal job result."""
+    if case.state is CaseState.BLOCKED:
+        record_id = case.record_ids.get("agent_run_terminal_id")
+        if not record_id:
+            return None
+        return {
+            "status": "needs_human",
+            "case": case_to_dict(case),
+            "decision_record": product_record_to_dict(records.get(record_id)),
+            "review_package": None,
+            "agent_routes": None,
+            "safety_boundary": "No infrastructure change has been applied.",
+        }
     if case.state is not CaseState.REJECTED:
         return None
     record_id = (
@@ -203,6 +220,7 @@ def prepare_review(*, tenant_id: str, case_id: str, promotion_token: str,
                    artifact_root, terraform_bin: str = "terraform",
                    terraform_timeout: float = 300,
                    minimum_distinct_models: int = 2,
+                   agent_run_policy: AgentRunPolicy | None = None,
                    database_url: str | None = None) -> Mapping:
     if not promotion_token:
         raise ReviewWorkerError("a promotion token is required")
@@ -216,6 +234,9 @@ def prepare_review(*, tenant_id: str, case_id: str, promotion_token: str,
     case = cases.get(case_id)
     if case.tenant_id != tenant_id:
         raise ReviewWorkerError("case does not belong to the requested tenant")
+    stopped = _policy_stop_payload(case, records)
+    if stopped is not None:
+        return stopped
     if case.state is CaseState.AWAITING_APPROVAL:
         package_id = case.record_ids.get("human_review_package_id", "")
         package = records.get(package_id)
@@ -239,7 +260,10 @@ def prepare_review(*, tenant_id: str, case_id: str, promotion_token: str,
         try:
             outcome = PreApprovalOrchestrator(
                 case_store=cases, finding_store=findings, record_store=records,
-                artifact_root=artifacts, runtime=_runtime(),
+                artifact_root=artifacts, runtime=_runtime(
+                    record_store=records,
+                    artifact_root=artifacts,
+                    policy=agent_run_policy or AgentRunPolicy()),
                 runner=SubprocessTerraformRunner(
                     terraform_bin, timeout_seconds=terraform_timeout),
                 now=_now, minimum_distinct_agent_models=minimum_distinct_models,
