@@ -1,7 +1,7 @@
 # v0.1.0 local release-candidate rehearsal — 2026-08-28
 
 The clean-clone rehearsal passed for commit
-`4fb9dbd72e8f733286873fe879dcb82176b586ee` on an Apple Silicon macOS host.
+`44dd79e84d621ad2ea7a873dc6b33eef2d58de60` on an Apple Silicon macOS host.
 This is local candidate evidence, not authorization to tag or publish a
 release.
 
@@ -10,16 +10,16 @@ release.
 | Check | Result |
 |---|---|
 | Release-tree, generated-matrix, compile, and narrow Ruff checks | passed |
-| Python suite | 538 passed in 33.34 seconds under CPython 3.12.13 |
-| Wheel | `bd9a97aab523f69892347cb939f7bf2029e1b55ba9df0f3f9040ab58e8f1caee` |
-| Source distribution | `0f64a14af25e8d6c31226511a05977b0ee6b9851e0b2ff7717969a63b66b2abb` |
+| Python suite | 538 passed in 30.83 seconds under CPython 3.12.13 |
+| Wheel | `e62a8db0317206133ca792a345cc551de4bc2592224a98839b60247051686e63` |
+| Source distribution | `0293f00bb8e5db93de074d1d7fbf399593268290c0fe15836e41e535f488974e` |
 | Distribution inspection | passed for wheel and source distribution |
 | Complete-history Gitleaks prevention scan | passed with the checked-in historical baseline |
-| PostgreSQL quickstart | authenticated synthetic acceptance passed in 10 seconds |
-| OCI image digest | `sha256:25ddcf4ff8ec70fde52b9e36ab6fefb6e7f76f0f5eb7524d6d32244e32661ae2` |
+| PostgreSQL quickstart | authenticated synthetic acceptance passed in 14 seconds |
+| OCI image digest | `sha256:c764072191bbd5b1080ac7c3aa5e76e6c4c2efa40e9da59a6ecf46061c2011fc` |
 | CycloneDX container SBOM | valid, 370 components |
 | BuildKit provenance | present in local OCI build metadata |
-| Total rehearsal time | 51 seconds |
+| Total rehearsal time | 52 seconds |
 
 The Gitleaks result does not adjudicate the 22 historical fingerprints in
 `.gitleaksignore`. Credential ownership review, rotation where necessary, and

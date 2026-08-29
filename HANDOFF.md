@@ -68,9 +68,9 @@ The completed local `v0.1.0` release-preparation slices pass **538 tests**. They
 add release governance and guarded CI/publication workflows, dependency and
 secret prevention checks, digest/hash-pinned container inputs, generated
 capability/evidence artifacts, a PostgreSQL Compose quickstart, and a
-clean-clone release rehearsal. The rehearsal passed at `4fb9dbd` with inspected
+clean-clone release rehearsal. The rehearsal passed at `44dd79e` with inspected
 wheel/source distributions, checksums, a 370-component CycloneDX container
-SBOM, local OCI provenance, and an authenticated synthetic quickstart in 10
+SBOM, local OCI provenance, and an authenticated synthetic quickstart in 14
 seconds. See `docs/release-readiness.md` and
 `docs/release-rehearsal-2026-08-28.md`.
 

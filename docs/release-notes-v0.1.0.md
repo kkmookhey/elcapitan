@@ -50,7 +50,7 @@ credentials.
 
 ## Candidate evidence
 
-The local clean-clone rehearsal at commit `4fb9dbd` passed 538 tests, inspected
+The local clean-clone rehearsal at commit `44dd79e` passed 538 tests, inspected
 the wheel and source distribution, ran the complete-history secret prevention
 scan with its disclosed historical baseline, completed the authenticated
 PostgreSQL quickstart, generated a 370-component CycloneDX container SBOM, and
