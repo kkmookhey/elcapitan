@@ -1,7 +1,18 @@
 [project]
 name = "elcapitan"
 version = "0.1.0"
+description = "Evidence-bound cloud remediation control plane"
+readme = "README.md"
 requires-python = "==3.12.*"
+keywords = ["cloud-security", "evidence", "remediation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+]
 dependencies = [
     "jsonschema==4.23.0",
     "referencing==0.35.1",
@@ -11,6 +22,11 @@ dependencies = [
 
 [project.scripts]
 elcapitan = "elcapitan.cli:main"
+
+[project.urls]
+Documentation = "https://github.com/kkmookhey/elcapitan#readme"
+Issues = "https://github.com/kkmookhey/elcapitan/issues"
+Repository = "https://github.com/kkmookhey/elcapitan"
 
 [dependency-groups]
 dev = ["pytest==8.3.3"]

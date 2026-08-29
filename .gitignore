@@ -9,5 +9,7 @@ __pycache__/
 .pytest_cache/
 .venv/
 .terraform/
+/build/
+/release/
 environments/eiger/trap2/trap2.tfplan
 environments/eiger/trap2/.terraform/

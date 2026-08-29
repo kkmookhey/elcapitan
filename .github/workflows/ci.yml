@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the complete source tree
+        uses: actions/checkout@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.11.14"
+      - name: Install locked Python 3.12 environment
+        run: uv sync --locked --dev
+      - name: Check release-tree invariants
+        run: uv run python scripts/check_release_tree.py
+      - name: Check syntax and high-confidence static errors
+        run: |
+          uv run python -m compileall -q src tests scripts
+          uvx --from ruff==0.16.0 ruff check --select E9,F63,F7,F82 src tests scripts
+      - name: Run the full test suite
+        run: uv run pytest -q
+      - name: Build wheel and source distribution
+        run: uv build --out-dir dist-ci
+      - name: Inspect built distributions
+        run: uv run python scripts/check_distributions.py dist-ci
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Reject newly introduced vulnerable dependencies
+        uses: actions/dependency-review-action@v5
+        with:
+          fail-on-severity: moderate
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Scan the complete Git history
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  container-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build the non-root runtime image
+        run: docker build --tag elcapitan:ci .
+      - name: Reject high and critical image vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: elcapitan:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
