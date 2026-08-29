@@ -69,6 +69,13 @@ def raw(rule_id="storage_account_public_network_access_disabled", *, resource_ty
             "/subscriptions/00000000-0000-0000-0000-000000000001/"
             "resourceGroups/elcap-openai-fixture-rg/providers/"
             "Microsoft.CognitiveServices/accounts/elcap-openai-fixture")
+    elif rule_id.startswith("cosmosdb_"):
+        document["resources"][0]["type"] = (
+            "microsoft.documentdb/databaseaccounts")
+        document["resources"][0]["uid"] = (
+            "/subscriptions/00000000-0000-0000-0000-000000000001/"
+            "resourceGroups/elcap-cosmos-fixture-rg/providers/"
+            "Microsoft.DocumentDB/databaseAccounts/elcap-cosmos-fixture")
     elif rule_id.startswith("network_subnet_"):
         document["resources"][0]["type"] = (
             "microsoft.network/virtualnetworks/subnets")
@@ -147,6 +154,24 @@ def azure_openai_state(**overrides):
             "/subscriptions/00000000-0000-0000-0000-000000000001/"
             "resourceGroups/elcap-openai-fixture-rg/providers/"
             "Microsoft.CognitiveServices/accounts/elcap-openai-fixture"),
+        config=tuple((key, json.dumps(value)) for key, value in values.items()),
+    )
+
+
+def cosmos_db_state(**overrides):
+    values = {
+        "cosmosdb_enable_automatic_failover": False,
+        "cosmosdb_backup_policy_type": "Periodic",
+        "cosmosdb_minimum_tls_version": "Tls11",
+        "cosmosdb_public_network_access": "Enabled",
+    }
+    values.update(overrides)
+    return CloudState(
+        provider="azure",
+        resource_uid=(
+            "/subscriptions/00000000-0000-0000-0000-000000000001/"
+            "resourceGroups/elcap-cosmos-fixture-rg/providers/"
+            "Microsoft.DocumentDB/databaseAccounts/elcap-cosmos-fixture"),
         config=tuple((key, json.dumps(value)) for key, value in values.items()),
     )
 
@@ -462,6 +487,21 @@ def test_azure_openai_finding_uses_registered_evaluator(product):
         tenant_id="TEN-001")
     outcome = validator(
         product, lambda finding, env: azure_openai_state()).validate(
+            opened.case.case_id, host_env={})
+    assert outcome.findings[0].status is FindingValidationStatus.CONFIRMED
+
+
+@pytest.mark.parametrize("rule_id", [
+    "cosmosdb_account_automatic_failover_enabled",
+    "cosmosdb_account_backup_policy_continuous",
+    "cosmosdb_account_minimum_tls_version",
+    "cosmosdb_account_public_network_access_disabled",
+])
+def test_cosmos_db_findings_use_registered_evaluators(product, rule_id):
+    *_, intake = product
+    opened = intake.ingest(raw(rule_id), tenant_id="TEN-001")
+    outcome = validator(
+        product, lambda finding, env: cosmos_db_state()).validate(
             opened.case.case_id, host_env={})
     assert outcome.findings[0].status is FindingValidationStatus.CONFIRMED
 

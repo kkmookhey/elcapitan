@@ -73,6 +73,9 @@ CONTAINER_REGISTRY_RESOURCE_UID = (
 AZURE_OPENAI_RESOURCE_UID = (
     f"/subscriptions/{SQL_SUBSCRIPTION}/resourceGroups/elcap-openai-fixture-rg"
     "/providers/Microsoft.CognitiveServices/accounts/elcap-openai-fixture")
+COSMOS_DB_RESOURCE_UID = (
+    f"/subscriptions/{SQL_SUBSCRIPTION}/resourceGroups/elcap-cosmos-fixture-rg"
+    "/providers/Microsoft.DocumentDB/databaseAccounts/elcap-cosmos-fixture")
 
 # The operation key is the leading run of non-flag argv tokens, which is how
 # `az` itself names a command ("storage account show"). Building it from argv
@@ -147,6 +150,12 @@ def container_registry_document() -> dict:
     """Sanitized response measured from the existing El Capitan lab ACR."""
     return json.loads(
         (FIXTURES / "azure-container-registry-lab-response.json").read_text())
+
+
+def cosmos_db_document() -> dict:
+    """Synthetic fixture pinned to Database Accounts - Get 2026-03-15."""
+    return json.loads(
+        (FIXTURES / "azure-cosmos-db-account-contract.json").read_text())
 
 
 def sql_protector_document() -> dict:
@@ -373,6 +382,14 @@ def azure_openai_responses(*, account: dict | None = None) -> dict:
         "login": {"stdout": "[]", "exit": 0},
         "rest": {"stdout": json.dumps(
             azure_openai_document() if account is None else account), "exit": 0},
+    }
+
+
+def cosmos_db_responses(*, account: dict | None = None) -> dict:
+    return {
+        "login": {"stdout": "[]", "exit": 0},
+        "rest": {"stdout": json.dumps(
+            cosmos_db_document() if account is None else account), "exit": 0},
     }
 
 

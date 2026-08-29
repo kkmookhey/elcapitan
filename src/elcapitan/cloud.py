@@ -331,6 +331,7 @@ AZURE_BLOB_SERVICE_ASPECTS = {
 AZURE_SUPPORTED_TYPES = (
     "microsoft.cognitiveservices/accounts",
     "microsoft.containerregistry/registries",
+    "microsoft.documentdb/databaseaccounts",
     "microsoft.keyvault/vaults",
     "microsoft.network/virtualnetworks/subnets",
     "microsoft.sql/servers",
@@ -349,6 +350,7 @@ AZURE_APP_SERVICE_API_VERSION = "2024-11-01"
 AZURE_DIAGNOSTIC_SETTINGS_API_VERSION = "2021-05-01-preview"
 AZURE_CONTAINER_REGISTRY_API_VERSION = "2025-11-01"
 AZURE_COGNITIVE_SERVICES_API_VERSION = "2025-06-01"
+AZURE_COSMOS_DB_API_VERSION = "2026-03-15"
 
 # The critical Prowler control `sqlserver_tde_encrypted_with_cmk` is not a
 # single-property check. It requires a CMK-backed server protector and TDE on
@@ -795,6 +797,65 @@ def _capture_azure_openai(
         for aspect, value in sorted(values.items()))
 
 
+def _capture_azure_cosmos_db(
+        resource_uid: str, *, read_url) -> tuple[tuple[str, str], ...]:
+    """Capture the one-document contract shared by four Cosmos DB checks."""
+    document = read_url(
+        _arm_url(resource_uid, api_version=AZURE_COSMOS_DB_API_VERSION),
+        what=f"the Cosmos DB account {resource_uid}")
+    properties = document.get("properties")
+    if not isinstance(properties, dict):
+        raise ValueError(
+            f"could not read Cosmos DB account {resource_uid}: "
+            "properties is not an object")
+
+    automatic_failover = properties.get("enableAutomaticFailover")
+    if automatic_failover is not None and not isinstance(automatic_failover, bool):
+        raise ValueError(
+            f"could not read Cosmos DB account {resource_uid}: "
+            f"enableAutomaticFailover is invalid: {automatic_failover!r}")
+
+    backup_policy = properties.get("backupPolicy")
+    if backup_policy is not None and not isinstance(backup_policy, dict):
+        raise ValueError(
+            f"could not read Cosmos DB account {resource_uid}: "
+            "backupPolicy is not an object or null")
+    backup_type = None if backup_policy is None else backup_policy.get("type")
+    if backup_type is not None and (
+            not isinstance(backup_type, str)
+            or backup_type not in {"Continuous", "Periodic"}):
+        raise ValueError(
+            f"could not read Cosmos DB account {resource_uid}: "
+            f"backupPolicy.type is invalid: {backup_type!r}")
+
+    minimum_tls = properties.get("minimalTlsVersion")
+    if minimum_tls is not None and (
+            not isinstance(minimum_tls, str)
+            or minimum_tls not in {"Tls", "Tls11", "Tls12", "Tls13"}):
+        raise ValueError(
+            f"could not read Cosmos DB account {resource_uid}: "
+            f"minimalTlsVersion is invalid: {minimum_tls!r}")
+
+    public_network = properties.get("publicNetworkAccess")
+    if public_network is not None and (
+            not isinstance(public_network, str)
+            or public_network not in {
+                "Disabled", "Enabled", "SecuredByPerimeter"}):
+        raise ValueError(
+            f"could not read Cosmos DB account {resource_uid}: "
+            f"publicNetworkAccess is invalid: {public_network!r}")
+
+    values = {
+        "cosmosdb_enable_automatic_failover": automatic_failover,
+        "cosmosdb_backup_policy_type": backup_type,
+        "cosmosdb_minimum_tls_version": minimum_tls,
+        "cosmosdb_public_network_access": public_network,
+    }
+    return tuple(
+        (aspect, canonical_json(value).decode("utf-8"))
+        for aspect, value in sorted(values.items()))
+
+
 def _capture_azure_key_vault(
         resource_uid: str, *, read_url) -> tuple[tuple[str, str], ...]:
     """Capture the management-plane evidence shared by three Prowler checks."""
@@ -1089,6 +1150,11 @@ def _capture_azure(resource_uid: str, region: str, env: dict) -> tuple[tuple[str
                 resource_uid,
                 read_url=lambda url, *, what: _arm_url_json(
                     url, token=token, what=what))
+        if arm_type.lower() == "microsoft.documentdb/databaseaccounts":
+            return _capture_azure_cosmos_db(
+                resource_uid,
+                read_url=lambda url, *, what: _arm_url_json(
+                    url, token=token, what=what))
         if arm_type.lower() in {
                 "microsoft.web/sites", "microsoft.web/sites/config"}:
             return _capture_azure_app_service(
@@ -1170,6 +1236,12 @@ def _capture_azure(resource_uid: str, region: str, env: dict) -> tuple[tuple[str
 
         if arm_type.lower() == "microsoft.containerregistry/registries":
             return _capture_azure_container_registry(
+                resource_uid,
+                read_url=lambda url, *, what: _az_rest_json(
+                    az_env, url, what=what))
+
+        if arm_type.lower() == "microsoft.documentdb/databaseaccounts":
+            return _capture_azure_cosmos_db(
                 resource_uid,
                 read_url=lambda url, *, what: _az_rest_json(
                     az_env, url, what=what))

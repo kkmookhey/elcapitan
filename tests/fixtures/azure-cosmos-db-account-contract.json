@@ -1,0 +1,20 @@
+{
+  "id": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/elcap-cosmos-fixture-rg/providers/Microsoft.DocumentDB/databaseAccounts/elcap-cosmos-fixture",
+  "kind": "GlobalDocumentDB",
+  "location": "westus2",
+  "name": "elcap-cosmos-fixture",
+  "properties": {
+    "backupPolicy": {
+      "periodicModeProperties": {
+        "backupIntervalInMinutes": 240,
+        "backupRetentionIntervalInHours": 8,
+        "backupStorageRedundancy": "Geo"
+      },
+      "type": "Periodic"
+    },
+    "enableAutomaticFailover": false,
+    "minimalTlsVersion": "Tls11",
+    "publicNetworkAccess": "Enabled"
+  },
+  "type": "Microsoft.DocumentDB/databaseAccounts"
+}

@@ -54,6 +54,10 @@ At the baseline commit:
 The completed agent-run budget slice following that baseline passes **484
 tests**, and both the Python wheel and source distribution build successfully.
 
+The completed Cosmos DB slice passes **518 tests**, and both the Python wheel
+and source distribution build successfully. The current built-in registry
+contains **35 deterministic validation controls**: **34 Azure** and **1 AWS**.
+
 Run the complete suite with:
 
 ```bash
@@ -78,8 +82,8 @@ into one generic "supported" claim.
 - Authenticated shadow console for intake, portfolio inspection, connector
   readiness, bounded batch validation, evidence, and immutable timelines.
 - Read-only deterministic Azure packs for selected Storage, SQL Server, Key
-  Vault, subnet, App Service, Function App, Container Registry, and Azure
-  OpenAI controls.
+  Vault, subnet, App Service, Function App, Container Registry, Cosmos DB, and
+  Azure OpenAI controls.
 - One AWS S3 validation/planning proof. AWS must be described as coming soon,
   not as equivalent current coverage.
 - Conservative literal or state-grounded Terraform linkage.
@@ -111,6 +115,8 @@ into one generic "supported" claim.
 - No public multi-tenant SaaS guarantee.
 - Azure OpenAI is contract-tested and observed in authorized private scanner
   output, but not yet run against a lab Cognitive Services account.
+- Cosmos DB is contract-tested and observed in authorized private scanner
+  output, but not yet run against a lab Cosmos DB account.
 - License, project-name clearance, release governance, CI publication, SBOM,
   signing, and public artifact provenance remain release gates.
 
@@ -212,16 +218,33 @@ session. The implementation now:
   explicitly authorized in the fresh-session request, cloud mutations, model
   calls, new credentials, purchases, or material scope expansion.
 
-## Subsequent roadmap — not started by the completed objective
+## Completed bounded objective: Azure Cosmos DB validation pack
 
-1. Add an Azure Cosmos DB validation pack for the high-yield management-plane
-   controls observed in authorized offline output.
-2. Add Key Vault diagnostic logging validation using the bounded diagnostic
+This objective is complete. Do not reconstruct or repeat it in a fresh
+session. The implementation now:
+
+- registers four validation-only Cosmos DB account controls: automatic
+  failover, continuous backup, minimum TLS, and public network access;
+- collects their complete minimized evidence contract through one read-only
+  Database Accounts Get request for both service-principal and managed-identity
+  authentication paths;
+- preserves omitted optional fields as explicit null evidence matching
+  Prowler's failing semantics, while rejecting malformed types and unknown
+  enums;
+- treats `Tls12` and `Tls13` as secure and treats both `Disabled` and
+  `SecuredByPerimeter` as non-public network states;
+- uses a synthetic Microsoft-schema fixture containing no customer data and
+  makes no cloud or model call;
+- keeps remediation planning and live execution disabled for all four rules.
+
+## Subsequent roadmap
+
+1. Add Key Vault diagnostic logging validation using the bounded diagnostic
    settings pattern.
-3. Freeze features and complete `v0.1.0` governance, CI, security scanning,
+2. Freeze features and complete `v0.1.0` governance, CI, security scanning,
    clean packaging metadata, container publication, SBOM/provenance,
    capability/evidence matrix generation, and clean-machine quickstart.
-4. Run a release-candidate rehearsal and one authorized read-only customer
+3. Run a release-candidate rehearsal and one authorized read-only customer
    shadow pilot.
 
 The retired Claude/Hermes capability probe remains on

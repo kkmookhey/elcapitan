@@ -22,10 +22,10 @@ def definition(*, pack_id="fixture", provider="azure", rule_id="fixture_rule"):
 def test_builtin_registry_is_composed_from_service_packs():
     assert {pack.pack_id for pack in BUILTIN_CONTROL_PACKS} == {
         "aws-s3", "azure-app-service", "azure-container-registry",
-        "azure-key-vault", "azure-network", "azure-openai", "azure-sql",
-        "azure-storage"}
+        "azure-cosmos-db", "azure-key-vault", "azure-network", "azure-openai",
+        "azure-sql", "azure-storage"}
     registry = builtin_registry()
-    assert len(registry.list()) == 31
+    assert len(registry.list()) == 35
     assert registry.get("AZURE", "sqlserver_tde_encrypted_with_cmk").pack_id == (
         "azure-sql")
     assert registry.get(
@@ -190,6 +190,63 @@ def test_container_registry_pack_matches_pinned_prowler_truth_conditions(
 )
 def test_container_registry_pack_rejects_malformed_evidence(rule_id, values):
     with pytest.raises(ValueError, match="invalid|not an"):
+        builtin_registry().get("azure", rule_id).evaluator(values)
+
+
+@pytest.mark.parametrize(
+    ("rule_id", "values", "confirmed"),
+    [
+        ("cosmosdb_account_automatic_failover_enabled",
+         {"cosmosdb_enable_automatic_failover": False}, True),
+        ("cosmosdb_account_automatic_failover_enabled",
+         {"cosmosdb_enable_automatic_failover": True}, False),
+        ("cosmosdb_account_automatic_failover_enabled",
+         {"cosmosdb_enable_automatic_failover": None}, True),
+        ("cosmosdb_account_backup_policy_continuous",
+         {"cosmosdb_backup_policy_type": "Periodic"}, True),
+        ("cosmosdb_account_backup_policy_continuous",
+         {"cosmosdb_backup_policy_type": "Continuous"}, False),
+        ("cosmosdb_account_backup_policy_continuous",
+         {"cosmosdb_backup_policy_type": None}, True),
+        ("cosmosdb_account_minimum_tls_version",
+         {"cosmosdb_minimum_tls_version": "Tls11"}, True),
+        ("cosmosdb_account_minimum_tls_version",
+         {"cosmosdb_minimum_tls_version": "Tls12"}, False),
+        ("cosmosdb_account_minimum_tls_version",
+         {"cosmosdb_minimum_tls_version": "Tls13"}, False),
+        ("cosmosdb_account_minimum_tls_version",
+         {"cosmosdb_minimum_tls_version": None}, True),
+        ("cosmosdb_account_public_network_access_disabled",
+         {"cosmosdb_public_network_access": "Enabled"}, True),
+        ("cosmosdb_account_public_network_access_disabled",
+         {"cosmosdb_public_network_access": "Disabled"}, False),
+        ("cosmosdb_account_public_network_access_disabled",
+         {"cosmosdb_public_network_access": "SecuredByPerimeter"}, False),
+        ("cosmosdb_account_public_network_access_disabled",
+         {"cosmosdb_public_network_access": None}, True),
+    ],
+)
+def test_cosmos_db_pack_matches_pinned_prowler_truth_conditions(
+        rule_id, values, confirmed):
+    assert builtin_registry().get("azure", rule_id).evaluator(values).confirmed is (
+        confirmed)
+
+
+@pytest.mark.parametrize(
+    ("rule_id", "values"),
+    [
+        ("cosmosdb_account_automatic_failover_enabled",
+         {"cosmosdb_enable_automatic_failover": 0}),
+        ("cosmosdb_account_backup_policy_continuous",
+         {"cosmosdb_backup_policy_type": "Unknown"}),
+        ("cosmosdb_account_minimum_tls_version",
+         {"cosmosdb_minimum_tls_version": 1.2}),
+        ("cosmosdb_account_public_network_access_disabled",
+         {"cosmosdb_public_network_access": "Unknown"}),
+    ],
+)
+def test_cosmos_db_pack_rejects_malformed_evidence(rule_id, values):
+    with pytest.raises(ValueError, match="invalid"):
         builtin_registry().get("azure", rule_id).evaluator(values)
 
 

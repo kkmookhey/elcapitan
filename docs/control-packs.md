@@ -23,8 +23,8 @@ Each installed pack registers explicit definitions containing:
 
 The built-in v1 packs are currently `aws-s3`, `azure-storage`, `azure-sql`,
 `azure-key-vault`, `azure-network`, `azure-app-service`,
-`azure-container-registry`, and `azure-openai`. Registration is fail-closed:
-duplicate provider/rule keys,
+`azure-container-registry`, `azure-cosmos-db`, and `azure-openai`. Registration
+is fail-closed: duplicate provider/rule keys,
 mismatched pack ownership, missing evidence contracts, and mismatched resource
 types are rejected.
 
@@ -119,6 +119,25 @@ account, so this pack does not yet claim the no-ingress managed-identity
 evidence grade earned by the other measured Azure packs. Fields are pinned to
 Microsoft's [Accounts - Get
 REST contract](https://learn.microsoft.com/rest/api/aifoundry/accountmanagement/accounts/get?view=rest-aifoundry-accountmanagement-2025-06-01).
+
+The Azure Cosmos DB pack validates four account checks from one bounded
+management-plane GET: automatic failover enabled, continuous backup, TLS 1.2
+or higher, and disabled public network access. It persists only the automatic
+failover boolean, backup-policy type, minimum-TLS enum, and public-network
+enum. Missing properties remain explicit `null` evidence and match Prowler's
+failing branches instead of becoming a successful observation. TLS accepts
+`Tls12` and Prowler's forward-compatible `Tls13`; public access is acceptable
+only when `Disabled` or `SecuredByPerimeter`.
+
+This pack is contract tested and export observed, not E2E measured. Its
+synthetic fixture is pinned to Microsoft's 2026-03-15 Database Accounts Get
+schema and contains no customer observation. Malformed types and unknown enums
+fail collection, and an authorization denial remains unavailable evidence.
+Planning and execution are disabled for all four controls. Semantics are pinned
+to Prowler's [Cosmos DB check
+implementations](https://github.com/prowler-cloud/prowler/tree/master/prowler/providers/azure/services/cosmosdb)
+and Microsoft's [Database Accounts - Get REST
+contract](https://learn.microsoft.com/rest/api/cosmos-db-resource-provider/database-accounts/get?view=rest-cosmos-db-resource-provider-2026-03-15).
 
 The Azure Key Vault pack pins the current Prowler truth conditions for
 `keyvault_rbac_enabled`, `keyvault_private_endpoints`, and

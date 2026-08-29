@@ -7,6 +7,7 @@ execution coverage.
 from .aws_s3 import AWS_S3_PACK
 from .azure_app_service import AZURE_APP_SERVICE_PACK
 from .azure_container_registry import AZURE_CONTAINER_REGISTRY_PACK
+from .azure_cosmos_db import AZURE_COSMOS_DB_PACK
 from .azure_key_vault import AZURE_KEY_VAULT_PACK
 from .azure_network import AZURE_NETWORK_PACK
 from .azure_openai import AZURE_OPENAI_PACK
@@ -19,6 +20,7 @@ BUILTIN_CONTROL_PACKS = (
     AWS_S3_PACK,
     AZURE_APP_SERVICE_PACK,
     AZURE_CONTAINER_REGISTRY_PACK,
+    AZURE_COSMOS_DB_PACK,
     AZURE_KEY_VAULT_PACK,
     AZURE_NETWORK_PACK,
     AZURE_OPENAI_PACK,

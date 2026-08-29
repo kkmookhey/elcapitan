@@ -522,6 +522,107 @@ def test_azure_openai_missing_public_network_state_fails_closed(azure):
         azure(resource_uid=fake_az.AZURE_OPENAI_RESOURCE_UID)
 
 
+def test_cosmos_db_capture_evaluates_contract_fixture_with_one_get(azure):
+    azure.responses(fake_az.cosmos_db_responses())
+    state = azure(resource_uid=fake_az.COSMOS_DB_RESOURCE_UID)
+    values = {aspect: json.loads(value) for aspect, value in state.config}
+    assert values == {
+        "cosmosdb_backup_policy_type": "Periodic",
+        "cosmosdb_enable_automatic_failover": False,
+        "cosmosdb_minimum_tls_version": "Tls11",
+        "cosmosdb_public_network_access": "Enabled",
+    }
+    registry = builtin_registry()
+    assert all(registry.get("azure", rule_id).evaluator(values).confirmed
+               for rule_id in (
+                   "cosmosdb_account_automatic_failover_enabled",
+                   "cosmosdb_account_backup_policy_continuous",
+                   "cosmosdb_account_minimum_tls_version",
+                   "cosmosdb_account_public_network_access_disabled",
+               ))
+    rest_calls = [call for call in fake_az.calls(azure.bin_dir)
+                  if call["operation"] == "rest"]
+    assert len(rest_calls) == 1
+    assert rest_calls[0]["argv"][rest_calls[0]["argv"].index("--url") + 1] == (
+        "https://management.azure.com" + fake_az.COSMOS_DB_RESOURCE_UID
+        + "?api-version=2026-03-15")
+
+
+def test_cosmos_db_secure_contract_clears_all_four_findings(azure):
+    account = fake_az.cosmos_db_document()
+    account["properties"].update({
+        "enableAutomaticFailover": True,
+        "backupPolicy": {"type": "Continuous"},
+        "minimalTlsVersion": "Tls12",
+        "publicNetworkAccess": "SecuredByPerimeter",
+    })
+    azure.responses(fake_az.cosmos_db_responses(account=account))
+    values = {
+        aspect: json.loads(value)
+        for aspect, value in azure(resource_uid=fake_az.COSMOS_DB_RESOURCE_UID).config
+    }
+    registry = builtin_registry()
+    assert not any(registry.get("azure", rule_id).evaluator(values).confirmed
+                   for rule_id in (
+                       "cosmosdb_account_automatic_failover_enabled",
+                       "cosmosdb_account_backup_policy_continuous",
+                       "cosmosdb_account_minimum_tls_version",
+                       "cosmosdb_account_public_network_access_disabled",
+                   ))
+
+
+def test_cosmos_db_omitted_optional_properties_remain_explicit_failures(azure):
+    account = fake_az.cosmos_db_document()
+    account["properties"] = {}
+    azure.responses(fake_az.cosmos_db_responses(account=account))
+    values = {
+        aspect: json.loads(value)
+        for aspect, value in azure(resource_uid=fake_az.COSMOS_DB_RESOURCE_UID).config
+    }
+    assert values == {
+        "cosmosdb_backup_policy_type": None,
+        "cosmosdb_enable_automatic_failover": None,
+        "cosmosdb_minimum_tls_version": None,
+        "cosmosdb_public_network_access": None,
+    }
+    registry = builtin_registry()
+    assert all(registry.get("azure", rule_id).evaluator(values).confirmed
+               for rule_id in (
+                   "cosmosdb_account_automatic_failover_enabled",
+                   "cosmosdb_account_backup_policy_continuous",
+                   "cosmosdb_account_minimum_tls_version",
+                   "cosmosdb_account_public_network_access_disabled",
+               ))
+
+
+@pytest.mark.parametrize(("property_name", "value", "message"), [
+    ("enableAutomaticFailover", "false", "enableAutomaticFailover"),
+    ("backupPolicy", [], "backupPolicy"),
+    ("backupPolicy", {"type": []}, "backupPolicy.type"),
+    ("minimalTlsVersion", "Unknown", "minimalTlsVersion"),
+    ("minimalTlsVersion", [], "minimalTlsVersion"),
+    ("publicNetworkAccess", "Unknown", "publicNetworkAccess"),
+    ("publicNetworkAccess", [], "publicNetworkAccess"),
+])
+def test_cosmos_db_rejects_malformed_contract_fields(
+        azure, property_name, value, message):
+    account = fake_az.cosmos_db_document()
+    account["properties"][property_name] = value
+    azure.responses(fake_az.cosmos_db_responses(account=account))
+    with pytest.raises(ValueError, match=message):
+        azure(resource_uid=fake_az.COSMOS_DB_RESOURCE_UID)
+
+
+def test_cosmos_db_permission_denial_is_unavailable_not_configuration(azure):
+    azure.responses({
+        "login": {"stdout": "[]", "exit": 0},
+        "rest": {"stderr": "ERROR: (AuthorizationFailed) exact reader denied\n",
+                 "exit": 1},
+    })
+    with pytest.raises(ValueError, match="AuthorizationFailed"):
+        azure(resource_uid=fake_az.COSMOS_DB_RESOURCE_UID)
+
+
 def test_azure_sql_capture_reads_complete_cmk_and_user_database_tde_contract(azure):
     azure.responses(fake_az.sql_responses())
     state = azure(resource_uid=fake_az.SQL_RESOURCE_UID)
@@ -1025,6 +1126,43 @@ def test_container_registry_managed_identity_matches_cli_capture(
     azure.responses(fake_az.container_registry_responses())
     assert managed.config == azure(
         resource_uid=fake_az.CONTAINER_REGISTRY_RESOURCE_UID).config
+    assert len(requests) == 2
+
+
+def test_cosmos_db_managed_identity_matches_cli_capture(azure, monkeypatch):
+    document = fake_az.cosmos_db_document()
+    requests = []
+
+    class Response:
+        def __init__(self, payload):
+            self.payload = json.dumps(payload).encode()
+
+        def __enter__(self): return self
+        def __exit__(self, *_): return False
+        def read(self): return self.payload
+
+    def urlopen(request, timeout):
+        requests.append(request)
+        if request.full_url.startswith("http://localhost/"):
+            return Response({"access_token": "read-only-token"})
+        assert request.get_header("Authorization") == "Bearer read-only-token"
+        assert request.full_url == (
+            "https://management.azure.com" + fake_az.COSMOS_DB_RESOURCE_UID
+            + "?api-version=2026-03-15")
+        return Response(document)
+
+    monkeypatch.setattr("elcapitan.cloud.urllib.request.urlopen", urlopen)
+    managed_env = verification_env({
+        "ELCAP_SCANNER_AZURE_MANAGED_IDENTITY_CLIENT_ID": "scanner-client-id",
+        "IDENTITY_ENDPOINT": "http://localhost/token",
+        "IDENTITY_HEADER": "rotating-platform-header",
+    }, provider="azure")
+    managed = capture_cloud_state(
+        fake_az.COSMOS_DB_RESOURCE_UID,
+        provider="azure", env=managed_env)
+    azure.responses(fake_az.cosmos_db_responses())
+    assert managed.config == azure(
+        resource_uid=fake_az.COSMOS_DB_RESOURCE_UID).config
     assert len(requests) == 2
 
 

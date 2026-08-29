@@ -245,7 +245,7 @@ def test_cli_reports_capabilities_connector_preflight_and_full_fleet(
 
     assert main(["capabilities", "--provider", "azure"]) == 0
     capabilities = json.loads(capsys.readouterr().out)
-    assert len(capabilities["capabilities"]) == 30
+    assert len(capabilities["capabilities"]) == 34
     sql = next(item for item in capabilities["capabilities"]
                if item["rule_id"] == "sqlserver_tde_encrypted_with_cmk")
     assert sql["live_validation"] is True
@@ -299,6 +299,13 @@ def test_cli_reports_capabilities_connector_preflight_and_full_fleet(
     assert azure_openai[0]["live_validation"] is True
     assert azure_openai[0]["remediation_planning"] is False
     assert azure_openai[0]["live_execution"] is False
+    cosmos_db = [
+        item for item in capabilities["capabilities"]
+        if item["rule_id"].startswith("cosmosdb_")]
+    assert len(cosmos_db) == 4
+    assert all(item["live_validation"] is True for item in cosmos_db)
+    assert all(item["remediation_planning"] is False for item in cosmos_db)
+    assert all(item["live_execution"] is False for item in cosmos_db)
     assert all(item["provider"] == "azure" for item in capabilities["capabilities"])
 
     monkeypatch.setenv("PATH", "")
