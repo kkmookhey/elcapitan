@@ -370,6 +370,8 @@ AZURE_KEY_VAULT_ASPECTS = (
     "keyvault_enable_soft_delete",
     "keyvault_enable_purge_protection",
     "keyvault_private_endpoint_connection_count",
+    "keyvault_diagnostic_settings_status",
+    "keyvault_diagnostic_log_settings",
 )
 
 AZURE_APP_SERVICE_ASPECTS = (
@@ -670,6 +672,60 @@ def _read_arm_collection(first_url: str, *, scope_path: str,
     return items
 
 
+def _diagnostic_log_entries(resource_uid: str, *, read_url) -> list[dict]:
+    """Capture only names and log-category state from diagnostic settings."""
+    diagnostics_path = (
+        f"{resource_uid}/providers/Microsoft.Insights/diagnosticSettings")
+    diagnostic_settings = _read_arm_collection(
+        _arm_url(diagnostics_path,
+                 api_version=AZURE_DIAGNOSTIC_SETTINGS_API_VERSION),
+        scope_path=diagnostics_path, read_url=read_url,
+        what=f"the diagnostic settings of {resource_uid}")
+    log_entries: list[dict] = []
+    for position, setting in enumerate(diagnostic_settings):
+        setting_name = setting.get("name")
+        properties = setting.get("properties")
+        if not isinstance(setting_name, str) or not setting_name:
+            raise ValueError(
+                f"could not read diagnostic settings of {resource_uid}: setting "
+                f"{position} has no name")
+        if not isinstance(properties, dict):
+            raise ValueError(
+                f"could not read diagnostic settings of {resource_uid}: setting "
+                f"{setting_name!r} has no properties object")
+        logs = properties.get("logs")
+        if logs is None:
+            logs = []
+        if (not isinstance(logs, list)
+                or any(not isinstance(item, dict) for item in logs)):
+            raise ValueError(
+                f"could not read diagnostic settings of {resource_uid}: logs for "
+                f"{setting_name!r} are not an object list")
+        for log_position, log in enumerate(logs):
+            category = log.get("category")
+            category_group = log.get("categoryGroup")
+            enabled = log.get("enabled")
+            if category is not None and not isinstance(category, str):
+                raise ValueError(
+                    f"could not read diagnostic settings of {resource_uid}: log "
+                    f"{log_position} in {setting_name!r} has invalid category")
+            if category_group is not None and not isinstance(category_group, str):
+                raise ValueError(
+                    f"could not read diagnostic settings of {resource_uid}: log "
+                    f"{log_position} in {setting_name!r} has invalid category group")
+            if enabled is not None and not isinstance(enabled, bool):
+                raise ValueError(
+                    f"could not read diagnostic settings of {resource_uid}: log "
+                    f"{log_position} in {setting_name!r} has invalid enabled state")
+            log_entries.append({
+                "setting": setting_name,
+                "category": category,
+                "category_group": category_group,
+                "enabled": enabled,
+            })
+    return log_entries
+
+
 def _capture_azure_sql(resource_uid: str, *, read_url) -> tuple[tuple[str, str], ...]:
     """Capture the complete evidence contract for SQL CMK + TDE validation."""
     protector_url = _arm_url(
@@ -858,7 +914,7 @@ def _capture_azure_cosmos_db(
 
 def _capture_azure_key_vault(
         resource_uid: str, *, read_url) -> tuple[tuple[str, str], ...]:
-    """Capture the management-plane evidence shared by three Prowler checks."""
+    """Capture the bounded evidence shared by four Key Vault checks."""
     document = read_url(
         _arm_url(resource_uid, api_version=AZURE_KEY_VAULT_API_VERSION),
         what=f"the Key Vault {resource_uid}")
@@ -893,6 +949,17 @@ def _capture_azure_key_vault(
             f"could not read Key Vault private endpoints of {resource_uid}: "
             "privateEndpointConnections is not an object list")
     values["keyvault_private_endpoint_connection_count"] = len(connections)
+
+    try:
+        values["keyvault_diagnostic_log_settings"] = _diagnostic_log_entries(
+            resource_uid, read_url=read_url)
+        values["keyvault_diagnostic_settings_status"] = "available"
+    except (OSError, ValueError):
+        # The Monitor read is independent of the vault document. Preserve the
+        # three complete vault-property controls while making only the logging
+        # control unavailable; never turn a denial into an empty setting list.
+        values["keyvault_diagnostic_log_settings"] = None
+        values["keyvault_diagnostic_settings_status"] = "unavailable"
 
     return tuple(
         (aspect, canonical_json(values[aspect]).decode("utf-8"))
@@ -1058,55 +1125,7 @@ def _capture_azure_app_service(
             f"could not read Auth Settings V2 of {site_id}: platform is not an "
             "object or null")
 
-    diagnostics_path = (
-        f"{site_id}/providers/Microsoft.Insights/diagnosticSettings")
-    diagnostic_settings = _read_arm_collection(
-        _arm_url(diagnostics_path,
-                 api_version=AZURE_DIAGNOSTIC_SETTINGS_API_VERSION),
-        scope_path=diagnostics_path, read_url=read_url,
-        what=f"the diagnostic settings of {site_id}")
-    log_entries: list[dict] = []
-    for position, setting in enumerate(diagnostic_settings):
-        setting_name = setting.get("name")
-        properties = setting.get("properties")
-        if not isinstance(setting_name, str) or not setting_name:
-            raise ValueError(
-                f"could not read diagnostic settings of {site_id}: setting "
-                f"{position} has no name")
-        if not isinstance(properties, dict):
-            raise ValueError(
-                f"could not read diagnostic settings of {site_id}: setting "
-                f"{setting_name!r} has no properties object")
-        logs = properties.get("logs")
-        if logs is None:
-            logs = []
-        if (not isinstance(logs, list)
-                or any(not isinstance(item, dict) for item in logs)):
-            raise ValueError(
-                f"could not read diagnostic settings of {site_id}: logs for "
-                f"{setting_name!r} are not an object list")
-        for log_position, log in enumerate(logs):
-            category = log.get("category")
-            category_group = log.get("categoryGroup")
-            enabled = log.get("enabled")
-            if category is not None and not isinstance(category, str):
-                raise ValueError(
-                    f"could not read diagnostic settings of {site_id}: log "
-                    f"{log_position} in {setting_name!r} has invalid category")
-            if category_group is not None and not isinstance(category_group, str):
-                raise ValueError(
-                    f"could not read diagnostic settings of {site_id}: log "
-                    f"{log_position} in {setting_name!r} has invalid category group")
-            if enabled is not None and not isinstance(enabled, bool):
-                raise ValueError(
-                    f"could not read diagnostic settings of {site_id}: log "
-                    f"{log_position} in {setting_name!r} has invalid enabled state")
-            log_entries.append({
-                "setting": setting_name,
-                "category": category,
-                "category_group": category_group,
-                "enabled": enabled,
-            })
+    log_entries = _diagnostic_log_entries(site_id, read_url=read_url)
 
     values = {
         "app_kind": kind,

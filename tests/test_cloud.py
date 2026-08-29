@@ -655,11 +655,17 @@ def test_azure_sql_capture_matches_sanitized_disposable_lab_measurement(azure):
     }
 
 
-def test_azure_key_vault_capture_uses_one_management_plane_get(azure):
+def test_azure_key_vault_capture_uses_two_bounded_management_plane_gets(azure):
     azure.responses(fake_az.key_vault_responses())
     state = azure(resource_uid=fake_az.KEY_VAULT_RESOURCE_UID)
 
     assert dict(state.config) == {
+        "keyvault_diagnostic_log_settings": (
+            '[{"category":"AuditEvent","category_group":null,'
+            '"enabled":false,"setting":"security"},'
+            '{"category":null,"category_group":"allLogs",'
+            '"enabled":true,"setting":"security"}]'),
+        "keyvault_diagnostic_settings_status": '"available"',
         "keyvault_enable_rbac_authorization": "false",
         "keyvault_enable_soft_delete": "true",
         "keyvault_enable_purge_protection": "false",
@@ -667,10 +673,14 @@ def test_azure_key_vault_capture_uses_one_management_plane_get(azure):
     }
     rest_calls = [call for call in fake_az.calls(azure.bin_dir)
                   if call["operation"] == "rest"]
-    assert len(rest_calls) == 1
-    call = rest_calls[0]["argv"]
-    assert call[call.index("--method") + 1] == "get"
-    assert call[call.index("--url") + 1].endswith("api-version=2024-11-01")
+    assert len(rest_calls) == 2
+    calls = [item["argv"] for item in rest_calls]
+    assert all(call[call.index("--method") + 1] == "get" for call in calls)
+    assert calls[0][calls[0].index("--url") + 1].endswith(
+        "api-version=2024-11-01")
+    assert ("/providers/Microsoft.Insights/diagnosticSettings?"
+            "api-version=2021-05-01-preview") in (
+                calls[1][calls[1].index("--url") + 1])
 
 
 def test_azure_key_vault_capture_rejects_malformed_private_endpoints(azure):
@@ -686,6 +696,12 @@ def test_azure_key_vault_capture_matches_sanitized_lab_missing_fields(azure):
     azure.responses(fake_az.key_vault_lab_responses())
 
     assert dict(azure(resource_uid=fake_az.KEY_VAULT_RESOURCE_UID).config) == {
+        "keyvault_diagnostic_log_settings": (
+            '[{"category":"AuditEvent","category_group":null,'
+            '"enabled":false,"setting":"security"},'
+            '{"category":null,"category_group":"allLogs",'
+            '"enabled":true,"setting":"security"}]'),
+        "keyvault_diagnostic_settings_status": '"available"',
         "keyvault_enable_rbac_authorization": "false",
         "keyvault_enable_soft_delete": "true",
         "keyvault_enable_purge_protection": "null",
@@ -693,7 +709,7 @@ def test_azure_key_vault_capture_matches_sanitized_lab_missing_fields(azure):
     }
 
 
-def test_azure_key_vault_managed_identity_uses_one_bounded_arm_get(monkeypatch):
+def test_azure_key_vault_managed_identity_uses_two_bounded_arm_gets(monkeypatch):
     requests = []
 
     class Response:
@@ -716,6 +732,8 @@ def test_azure_key_vault_managed_identity_uses_one_bounded_arm_get(monkeypatch):
         assert request.get_header("Authorization") == "Bearer read-only-token"
         assert request.full_url.startswith(
             "https://management.azure.com" + fake_az.KEY_VAULT_RESOURCE_UID)
+        if "/providers/Microsoft.Insights/diagnosticSettings?" in request.full_url:
+            return Response(fake_az.key_vault_diagnostic_settings_document())
         return Response(fake_az.key_vault_document())
 
     monkeypatch.setattr("elcapitan.cloud.urllib.request.urlopen", urlopen)
@@ -728,7 +746,80 @@ def test_azure_key_vault_managed_identity_uses_one_bounded_arm_get(monkeypatch):
         fake_az.KEY_VAULT_RESOURCE_UID, provider="azure", env=managed_env)
 
     assert dict(state.config)["keyvault_enable_soft_delete"] == "true"
-    assert len(requests) == 2
+    assert len(requests) == 3
+
+
+def test_azure_key_vault_capture_minimizes_diagnostic_settings(azure):
+    azure.responses(fake_az.key_vault_responses())
+    values = dict(azure(resource_uid=fake_az.KEY_VAULT_RESOURCE_UID).config)
+    logs = json.loads(values["keyvault_diagnostic_log_settings"])
+
+    assert logs == [
+        {"category": "AuditEvent", "category_group": None,
+         "enabled": False, "setting": "security"},
+        {"category": None, "category_group": "allLogs",
+         "enabled": True, "setting": "security"},
+    ]
+    assert "workspaceId" not in json.dumps(logs)
+    assert "retentionPolicy" not in json.dumps(logs)
+    control = builtin_registry().get("azure", "keyvault_logging_enabled")
+    decoded = {aspect: json.loads(value) for aspect, value in values.items()}
+    assert control.evaluator(decoded).confirmed is True
+
+
+def test_azure_key_vault_enabled_audit_event_clears_logging_finding(azure):
+    diagnostics = fake_az.key_vault_diagnostic_settings_document()
+    diagnostics["value"][0]["properties"]["logs"][0]["enabled"] = True
+    azure.responses(fake_az.key_vault_responses(diagnostics=diagnostics))
+    values = {
+        aspect: json.loads(value)
+        for aspect, value in azure(
+            resource_uid=fake_az.KEY_VAULT_RESOURCE_UID).config
+    }
+    control = builtin_registry().get("azure", "keyvault_logging_enabled")
+    assert control.evaluator(values).confirmed is False
+
+
+@pytest.mark.parametrize("diagnostics", [
+    {"value": ["bad"]},
+    {"value": [{"name": "security", "properties": {"logs": "bad"}}]},
+])
+def test_azure_key_vault_malformed_diagnostics_only_unavailable_logging_control(
+        azure, diagnostics):
+    azure.responses(fake_az.key_vault_responses(diagnostics=diagnostics))
+    values = {
+        aspect: json.loads(value)
+        for aspect, value in azure(
+            resource_uid=fake_az.KEY_VAULT_RESOURCE_UID).config
+    }
+    assert values["keyvault_diagnostic_settings_status"] == "unavailable"
+    assert values["keyvault_diagnostic_log_settings"] is None
+    assert builtin_registry().get(
+        "azure", "keyvault_rbac_enabled").evaluator(values).confirmed is True
+    with pytest.raises(ValueError, match="diagnostic settings are unavailable"):
+        builtin_registry().get(
+            "azure", "keyvault_logging_enabled").evaluator(values)
+
+
+def test_azure_key_vault_denied_diagnostics_only_unavailable_logging_control(azure):
+    responses = fake_az.key_vault_responses()
+    responses["rest"]["sequence"][1] = {
+        "stdout": "", "exit": 1,
+        "stderr": "ERROR: (AuthorizationFailed) reader cannot list diagnostics\n",
+    }
+    azure.responses(responses)
+    values = {
+        aspect: json.loads(value)
+        for aspect, value in azure(
+            resource_uid=fake_az.KEY_VAULT_RESOURCE_UID).config
+    }
+    assert values["keyvault_diagnostic_settings_status"] == "unavailable"
+    assert values["keyvault_diagnostic_log_settings"] is None
+    assert builtin_registry().get(
+        "azure", "keyvault_rbac_enabled").evaluator(values).confirmed is True
+    with pytest.raises(ValueError, match="diagnostic settings are unavailable"):
+        builtin_registry().get(
+            "azure", "keyvault_logging_enabled").evaluator(values)
 
 
 def test_azure_network_subnet_capture_supports_nested_arm_ids(azure):

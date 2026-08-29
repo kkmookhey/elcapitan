@@ -25,7 +25,7 @@ def test_builtin_registry_is_composed_from_service_packs():
         "azure-cosmos-db", "azure-key-vault", "azure-network", "azure-openai",
         "azure-sql", "azure-storage"}
     registry = builtin_registry()
-    assert len(registry.list()) == 35
+    assert len(registry.list()) == 36
     assert registry.get("AZURE", "sqlserver_tde_encrypted_with_cmk").pack_id == (
         "azure-sql")
     assert registry.get(
@@ -310,6 +310,35 @@ def test_sql_pack_rejects_partial_database_evidence():
          {"keyvault_private_endpoint_connection_count": 0}, True),
         ("keyvault_private_endpoints",
          {"keyvault_private_endpoint_connection_count": 1}, False),
+        ("keyvault_logging_enabled", {
+            "keyvault_diagnostic_settings_status": "available",
+            "keyvault_diagnostic_log_settings": [],
+         }, True),
+        ("keyvault_logging_enabled", {
+            "keyvault_diagnostic_settings_status": "available",
+            "keyvault_diagnostic_log_settings": [{
+                "setting": "security", "category": "AuditEvent",
+                "category_group": None, "enabled": True,
+            }],
+         }, False),
+        ("keyvault_logging_enabled", {
+            "keyvault_diagnostic_settings_status": "available",
+            "keyvault_diagnostic_log_settings": [
+                {"setting": "security", "category": None,
+                 "category_group": "audit", "enabled": True},
+                {"setting": "security", "category": None,
+                 "category_group": "allLogs", "enabled": True},
+            ],
+         }, False),
+        ("keyvault_logging_enabled", {
+            "keyvault_diagnostic_settings_status": "available",
+            "keyvault_diagnostic_log_settings": [
+                {"setting": "audit-only", "category": None,
+                 "category_group": "audit", "enabled": True},
+                {"setting": "all-only", "category": None,
+                 "category_group": "allLogs", "enabled": True},
+            ],
+         }, True),
     ],
 )
 def test_key_vault_pack_matches_pinned_prowler_truth_conditions(
@@ -329,11 +358,28 @@ def test_key_vault_pack_matches_pinned_prowler_truth_conditions(
          }),
         ("keyvault_private_endpoints",
          {"keyvault_private_endpoint_connection_count": True}),
+        ("keyvault_logging_enabled", {
+            "keyvault_diagnostic_settings_status": "available",
+            "keyvault_diagnostic_log_settings": [{}],
+         }),
+        ("keyvault_logging_enabled", {
+            "keyvault_diagnostic_settings_status": "unavailable",
+            "keyvault_diagnostic_log_settings": [],
+         }),
     ],
 )
 def test_key_vault_pack_rejects_malformed_evidence(rule_id, values):
     with pytest.raises(ValueError, match="invalid"):
         builtin_registry().get("azure", rule_id).evaluator(values)
+
+
+def test_key_vault_logging_reports_unavailable_monitor_evidence():
+    control = builtin_registry().get("azure", "keyvault_logging_enabled")
+    with pytest.raises(ValueError, match="diagnostic settings are unavailable"):
+        control.evaluator({
+            "keyvault_diagnostic_settings_status": "unavailable",
+            "keyvault_diagnostic_log_settings": None,
+        })
 
 
 @pytest.mark.parametrize(

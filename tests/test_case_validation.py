@@ -192,7 +192,9 @@ def sql_state(protector="AzureKeyVault", database_tde=None):
 
 
 def key_vault_state(*, rbac=False, soft_delete=True,
-                    purge_protection=False, private_endpoints=0):
+                    purge_protection=False, private_endpoints=0,
+                    diagnostic_status="available", diagnostic_logs=None):
+    logs = [] if diagnostic_logs is None else diagnostic_logs
     return CloudState(
         provider="azure",
         resource_uid=("/subscriptions/8cd2b4cc-c789-466d-a8f7-8f51fb20985d/"
@@ -204,6 +206,10 @@ def key_vault_state(*, rbac=False, soft_delete=True,
             ("keyvault_enable_purge_protection", json.dumps(purge_protection)),
             ("keyvault_private_endpoint_connection_count",
              json.dumps(private_endpoints)),
+            ("keyvault_diagnostic_settings_status",
+             json.dumps(diagnostic_status)),
+            ("keyvault_diagnostic_log_settings",
+             json.dumps(None if diagnostic_status == "unavailable" else logs)),
         ))
 
 
@@ -345,6 +351,12 @@ def test_sql_tde_cmk_stale_finding_closes_when_no_user_databases_remain(product)
          FindingValidationStatus.CONFIRMED),
         ("keyvault_private_endpoints", key_vault_state(private_endpoints=1),
          FindingValidationStatus.NOT_CONFIRMED),
+        ("keyvault_logging_enabled", key_vault_state(),
+         FindingValidationStatus.CONFIRMED),
+        ("keyvault_logging_enabled", key_vault_state(diagnostic_logs=[{
+            "setting": "security", "category": "AuditEvent",
+            "category_group": None, "enabled": True,
+         }]), FindingValidationStatus.NOT_CONFIRMED),
     ],
 )
 def test_key_vault_findings_use_the_registered_exact_evaluator(
@@ -354,6 +366,17 @@ def test_key_vault_findings_use_the_registered_exact_evaluator(
     outcome = validator(product, lambda finding, env: cloud_state).validate(
         opened.case.case_id, host_env={})
     assert outcome.findings[0].status is expected
+
+
+def test_key_vault_logging_unavailable_monitor_read_blocks_without_inference(product):
+    *_, intake = product
+    opened = intake.ingest(raw("keyvault_logging_enabled"), tenant_id="TEN-001")
+    outcome = validator(
+        product,
+        lambda finding, env: key_vault_state(diagnostic_status="unavailable"),
+    ).validate(opened.case.case_id, host_env={})
+    assert outcome.findings[0].status is FindingValidationStatus.UNAVAILABLE
+    assert "diagnostic settings are unavailable" in outcome.findings[0].reason
 
 
 @pytest.mark.parametrize(

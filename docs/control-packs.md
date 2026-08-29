@@ -140,20 +140,33 @@ and Microsoft's [Database Accounts - Get REST
 contract](https://learn.microsoft.com/rest/api/cosmos-db-resource-provider/database-accounts/get?view=rest-cosmos-db-resource-provider-2026-03-15).
 
 The Azure Key Vault pack pins the current Prowler truth conditions for
-`keyvault_rbac_enabled`, `keyvault_private_endpoints`, and
-`keyvault_recoverable`. All three consume one Key Vault management-plane GET;
-they never list keys, secrets, or certificates. A no-ingress managed-identity
-run on 2026-08-28 measured an important absent-property contract: a vault with
-purge protection disabled omitted `enablePurgeProtection`, and a vault with no
-private endpoints omitted `privateEndpointConnections`. The collector records
-those states as `null` and zero respectively, so they remain confirmed failures
-instead of becoming unavailable evidence. The sanitized ARM document is a
-regression fixture. Planning and execution remain disabled for this pack.
+`keyvault_rbac_enabled`, `keyvault_private_endpoints`,
+`keyvault_recoverable`, and `keyvault_logging_enabled`. The first three consume
+one Key Vault management-plane GET; they never list keys, secrets, or
+certificates. A no-ingress managed-identity run on 2026-08-28 measured an
+important absent-property contract: a vault with purge protection disabled
+omitted `enablePurgeProtection`, and a vault with no private endpoints omitted
+`privateEndpointConnections`. The collector records those states as `null` and
+zero respectively, so they remain confirmed failures instead of becoming
+unavailable evidence. The sanitized ARM document is a regression fixture.
+
+The logging control adds one bounded diagnostic-settings list GET and retains
+only the setting name, category, category group, and enabled state. It mirrors
+Prowler's exact current condition: an enabled `AuditEvent` category passes, or
+enabled `audit` and `allLogs` groups must coexist in the same diagnostic
+setting. Destination IDs, metrics, and retention policies are excluded. A
+denied or malformed Monitor response marks only the logging evidence
+unavailable; it cannot suppress the independently complete vault-property
+controls or become an empty-list finding. This extension is contract tested
+with a synthetic Microsoft-schema fixture, not E2E measured. Planning and
+execution remain disabled for all four Key Vault controls.
 
 Semantics are pinned to the official [Prowler Key Vault check
 implementations](https://github.com/prowler-cloud/prowler/tree/master/prowler/providers/azure/services/keyvault)
 and fields to Microsoft's [Vaults - Get 2024-11-01 REST
-contract](https://learn.microsoft.com/rest/api/keyvault/keyvault/vaults/get?view=rest-keyvault-keyvault-2024-11-01).
+contract](https://learn.microsoft.com/rest/api/keyvault/keyvault/vaults/get?view=rest-keyvault-keyvault-2024-11-01)
+and [Diagnostic Settings - List
+contract](https://learn.microsoft.com/rest/api/monitor/diagnostic-settings/list?view=rest-monitor-2021-05-01-preview).
 
 The first Azure Network control, `network_subnet_nsg_associated`, consumes one
 management-plane GET of the exact nested subnet resource. Its evaluator follows

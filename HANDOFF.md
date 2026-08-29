@@ -55,8 +55,14 @@ The completed agent-run budget slice following that baseline passes **484
 tests**, and both the Python wheel and source distribution build successfully.
 
 The completed Cosmos DB slice passes **518 tests**, and both the Python wheel
-and source distribution build successfully. The current built-in registry
-contains **35 deterministic validation controls**: **34 Azure** and **1 AWS**.
+and source distribution build successfully. At that point the built-in
+registry contained **35 deterministic validation controls**: **34 Azure** and
+**1 AWS**.
+
+The completed Key Vault diagnostic logging slice passes **533 tests**, and both
+the Python wheel and source distribution build successfully. The current
+built-in registry contains **36 deterministic validation controls**: **35
+Azure** and **1 AWS**.
 
 Run the complete suite with:
 
@@ -117,6 +123,9 @@ into one generic "supported" claim.
   output, but not yet run against a lab Cognitive Services account.
 - Cosmos DB is contract-tested and observed in authorized private scanner
   output, but not yet run against a lab Cosmos DB account.
+- Key Vault diagnostic logging is contract-tested, but its Monitor read has not
+  yet been run against a lab vault; the other three Key Vault controls retain
+  their existing E2E-measured evidence grade.
 - License, project-name clearance, release governance, CI publication, SBOM,
   signing, and public artifact provenance remain release gates.
 
@@ -237,14 +246,32 @@ session. The implementation now:
   makes no cloud or model call;
 - keeps remediation planning and live execution disabled for all four rules.
 
+## Completed bounded objective: Key Vault diagnostic logging validation
+
+This objective is complete. Do not reconstruct or repeat it in a fresh
+session. The implementation now:
+
+- registers `keyvault_logging_enabled` as validation-only, with no planning or
+  execution authority;
+- lists diagnostic settings through one bounded Monitor management-plane GET
+  after the existing vault GET for both service-principal and managed-identity
+  authentication paths;
+- persists only setting names, categories, category groups, and enabled state,
+  excluding destination IDs, metrics, and retention policy;
+- mirrors Prowler's exact condition: enabled `AuditEvent`, or enabled `audit`
+  and `allLogs` groups in the same diagnostic setting;
+- marks only the logging evidence unavailable when the independent Monitor read
+  is denied or malformed, preserving complete RBAC, recoverability, and
+  private-endpoint validation;
+- uses a synthetic Microsoft-schema fixture and makes no cloud call, model
+  call, or use of customer data.
+
 ## Subsequent roadmap
 
-1. Add Key Vault diagnostic logging validation using the bounded diagnostic
-   settings pattern.
-2. Freeze features and complete `v0.1.0` governance, CI, security scanning,
+1. Freeze features and complete `v0.1.0` governance, CI, security scanning,
    clean packaging metadata, container publication, SBOM/provenance,
    capability/evidence matrix generation, and clean-machine quickstart.
-3. Run a release-candidate rehearsal and one authorized read-only customer
+2. Run a release-candidate rehearsal and one authorized read-only customer
    shadow pilot.
 
 The retired Claude/Hermes capability probe remains on

@@ -196,6 +196,12 @@ def key_vault_lab_document() -> dict:
     return json.loads((FIXTURES / "azure-key-vault-lab-response.json").read_text())
 
 
+def key_vault_diagnostic_settings_document() -> dict:
+    """Synthetic fixture pinned to Diagnostic Settings List 2021-05-01-preview."""
+    return json.loads(
+        (FIXTURES / "azure-key-vault-diagnostic-settings-contract.json").read_text())
+
+
 def network_subnet_document() -> dict:
     """Sanitized response measured from the disposable subnet lab."""
     return json.loads(
@@ -314,11 +320,17 @@ def sql_lab_responses() -> dict:
     )
 
 
-def key_vault_responses(*, vault: dict | None = None) -> dict:
+def key_vault_responses(*, vault: dict | None = None,
+                        diagnostics: dict | None = None) -> dict:
     return {
         "login": {"stdout": "[]", "exit": 0},
-        "rest": {"stdout": json.dumps(
-            key_vault_document() if vault is None else vault), "exit": 0},
+        "rest": {"sequence": [
+            {"stdout": json.dumps(
+                key_vault_document() if vault is None else vault), "exit": 0},
+            {"stdout": json.dumps(
+                key_vault_diagnostic_settings_document()
+                if diagnostics is None else diagnostics), "exit": 0},
+        ]},
     }
 
 

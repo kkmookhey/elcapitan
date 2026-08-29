@@ -1,0 +1,32 @@
+{
+  "value": [
+    {
+      "id": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/elcap-keyvault-fixture-rg/providers/Microsoft.KeyVault/vaults/elcap-keyvault-fixture/providers/Microsoft.Insights/diagnosticSettings/security",
+      "name": "security",
+      "properties": {
+        "logs": [
+          {
+            "category": "AuditEvent",
+            "enabled": false,
+            "retentionPolicy": {
+              "days": 0,
+              "enabled": false
+            }
+          },
+          {
+            "categoryGroup": "allLogs",
+            "enabled": true
+          }
+        ],
+        "metrics": [
+          {
+            "category": "AllMetrics",
+            "enabled": true
+          }
+        ],
+        "workspaceId": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/elcap-monitor-fixture-rg/providers/Microsoft.OperationalInsights/workspaces/elcap-monitor-fixture"
+      },
+      "type": "Microsoft.Insights/diagnosticSettings"
+    }
+  ]
+}

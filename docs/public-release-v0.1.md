@@ -48,7 +48,7 @@ the time of this blueprint it reports:
 
 | Capability | Count | Public interpretation |
 |---|---:|---|
-| Deterministic live-validation rules | 35 | 34 Azure, 1 AWS |
+| Deterministic live-validation rules | 36 | 35 Azure, 1 AWS |
 | Verified remediation-planning rules | 4 | 3 Azure Storage, 1 AWS S3 |
 | Live execution rules | 2 | Azure Storage only; disabled from the shadow service |
 
@@ -64,7 +64,8 @@ The documentation and UI must never collapse these three columns into a single
 
 Azure OpenAI and Cosmos DB enter v0.1 as contract tested and export observed,
 not E2E measured. That distinction is a feature of the trust model, not a
-footnote.
+footnote. Key Vault's diagnostic-logging extension is contract tested while
+the other Key Vault controls retain their E2E-measured grade.
 
 ## Shape of the release
 

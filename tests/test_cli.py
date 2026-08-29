@@ -245,7 +245,7 @@ def test_cli_reports_capabilities_connector_preflight_and_full_fleet(
 
     assert main(["capabilities", "--provider", "azure"]) == 0
     capabilities = json.loads(capsys.readouterr().out)
-    assert len(capabilities["capabilities"]) == 34
+    assert len(capabilities["capabilities"]) == 35
     sql = next(item for item in capabilities["capabilities"]
                if item["rule_id"] == "sqlserver_tde_encrypted_with_cmk")
     assert sql["live_validation"] is True
@@ -254,7 +254,7 @@ def test_cli_reports_capabilities_connector_preflight_and_full_fleet(
     key_vault = [
         item for item in capabilities["capabilities"]
         if item["rule_id"].startswith("keyvault_")]
-    assert len(key_vault) == 3
+    assert len(key_vault) == 4
     assert all(item["live_validation"] is True for item in key_vault)
     assert all(item["remediation_planning"] is False for item in key_vault)
     assert all(item["live_execution"] is False for item in key_vault)
