@@ -16,6 +16,7 @@ this document. It is evidence for review, not authorization to tag or publish.
 | Runtime identity | OCI process ran as UID 10001 |
 | Terraform path | Pinned Terraform 1.16.0 completed the synthetic verified-review path |
 | Container scan | Trivy 0.70.0 reported zero fixed high/critical findings in the local Linux arm64 public runtime image |
+| Remote CI | [Run 33270941312](https://github.com/kkmookhey/elcapitan/actions/runs/33270941312) passed test/package, complete-history secret scan, Linux amd64 high/critical container scan, and the PostgreSQL/UI quickstart at `0cfbaf3` |
 | Complete-history prevention scan | Gitleaks 8.30.1 scanned 181 commits and reported zero current-rule findings even with an empty ignore directory |
 | Release invariants | Release-tree, generated capability matrix, locked dependency export, compile, narrow Ruff, Docker build check, workflow YAML parsing, and immutable action-reference checks passed |
 
@@ -38,8 +39,8 @@ gates. No historical secret value was printed or copied during this run.
 No in-app browser surface was connected, so rendered keyboard navigation,
 responsive layout, dialog interaction, and sanitized screenshots remain
 unverified. The browser artifacts must not be fabricated or substituted with
-HTTP assertions. Remote GitHub CI/container evidence is also required for the
-committed slice.
+HTTP assertions. Remote GitHub CI/container evidence passed for the implementing
+commit, and later release-candidate commits must retain a green run.
 
 The repository is private on a GitHub plan that returned HTTP 403 for protected
 environments and repository rulesets. The guarded release workflow must retain

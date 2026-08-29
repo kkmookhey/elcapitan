@@ -102,6 +102,10 @@ high/critical findings in the local Linux arm64 image. See
 `docs/release-verification-2026-08-29.md`. Rendered browser acceptance is still
 pending because no in-app browser surface was connected.
 
+Remote CI run `33270941312` passed the 542-test/package job, complete-history
+secret scan, Linux amd64 high/critical container scan with zero findings, and
+the expanded PostgreSQL/UI quickstart at implementing commit `0cfbaf3`.
+
 Run the complete suite with:
 
 ```bash
@@ -165,7 +169,7 @@ into one generic "supported" claim.
   yet been run against a lab vault; the other three Key Vault controls retain
   their existing E2E-measured evidence grade.
 - License and project-name clearance, historical-secret adjudication, protected
-  release-environment configuration, committed remote CI evidence, signing, and public
+  release-environment configuration, signing, and public
   artifact publication/provenance remain external release gates.
 
 ## Non-negotiable safety boundaries
