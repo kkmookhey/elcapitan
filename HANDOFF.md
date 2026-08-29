@@ -1,6 +1,6 @@
 # El Capitan — fresh-session handoff
 
-**Prepared:** 2026-08-28
+**Prepared:** 2026-08-29
 
 **Baseline before this handoff:** `f5e1c86`
 
@@ -79,6 +79,19 @@ boundary, engineering and security articles, limitation-forward release notes,
 and a timed demo/screenshot runbook. Actual screenshots could not be captured
 because no browser surface was connected in the completing session. The live
 lab recording segment and all publication remain separately authorized work.
+
+The authorized synthetic Azure lab E2E run on 2026-08-29 deployed the current
+candidate with a fresh scanner identity and isolated PostgreSQL database,
+proved authenticated intake and live validation for both executable Storage
+controls, independently proved scanner mutation denial, and exercised both
+success and automatic rollback through a separately scoped managed-identity
+worker. The exact Storage baseline was restored and every temporary app, job,
+database, role, identity, assignment, image, and local secret was deleted. See
+`docs/azure-e2e-2026-08-29.md`. Visual browser acceptance remains unexecuted
+because no browser surface was connected.
+
+The completed Azure E2E/deployment-hardening slice passes **540 tests**, the
+release-tree and shell-syntax checks, and both Python distribution builds.
 
 Run the complete suite with:
 
@@ -159,8 +172,9 @@ into one generic "supported" claim.
 - Use only an explicitly confirmed El Capitan non-production lab target for
   cloud experiments. Resolve exact subscription, resource, identity, and role
   scope read-only before any action.
-- The next bounded objective below requires no cloud calls, no model calls, and
-  no customer data.
+- The 2026-08-29 Azure authorization ended with the recorded cleanup. Make no
+  further cloud call, model call, or customer-data access without a fresh
+  bounded objective and authorization.
 - External model egress over customer evidence requires a separate explicit
   authorization naming the provider and bounded evidence fields.
 - Validation capability never grants planning or execution authority.
@@ -282,6 +296,28 @@ session. The implementation now:
   private-endpoint validation;
 - uses a synthetic Microsoft-schema fixture and makes no cloud call, model
   call, or use of customer data.
+
+## Completed bounded objective: authorized Azure release-candidate E2E
+
+This objective is complete. Do not recreate the deleted E2E resources or
+repeat its cloud operations in a fresh session. The completed run:
+
+- built and ran the current shadow candidate from an immutable ACR digest;
+- used a fresh managed identity with `Reader` only at the approved lab resource
+  group and a fresh executor identity with the two-action custom role only at
+  the exact assurance Storage account;
+- created an isolated PostgreSQL database, ingested two synthetic lab findings,
+  correlated one case, and confirmed both findings from minimized live Azure
+  evidence;
+- proved the scanner identity received `AuthorizationFailed` for Storage write;
+- ran success and injected-failure rollback for both live Storage controls;
+- restored the Storage account to its initial `Enabled` / `true` state; and
+- deleted all temporary apps, jobs, identities, role assignments, images,
+  database objects, and local secrets, with independent absence checks.
+
+No customer data, Eiger operation, or model call occurred. The dated evidence
+and remaining visual-browser limitation are in
+`docs/azure-e2e-2026-08-29.md`.
 
 ## Subsequent roadmap
 

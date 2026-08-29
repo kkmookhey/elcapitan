@@ -186,8 +186,13 @@ after the internal app is created. `repair-customer-shadow-database.sh` is the
 fail-closed recovery path when a scoped password or immutable image must be
 rebound; it deliberately retains the Keychain handoff until health is proven.
 All three scripts pin the El Capitan lab subscription and refuse an unconfirmed
-operation. They are reference automation, not authorization to use a customer
-subscription.
+operation. The bootstrap, create, and repair scripts also require
+`ELCAPITAN_LAB_IMAGE` to name an immutable image digest in the pinned lab ACR.
+The create script additionally requires `ELCAPITAN_LAB_SCANNER_ID` and
+`ELCAPITAN_LAB_SCANNER_CLIENT_ID`; it accepts only the dedicated
+`elcapitan-<slug>-scanner` identity in the pinned resource group and attaches it
+separately from the image-pull identity. They are reference automation, not
+authorization to use a customer subscription.
 
 For a real customer, put Entra ID, an identity-aware proxy, or equivalent SSO
 in front of the app, use customer-controlled encryption and retention, and

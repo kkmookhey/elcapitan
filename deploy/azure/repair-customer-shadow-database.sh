@@ -3,7 +3,7 @@ set -euo pipefail
 
 LAB_SUBSCRIPTION="8cd2b4cc-c789-466d-a8f7-8f51fb20985d"
 LAB_RESOURCE_GROUP="elcapitan-remediation-lab-rg"
-IMAGE="ca7b25e7d425acr.azurecr.io/elcapitan-demo@sha256:474cf90f64b71d35787133768b5005750fddfa05ba005bf7211d18a10811486e"
+IMAGE="${ELCAPITAN_LAB_IMAGE:?set ELCAPITAN_LAB_IMAGE to an immutable ca7b25e7d425acr.azurecr.io image digest}"
 
 if [[ $# -ne 7 ]]; then
   echo "usage: $0 SLUG SERVER APP_ROLE APP_DATABASE DB_KEYCHAIN_SERVICE TOKEN_KEYCHAIN_SERVICE CONFIRM-INTERNAL-DATABASE-REPAIR" >&2
@@ -22,6 +22,7 @@ CONFIRMATION="$7"
 [[ "${SLUG}" =~ '^[a-z0-9]{2,10}$' ]]
 [[ "${DB_KEYCHAIN_SERVICE}" == "elcapitan-${SLUG}-db-bootstrap-password" ]]
 [[ "${TOKEN_KEYCHAIN_SERVICE}" == "elcapitan-${SLUG}-shadow-token" ]]
+[[ "${IMAGE}" =~ '^ca7b25e7d425acr\.azurecr\.io/[a-z0-9._/-]+@sha256:[0-9a-f]{64}$' ]]
 [[ "$(az account show --query id -o tsv)" == "${LAB_SUBSCRIPTION}" ]]
 
 APP_NAME="elcapitan-${SLUG}-shadow"

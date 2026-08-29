@@ -4,7 +4,9 @@ set -euo pipefail
 LAB_SUBSCRIPTION="8cd2b4cc-c789-466d-a8f7-8f51fb20985d"
 LAB_RESOURCE_GROUP="elcapitan-remediation-lab-rg"
 ENVIRONMENT="elcapitan-shadow-private-env"
-IMAGE="ca7b25e7d425acr.azurecr.io/elcapitan-demo@sha256:474cf90f64b71d35787133768b5005750fddfa05ba005bf7211d18a10811486e"
+IMAGE="${ELCAPITAN_LAB_IMAGE:?set ELCAPITAN_LAB_IMAGE to an immutable ca7b25e7d425acr.azurecr.io image digest}"
+SCANNER_ID="${ELCAPITAN_LAB_SCANNER_ID:?set ELCAPITAN_LAB_SCANNER_ID to the dedicated scanner identity resource ID}"
+SCANNER_CLIENT_ID="${ELCAPITAN_LAB_SCANNER_CLIENT_ID:?set ELCAPITAN_LAB_SCANNER_CLIENT_ID to the dedicated scanner identity client ID}"
 
 if [[ $# -ne 8 ]]; then
   echo "usage: $0 SLUG SERVER APP_ROLE APP_DATABASE DB_KEYCHAIN_SERVICE TOKEN_KEYCHAIN_SERVICE TEMPLATE CONFIRM-INTERNAL-SHADOW-APP" >&2
@@ -28,6 +30,9 @@ CONFIRMATION="$8"
 [[ "${DB_KEYCHAIN_SERVICE}" == "elcapitan-${SLUG}-db-bootstrap-password" ]]
 [[ "${TOKEN_KEYCHAIN_SERVICE}" == "elcapitan-${SLUG}-shadow-token" ]]
 [[ -f "${TEMPLATE}" ]]
+[[ "${IMAGE}" =~ '^ca7b25e7d425acr\.azurecr\.io/[a-z0-9._/-]+@sha256:[0-9a-f]{64}$' ]]
+[[ "${SCANNER_ID}" == "/subscriptions/${LAB_SUBSCRIPTION}/resourceGroups/${LAB_RESOURCE_GROUP}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/elcapitan-${SLUG}-scanner" ]]
+[[ "${SCANNER_CLIENT_ID}" =~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' ]]
 [[ "$(az account show --query id -o tsv)" == "${LAB_SUBSCRIPTION}" ]]
 
 APP_NAME="elcapitan-${SLUG}-shadow"
@@ -49,6 +54,8 @@ echo "Creating the internal-ingress shadow app."
 sed -e "s|__APP_NAME__|${APP_NAME}|g" \
     -e "s|__DATABASE_URL__|${APP_URL}|g" \
     -e "s|__ACCESS_TOKEN__|${ACCESS_TOKEN}|g" \
+    -e "s|__SCANNER_ID__|${SCANNER_ID}|g" \
+    -e "s|__SCANNER_CLIENT_ID__|${SCANNER_CLIENT_ID}|g" \
     -e "s|__IMAGE__|${IMAGE}|g" "${TEMPLATE}" | \
   az containerapp create --subscription "${LAB_SUBSCRIPTION}" \
     --resource-group "${LAB_RESOURCE_GROUP}" --name "${APP_NAME}" \

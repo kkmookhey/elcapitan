@@ -4,7 +4,7 @@ set -euo pipefail
 LAB_SUBSCRIPTION="8cd2b4cc-c789-466d-a8f7-8f51fb20985d"
 LAB_RESOURCE_GROUP="elcapitan-remediation-lab-rg"
 ENVIRONMENT="elcapitan-shadow-private-env"
-IMAGE="ca7b25e7d425acr.azurecr.io/elcapitan-demo@sha256:474cf90f64b71d35787133768b5005750fddfa05ba005bf7211d18a10811486e"
+IMAGE="${ELCAPITAN_LAB_IMAGE:?set ELCAPITAN_LAB_IMAGE to an immutable ca7b25e7d425acr.azurecr.io image digest}"
 PULL_ID="/subscriptions/${LAB_SUBSCRIPTION}/resourceGroups/${LAB_RESOURCE_GROUP}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/elcapitan-demo-pull"
 
 if [[ $# -ne 7 ]]; then
@@ -27,6 +27,7 @@ CONFIRMATION="$7"
 [[ "${APP_ROLE}" =~ '^[a-z][a-z0-9_]{2,62}$' ]]
 [[ "${APP_DATABASE}" =~ '^[a-z][a-z0-9_]{2,62}$' ]]
 [[ "${KEYCHAIN_SERVICE}" == "elcapitan-${SLUG}-db-bootstrap-password" ]]
+[[ "${IMAGE}" =~ '^ca7b25e7d425acr\.azurecr\.io/[a-z0-9._/-]+@sha256:[0-9a-f]{64}$' ]]
 [[ "$(az account show --query id -o tsv)" == "${LAB_SUBSCRIPTION}" ]]
 
 HOST="${SERVER}.postgres.database.azure.com"

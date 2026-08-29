@@ -8,8 +8,8 @@ be tagged or published.
 
 | Gate | Status | Evidence or next proof |
 |---|---|---|
-| Full Python suite | verified | 538 tests passed in the clean-clone rehearsal at `44dd79e` |
-| Wheel and source distribution | verified | Clean-clone rehearsal built, inspected, and checksummed both artifacts at `44dd79e` |
+| Full Python suite | verified | 540 tests passed after the authorized Azure E2E slice; 538 passed independently in the clean-clone rehearsal at `44dd79e` |
+| Wheel and source distribution | verified | The post-E2E slice and clean-clone rehearsal both built wheel and source distributions successfully; rehearsal artifacts were inspected and checksummed at `44dd79e` |
 | Syntax/static checks | verified | Clean-clone compile and narrow Ruff error checks passed at `44dd79e`; repository-wide Ruff formatting remains migration debt |
 | Dependency review | implemented | GitHub dependency review rejects moderate-or-higher vulnerabilities on pull requests |
 | Secret scanning | blocked | CI prevents new leaks, but 22 historical findings are baselined pending credential adjudication, rotation, and history cleaning |
@@ -22,6 +22,7 @@ be tagged or published.
 | Docker Compose quickstart | verified | Clean local clone reached authenticated synthetic PostgreSQL result in 14 seconds at `44dd79e`; independent new-host evidence remains |
 | UI release labels | implemented | Fleet API/browser separate synthetic/real input, live outcomes, validation/planning/execution, and evidence grade; clean-machine UI acceptance remains |
 | Local RC rehearsal | verified | [Dated evidence](release-rehearsal-2026-08-28.md) records the clean-clone suite/build, secret prevention scan, PostgreSQL quickstart, checksums, 370-component CycloneDX SBOM, OCI digest, and provenance at `44dd79e` |
+| Authorized Azure hosted E2E | verified | [Dated evidence](azure-e2e-2026-08-29.md) records fresh PostgreSQL isolation, authenticated intake, managed-identity validation, scanner mutation denial, both Storage success/rollback lifecycles, restoration, and cleanup at candidate source `57cfcb5` |
 
 ## External authorization gates
 

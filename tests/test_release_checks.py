@@ -47,3 +47,30 @@ def test_generated_capability_matrix_is_current():
 
     assert result.returncode == 0, result.stderr
     assert result.stdout == "generated capability matrix is current\n"
+
+
+def test_customer_shadow_deployment_requires_immutable_image_and_scanner_identity():
+    template = (ROOT / "deploy/azure/customer-shadow-app.template.yaml").read_text()
+    create_script = (ROOT / "deploy/azure/create-customer-shadow-app.sh").read_text()
+    bootstrap_script = (ROOT / "deploy/azure/bootstrap-shadow-database.sh").read_text()
+    repair_script = (ROOT / "deploy/azure/repair-customer-shadow-database.sh").read_text()
+
+    assert "__SCANNER_ID__: {}" in template
+    assert "ELCAP_SCANNER_AZURE_MANAGED_IDENTITY_CLIENT_ID" in template
+    assert "value: __SCANNER_CLIENT_ID__" in template
+    assert "ELCAPITAN_LAB_SCANNER_ID" in create_script
+    assert "ELCAPITAN_LAB_SCANNER_CLIENT_ID" in create_script
+    assert "userAssignedIdentities/elcapitan-${SLUG}-scanner" in create_script
+    for script in (create_script, bootstrap_script, repair_script):
+        assert "ELCAPITAN_LAB_IMAGE" in script
+        assert "@sha256:[0-9a-f]{64}" in script
+
+
+def test_azure_worker_image_is_pinned_and_non_root():
+    dockerfile = (ROOT / "Dockerfile.azure-worker").read_text()
+
+    assert "mcr.microsoft.com/azure-cli:2.86.0@sha256:" in dockerfile
+    assert "hashicorp/terraform:1.15.8@sha256:" in dockerfile
+    assert "--require-hashes -r requirements-runtime.txt" in dockerfile
+    assert "USER 10001" in dockerfile
+    assert 'ENTRYPOINT ["elcapitan"]' in dockerfile

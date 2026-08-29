@@ -1,0 +1,26 @@
+FROM hashicorp/terraform:1.15.8@sha256:7ae513256f7ce67879e218ae8593d6fbe216ec9e123abe6c94e4e10704857963 AS terraform
+
+FROM mcr.microsoft.com/azure-cli:2.86.0@sha256:925b5871029fe16b82650c8298201e5dd91ac8122c7af1d150b57edc8c9f316a
+
+ENV PATH=/opt/elcapitan/bin:$PATH \
+    HOME=/data \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+COPY --from=terraform /bin/terraform /usr/local/bin/terraform
+
+WORKDIR /app
+COPY pyproject.toml README.md requirements-runtime.txt ./
+COPY src ./src
+RUN python3 -m venv /opt/elcapitan \
+    && /opt/elcapitan/bin/python -m pip install --no-cache-dir \
+      --require-hashes -r requirements-runtime.txt \
+    && /opt/elcapitan/bin/python -m pip install --no-cache-dir --no-deps . \
+    && mkdir -p /data \
+    && chown -R 10001:0 /data
+
+USER 10001
+WORKDIR /data
+
+ENTRYPOINT ["elcapitan"]

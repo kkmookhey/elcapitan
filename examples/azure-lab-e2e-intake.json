@@ -1,0 +1,91 @@
+{
+  "tenant_id": "ELCAPITAN-LAB-E2E",
+  "identity": "authorized-lab-generated-input",
+  "context": {
+    "asset_criticality": 0.4,
+    "exploit_probability": 0.2,
+    "internet_exposed": true,
+    "reachable": false,
+    "service_ids": ["elcapitan-assurance-storage"]
+  },
+  "findings": [
+    {
+      "class_uid": 2004,
+      "severity": "High",
+      "time_dt": "2026-08-29T15:00:00Z",
+      "metadata": {
+        "version": "1.5.0",
+        "event_code": "storage_account_public_network_access_disabled",
+        "product": {
+          "name": "El Capitan authorized lab fixture",
+          "version": "0.1.0"
+        }
+      },
+      "cloud": {
+        "provider": "azure",
+        "region": "centralindia",
+        "account": {
+          "uid": "8cd2b4cc-c789-466d-a8f7-8f51fb20985d"
+        }
+      },
+      "finding_info": {
+        "uid": "elcapitan-lab-e2e-storage-public-network-20260829",
+        "title": "Lab Storage public network access is enabled",
+        "analytic": {
+          "uid": "storage_account_public_network_access_disabled"
+        }
+      },
+      "resources": [
+        {
+          "uid": "/subscriptions/8cd2b4cc-c789-466d-a8f7-8f51fb20985d/resourceGroups/elcapitan-remediation-lab-rg/providers/Microsoft.Storage/storageAccounts/elcapassure8f51fb20985d",
+          "type": "microsoft.storage/storageaccounts",
+          "name": "elcapassure8f51fb20985d"
+        }
+      ],
+      "status_code": "FAIL",
+      "unmapped": {
+        "categories": ["authorized-lab", "internet-exposed"],
+        "elcapitan_lab_generated": true
+      }
+    },
+    {
+      "class_uid": 2004,
+      "severity": "High",
+      "time_dt": "2026-08-29T15:00:00Z",
+      "metadata": {
+        "version": "1.5.0",
+        "event_code": "storage_blob_public_access_level_is_disabled",
+        "product": {
+          "name": "El Capitan authorized lab fixture",
+          "version": "0.1.0"
+        }
+      },
+      "cloud": {
+        "provider": "azure",
+        "region": "centralindia",
+        "account": {
+          "uid": "8cd2b4cc-c789-466d-a8f7-8f51fb20985d"
+        }
+      },
+      "finding_info": {
+        "uid": "elcapitan-lab-e2e-storage-blob-public-access-20260829",
+        "title": "Lab Storage anonymous Blob access is allowed",
+        "analytic": {
+          "uid": "storage_blob_public_access_level_is_disabled"
+        }
+      },
+      "resources": [
+        {
+          "uid": "/subscriptions/8cd2b4cc-c789-466d-a8f7-8f51fb20985d/resourceGroups/elcapitan-remediation-lab-rg/providers/Microsoft.Storage/storageAccounts/elcapassure8f51fb20985d",
+          "type": "microsoft.storage/storageaccounts",
+          "name": "elcapassure8f51fb20985d"
+        }
+      ],
+      "status_code": "FAIL",
+      "unmapped": {
+        "categories": ["authorized-lab", "anonymous-access"],
+        "elcapitan_lab_generated": true
+      }
+    }
+  ]
+}

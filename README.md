@@ -371,6 +371,12 @@ back to an operator login. The lab role definition is in
 El Capitan lab resource group, its live assignment is scoped to the one lab
 storage account, and it grants only `storageAccounts/read` and
 `storageAccounts/write` with no data actions or key-list permissions.
+`Dockerfile.azure-worker` is the dedicated non-root worker image for this path;
+it pins Azure CLI and Terraform by image digest and is intentionally separate
+from the smaller read-only shadow image. The
+[2026-08-29 authorized lab record](docs/azure-e2e-2026-08-29.md) documents
+hosted shadow validation, least-privilege denial, both success and rollback
+paths, baseline restoration, and complete temporary-resource cleanup.
 
 This connector does not make arbitrary Azure changes and cannot target Eiger
 unless its resource were deliberately retagged into the lab scope. Additional
