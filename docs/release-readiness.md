@@ -8,9 +8,9 @@ be tagged or published.
 
 | Gate | Status | Evidence or next proof |
 |---|---|---|
-| Full Python suite | verified | 538 tests passed at commit `bf4e6d3`; rerun for the final candidate |
-| Wheel and source distribution | verified | Clean-clone rehearsal built and inspected both artifacts at `bf4e6d3` |
-| Syntax/static checks | implemented | CI compile check and narrow Ruff error rules; repository-wide Ruff formatting remains migration debt |
+| Full Python suite | verified | 538 tests passed in the clean-clone rehearsal at `4fb9dbd` |
+| Wheel and source distribution | verified | Clean-clone rehearsal built, inspected, and checksummed both artifacts at `4fb9dbd` |
+| Syntax/static checks | verified | Clean-clone compile and narrow Ruff error checks passed at `4fb9dbd`; repository-wide Ruff formatting remains migration debt |
 | Dependency review | implemented | GitHub dependency review rejects moderate-or-higher vulnerabilities on pull requests |
 | Secret scanning | blocked | CI prevents new leaks, but 22 historical findings are baselined pending credential adjudication, rotation, and history cleaning |
 | Container scan | implemented | CI builds the runtime image and Trivy rejects fixed high/critical vulnerabilities |
@@ -19,9 +19,9 @@ be tagged or published.
 | Threat model | implemented | `docs/threat-model.md` covers the required trust and failure boundaries |
 | Lifecycle operations | implemented | `docs/operations.md` covers upgrade, backup, restore, retention, deletion, and uninstall |
 | Capability/evidence matrix | verified | Registry generates checked-in JSON/Markdown; CI rejects drift; CLI reports the same 36-control contract |
-| Docker Compose quickstart | verified | Clean local clone reached authenticated synthetic PostgreSQL result in 9 seconds at `bf4e6d3`; independent new-host evidence remains |
+| Docker Compose quickstart | verified | Clean local clone reached authenticated synthetic PostgreSQL result in 10 seconds at `4fb9dbd`; independent new-host evidence remains |
 | UI release labels | implemented | Fleet API/browser separate synthetic/real input, live outcomes, validation/planning/execution, and evidence grade; clean-machine UI acceptance remains |
-| Local RC rehearsal | pending | `scripts/rehearse_release_candidate.sh` runs a clean local clone without cloud-provider, model, or customer-data access, using an empty application environment and offline Python cache; full suite/build, secret scan, PostgreSQL quickstart, checksums, CycloneDX SBOM, and OCI provenance are included; dated run evidence remains |
+| Local RC rehearsal | verified | [Dated evidence](release-rehearsal-2026-08-28.md) records the clean-clone suite/build, secret prevention scan, PostgreSQL quickstart, checksums, 370-component CycloneDX SBOM, OCI digest, and provenance at `4fb9dbd` |
 
 ## External authorization gates
 

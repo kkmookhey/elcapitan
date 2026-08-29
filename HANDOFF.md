@@ -64,6 +64,16 @@ the Python wheel and source distribution build successfully. The current
 built-in registry contains **36 deterministic validation controls**: **35
 Azure** and **1 AWS**.
 
+The completed local `v0.1.0` release-preparation slices pass **538 tests**. They
+add release governance and guarded CI/publication workflows, dependency and
+secret prevention checks, digest/hash-pinned container inputs, generated
+capability/evidence artifacts, a PostgreSQL Compose quickstart, and a
+clean-clone release rehearsal. The rehearsal passed at `4fb9dbd` with inspected
+wheel/source distributions, checksums, a 370-component CycloneDX container
+SBOM, local OCI provenance, and an authenticated synthetic quickstart in 10
+seconds. See `docs/release-readiness.md` and
+`docs/release-rehearsal-2026-08-28.md`.
+
 Run the complete suite with:
 
 ```bash
@@ -126,8 +136,9 @@ into one generic "supported" claim.
 - Key Vault diagnostic logging is contract-tested, but its Monitor read has not
   yet been run against a lab vault; the other three Key Vault controls retain
   their existing E2E-measured evidence grade.
-- License, project-name clearance, release governance, CI publication, SBOM,
-  signing, and public artifact provenance remain release gates.
+- License and project-name clearance, historical-secret adjudication, protected
+  release-environment configuration, remote CI evidence, signing, and public
+  artifact publication/provenance remain external release gates.
 
 ## Non-negotiable safety boundaries
 
@@ -268,11 +279,18 @@ session. The implementation now:
 
 ## Subsequent roadmap
 
-1. Freeze features and complete `v0.1.0` governance, CI, security scanning,
-   clean packaging metadata, container publication, SBOM/provenance,
-   capability/evidence matrix generation, and clean-machine quickstart.
-2. Run a release-candidate rehearsal and one authorized read-only customer
-   shadow pilot.
+1. The local `v0.1.0` release-preparation work is complete: feature freeze,
+   governance, CI and guarded publication mechanisms, preventive security
+   scanning, clean packaging metadata, reproducible container inputs,
+   SBOM/provenance generation, capability/evidence matrix generation,
+   PostgreSQL quickstart, and release-candidate rehearsal.
+2. Do not tag or publish until authorized owners approve the license and name,
+   adjudicate and remediate the historical secret baseline, configure the
+   protected release environment, and obtain successful remote CI/container
+   scan evidence.
+3. The remaining customer shadow pilot requires a separately authorized
+   read-only customer boundary, identities, data handling, and consent. It is
+   prohibited under the current no-customer-data objective.
 
 The retired Claude/Hermes capability probe remains on
 `archive/claude-code-probe-2026-08-25`. It is not part of the product runtime,
