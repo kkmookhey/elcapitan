@@ -8,8 +8,8 @@ be tagged or published.
 
 | Gate | Status | Evidence or next proof |
 |---|---|---|
-| Full Python suite | verified | 533 tests passed at commit `6bedd5f`; rerun for the final candidate |
-| Wheel and source distribution | implemented | CI builds and `scripts/check_distributions.py` inspects contents and metadata |
+| Full Python suite | verified | 538 tests passed at commit `bf4e6d3`; rerun for the final candidate |
+| Wheel and source distribution | verified | Clean-clone rehearsal built and inspected both artifacts at `bf4e6d3` |
 | Syntax/static checks | implemented | CI compile check and narrow Ruff error rules; repository-wide Ruff formatting remains migration debt |
 | Dependency review | implemented | GitHub dependency review rejects moderate-or-higher vulnerabilities on pull requests |
 | Secret scanning | blocked | CI prevents new leaks, but 22 historical findings are baselined pending credential adjudication, rotation, and history cleaning |
@@ -19,9 +19,9 @@ be tagged or published.
 | Threat model | implemented | `docs/threat-model.md` covers the required trust and failure boundaries |
 | Lifecycle operations | implemented | `docs/operations.md` covers upgrade, backup, restore, retention, deletion, and uninstall |
 | Capability/evidence matrix | verified | Registry generates checked-in JSON/Markdown; CI rejects drift; CLI reports the same 36-control contract |
-| Docker Compose quickstart | implemented | Local-only PostgreSQL stack and timed synthetic acceptance script; clean-machine run evidence remains |
+| Docker Compose quickstart | verified | Clean local clone reached authenticated synthetic PostgreSQL result in 9 seconds at `bf4e6d3`; independent new-host evidence remains |
 | UI release labels | implemented | Fleet API/browser separate synthetic/real input, live outcomes, validation/planning/execution, and evidence grade; clean-machine UI acceptance remains |
-| Local RC rehearsal | pending | Run from a clean checkout with no cloud/model credentials |
+| Local RC rehearsal | pending | `scripts/rehearse_release_candidate.sh` runs a clean local clone with an empty environment, offline Python cache, full suite/build, secret scan, PostgreSQL quickstart, checksums, CycloneDX SBOM, and OCI provenance; dated run evidence remains |
 
 ## External authorization gates
 

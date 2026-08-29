@@ -11,6 +11,8 @@ All notable changes to El Capitan are recorded here. Dates use ISO 8601.
   source type, live outcome, validation, planning, execution, and evidence grade.
 - Local-only Docker Compose quickstart with PostgreSQL and a timed synthetic
   acceptance journey that receives no cloud or model credentials.
+- Clean-checkout release-candidate rehearsal with distribution checksums,
+  CycloneDX container SBOM, and BuildKit provenance inspection.
 
 ## [0.1.0] - Unreleased
 

@@ -24,6 +24,7 @@ REQUIRED_FILES = (
     "docs/generated/capability-matrix.md",
     "examples/synthetic-shadow-intake.json",
     "requirements-runtime.txt",
+    "scripts/rehearse_release_candidate.sh",
 )
 FORBIDDEN_TRACKED_PARTS = {
     ".env",
