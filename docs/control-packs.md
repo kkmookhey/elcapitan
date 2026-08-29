@@ -22,9 +22,9 @@ Each installed pack registers explicit definitions containing:
 - separate validation, planning, and execution capability flags.
 
 The built-in v1 packs are currently `aws-s3`, `azure-storage`, `azure-sql`,
-`azure-key-vault`, `azure-network`, `azure-app-service`, and
-`azure-container-registry`. Registration is fail-closed: duplicate
-provider/rule keys,
+`azure-key-vault`, `azure-network`, `azure-app-service`,
+`azure-container-registry`, and `azure-openai`. Registration is fail-closed:
+duplicate provider/rule keys,
 mismatched pack ownership, missing evidence contracts, and mismatched resource
 types are rejected.
 
@@ -100,6 +100,25 @@ fixture. Semantics are pinned to Prowler's [Container Registry check
 implementations](https://github.com/prowler-cloud/prowler/tree/master/prowler/providers/azure/services/containerregistry)
 and Microsoft's [Registries - Get REST
 contract](https://learn.microsoft.com/rest/api/container-registry/registries/get?view=rest-container-registry-2025-11-01).
+
+The Azure OpenAI pack validates
+`azureopenai_account_public_network_access_disabled` with one
+management-plane GET of the exact Cognitive Services account. It persists only
+the live account kind and `publicNetworkAccess` enum. The account must still be
+kind `OpenAI` or `AIServices`; another Cognitive Services kind fails closed
+instead of satisfying a stale or misclassified finding. An omitted or unknown
+public-network field also fails closed because Microsoft's response contract
+does not assign it a GET-time default. Planning and execution are disabled.
+
+This rule is contract-tested against Microsoft's 2025-06-01 response schema
+and was checked offline against an authorized private Prowler 5.36.0 export,
+which contains two failing `OpenAI` accounts, two failing `AIServices`
+accounts, and one passing `OpenAI` account. No customer cloud request was made.
+The authorized El Capitan lab subscription contains no Cognitive Services
+account, so this pack does not yet claim the no-ingress managed-identity
+evidence grade earned by the other measured Azure packs. Fields are pinned to
+Microsoft's [Accounts - Get
+REST contract](https://learn.microsoft.com/rest/api/aifoundry/accountmanagement/accounts/get?view=rest-aifoundry-accountmanagement-2025-06-01).
 
 The Azure Key Vault pack pins the current Prowler truth conditions for
 `keyvault_rbac_enabled`, `keyvault_private_endpoints`, and

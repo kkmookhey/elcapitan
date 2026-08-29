@@ -70,6 +70,9 @@ FUNCTION_APP_RESOURCE_UID = (
 CONTAINER_REGISTRY_RESOURCE_UID = (
     f"/subscriptions/{SUBSCRIPTION}/resourceGroups/elcapitan-remediation-lab-rg"
     "/providers/Microsoft.ContainerRegistry/registries/ca7b25e7d425acr")
+AZURE_OPENAI_RESOURCE_UID = (
+    f"/subscriptions/{SQL_SUBSCRIPTION}/resourceGroups/elcap-openai-fixture-rg"
+    "/providers/Microsoft.CognitiveServices/accounts/elcap-openai-fixture")
 
 # The operation key is the leading run of non-flag argv tokens, which is how
 # `az` itself names a command ("storage account show"). Building it from argv
@@ -357,6 +360,19 @@ def container_registry_responses(*, registry: dict | None = None) -> dict:
         "rest": {"stdout": json.dumps(
             container_registry_document() if registry is None else registry),
             "exit": 0},
+    }
+
+
+def azure_openai_document() -> dict:
+    """Sanitized contract fixture based on Accounts - Get 2025-06-01."""
+    return json.loads((FIXTURES / "azure-openai-account-contract.json").read_text())
+
+
+def azure_openai_responses(*, account: dict | None = None) -> dict:
+    return {
+        "login": {"stdout": "[]", "exit": 0},
+        "rest": {"stdout": json.dumps(
+            azure_openai_document() if account is None else account), "exit": 0},
     }
 
 

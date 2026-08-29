@@ -22,9 +22,10 @@ def definition(*, pack_id="fixture", provider="azure", rule_id="fixture_rule"):
 def test_builtin_registry_is_composed_from_service_packs():
     assert {pack.pack_id for pack in BUILTIN_CONTROL_PACKS} == {
         "aws-s3", "azure-app-service", "azure-container-registry",
-        "azure-key-vault", "azure-network", "azure-sql", "azure-storage"}
+        "azure-key-vault", "azure-network", "azure-openai", "azure-sql",
+        "azure-storage"}
     registry = builtin_registry()
-    assert len(registry.list()) == 30
+    assert len(registry.list()) == 31
     assert registry.get("AZURE", "sqlserver_tde_encrypted_with_cmk").pack_id == (
         "azure-sql")
     assert registry.get(
@@ -190,6 +191,37 @@ def test_container_registry_pack_matches_pinned_prowler_truth_conditions(
 def test_container_registry_pack_rejects_malformed_evidence(rule_id, values):
     with pytest.raises(ValueError, match="invalid|not an"):
         builtin_registry().get("azure", rule_id).evaluator(values)
+
+
+@pytest.mark.parametrize(
+    ("values", "confirmed"),
+    [
+        ({"azureopenai_kind": "OpenAI",
+          "azureopenai_public_network_access": "Enabled"}, True),
+        ({"azureopenai_kind": "AIServices",
+          "azureopenai_public_network_access": "Enabled"}, True),
+        ({"azureopenai_kind": "OpenAI",
+          "azureopenai_public_network_access": "Disabled"}, False),
+    ],
+)
+def test_azure_openai_pack_matches_exported_producer_truth_conditions(
+        values, confirmed):
+    control = builtin_registry().get(
+        "azure", "azureopenai_account_public_network_access_disabled")
+    assert control.evaluator(values).confirmed is confirmed
+
+
+@pytest.mark.parametrize("values", [
+    {"azureopenai_kind": "TextAnalytics",
+     "azureopenai_public_network_access": "Enabled"},
+    {"azureopenai_kind": "OpenAI",
+     "azureopenai_public_network_access": "Unknown"},
+])
+def test_azure_openai_pack_rejects_other_kinds_and_unknown_states(values):
+    control = builtin_registry().get(
+        "azure", "azureopenai_account_public_network_access_disabled")
+    with pytest.raises(ValueError, match="not an Azure OpenAI kind|invalid"):
+        control.evaluator(values)
 
 
 def test_sql_pack_rejects_partial_database_evidence():

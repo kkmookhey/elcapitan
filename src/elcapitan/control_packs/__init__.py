@@ -9,6 +9,7 @@ from .azure_app_service import AZURE_APP_SERVICE_PACK
 from .azure_container_registry import AZURE_CONTAINER_REGISTRY_PACK
 from .azure_key_vault import AZURE_KEY_VAULT_PACK
 from .azure_network import AZURE_NETWORK_PACK
+from .azure_openai import AZURE_OPENAI_PACK
 from .azure_sql import AZURE_SQL_PACK
 from .azure_storage import AZURE_STORAGE_PACK
 from .models import ControlDefinition, ControlEvaluation, ControlPack
@@ -20,6 +21,7 @@ BUILTIN_CONTROL_PACKS = (
     AZURE_CONTAINER_REGISTRY_PACK,
     AZURE_KEY_VAULT_PACK,
     AZURE_NETWORK_PACK,
+    AZURE_OPENAI_PACK,
     AZURE_SQL_PACK,
     AZURE_STORAGE_PACK,
 )

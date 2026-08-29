@@ -329,6 +329,7 @@ AZURE_BLOB_SERVICE_ASPECTS = {
 # Compared case-insensitively because Prowler emits lower-case resource types
 # while ARM ids preserve provider casing.
 AZURE_SUPPORTED_TYPES = (
+    "microsoft.cognitiveservices/accounts",
     "microsoft.containerregistry/registries",
     "microsoft.keyvault/vaults",
     "microsoft.network/virtualnetworks/subnets",
@@ -347,6 +348,7 @@ AZURE_NETWORK_API_VERSION = "2025-05-01"
 AZURE_APP_SERVICE_API_VERSION = "2024-11-01"
 AZURE_DIAGNOSTIC_SETTINGS_API_VERSION = "2021-05-01-preview"
 AZURE_CONTAINER_REGISTRY_API_VERSION = "2025-11-01"
+AZURE_COGNITIVE_SERVICES_API_VERSION = "2025-06-01"
 
 # The critical Prowler control `sqlserver_tde_encrypted_with_cmk` is not a
 # single-property check. It requires a CMK-backed server protector and TDE on
@@ -763,6 +765,36 @@ def _capture_azure_container_registry(
         for aspect, value in sorted(values.items()))
 
 
+def _capture_azure_openai(
+        resource_uid: str, *, read_url) -> tuple[tuple[str, str], ...]:
+    """Capture only the fields required by the Azure OpenAI network check."""
+    document = read_url(
+        _arm_url(resource_uid, api_version=AZURE_COGNITIVE_SERVICES_API_VERSION),
+        what=f"the Cognitive Services account {resource_uid}")
+    properties = document.get("properties")
+    if not isinstance(properties, dict):
+        raise ValueError(
+            f"could not read Cognitive Services account {resource_uid}: "
+            "properties is not an object")
+    kind = document.get("kind")
+    access = properties.get("publicNetworkAccess")
+    if kind not in {"AIServices", "OpenAI"}:
+        raise ValueError(
+            f"could not validate Azure OpenAI account {resource_uid}: "
+            f"live kind is {kind!r}, expected 'AIServices' or 'OpenAI'")
+    if access not in {"Enabled", "Disabled"}:
+        raise ValueError(
+            f"could not read Cognitive Services account {resource_uid}: "
+            f"publicNetworkAccess is invalid: {access!r}")
+    values = {
+        "azureopenai_kind": kind,
+        "azureopenai_public_network_access": access,
+    }
+    return tuple(
+        (aspect, canonical_json(value).decode("utf-8"))
+        for aspect, value in sorted(values.items()))
+
+
 def _capture_azure_key_vault(
         resource_uid: str, *, read_url) -> tuple[tuple[str, str], ...]:
     """Capture the management-plane evidence shared by three Prowler checks."""
@@ -1047,6 +1079,11 @@ def _capture_azure(resource_uid: str, region: str, env: dict) -> tuple[tuple[str
         env.get("ELCAP_AZURE_AUTH_MODE") == AZURE_MANAGED_IDENTITY_AUTH_MODE)
     if managed_identity:
         token = _managed_identity_token(env)
+        if arm_type.lower() == "microsoft.cognitiveservices/accounts":
+            return _capture_azure_openai(
+                resource_uid,
+                read_url=lambda url, *, what: _arm_url_json(
+                    url, token=token, what=what))
         if arm_type.lower() == "microsoft.containerregistry/registries":
             return _capture_azure_container_registry(
                 resource_uid,
@@ -1121,6 +1158,12 @@ def _capture_azure(resource_uid: str, region: str, env: dict) -> tuple[tuple[str
 
         if arm_type.lower() == "microsoft.keyvault/vaults":
             return _capture_azure_key_vault(
+                resource_uid,
+                read_url=lambda url, *, what: _az_rest_json(
+                    az_env, url, what=what))
+
+        if arm_type.lower() == "microsoft.cognitiveservices/accounts":
+            return _capture_azure_openai(
                 resource_uid,
                 read_url=lambda url, *, what: _az_rest_json(
                     az_env, url, what=what))

@@ -62,6 +62,13 @@ def raw(rule_id="storage_account_public_network_access_disabled", *, resource_ty
             "/subscriptions/8cd2b4cc-c789-466d-a8f7-8f51fb20985d/"
             "resourceGroups/elcapitan-remediation-lab-rg/providers/"
             "Microsoft.ContainerRegistry/registries/ca7b25e7d425acr")
+    elif rule_id.startswith("azureopenai_"):
+        document["resources"][0]["type"] = (
+            "microsoft.cognitiveservices/accounts")
+        document["resources"][0]["uid"] = (
+            "/subscriptions/00000000-0000-0000-0000-000000000001/"
+            "resourceGroups/elcap-openai-fixture-rg/providers/"
+            "Microsoft.CognitiveServices/accounts/elcap-openai-fixture")
     elif rule_id.startswith("network_subnet_"):
         document["resources"][0]["type"] = (
             "microsoft.network/virtualnetworks/subnets")
@@ -124,6 +131,22 @@ def container_registry_state(**overrides):
         resource_uid=("/subscriptions/8cd2b4cc-c789-466d-a8f7-8f51fb20985d/"
                       "resourceGroups/elcapitan-remediation-lab-rg/providers/"
                       "Microsoft.ContainerRegistry/registries/ca7b25e7d425acr"),
+        config=tuple((key, json.dumps(value)) for key, value in values.items()),
+    )
+
+
+def azure_openai_state(**overrides):
+    values = {
+        "azureopenai_kind": "OpenAI",
+        "azureopenai_public_network_access": "Enabled",
+    }
+    values.update(overrides)
+    return CloudState(
+        provider="azure",
+        resource_uid=(
+            "/subscriptions/00000000-0000-0000-0000-000000000001/"
+            "resourceGroups/elcap-openai-fixture-rg/providers/"
+            "Microsoft.CognitiveServices/accounts/elcap-openai-fixture"),
         config=tuple((key, json.dumps(value)) for key, value in values.items()),
     )
 
@@ -428,6 +451,17 @@ def test_container_registry_findings_use_registered_evaluators(product, rule_id)
     opened = intake.ingest(raw(rule_id), tenant_id="TEN-001")
     outcome = validator(
         product, lambda finding, env: container_registry_state()).validate(
+            opened.case.case_id, host_env={})
+    assert outcome.findings[0].status is FindingValidationStatus.CONFIRMED
+
+
+def test_azure_openai_finding_uses_registered_evaluator(product):
+    *_, intake = product
+    opened = intake.ingest(
+        raw("azureopenai_account_public_network_access_disabled"),
+        tenant_id="TEN-001")
+    outcome = validator(
+        product, lambda finding, env: azure_openai_state()).validate(
             opened.case.case_id, host_env={})
     assert outcome.findings[0].status is FindingValidationStatus.CONFIRMED
 

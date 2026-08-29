@@ -488,6 +488,40 @@ def test_container_registry_rejects_malformed_private_endpoint_list(azure):
         azure(resource_uid=fake_az.CONTAINER_REGISTRY_RESOURCE_UID)
 
 
+def test_azure_openai_capture_evaluates_contract_fixture(azure):
+    azure.responses(fake_az.azure_openai_responses())
+    state = azure(resource_uid=fake_az.AZURE_OPENAI_RESOURCE_UID)
+    values = {aspect: json.loads(value) for aspect, value in state.config}
+    assert values == {
+        "azureopenai_kind": "OpenAI",
+        "azureopenai_public_network_access": "Enabled",
+    }
+    control = builtin_registry().get(
+        "azure", "azureopenai_account_public_network_access_disabled")
+    assert control.evaluator(values).confirmed is True
+
+
+def test_azure_openai_accepts_aiservices_but_not_other_cognitive_kinds(azure):
+    account = fake_az.azure_openai_document()
+    account["kind"] = "AIServices"
+    azure.responses(fake_az.azure_openai_responses(account=account))
+    assert dict(azure(resource_uid=fake_az.AZURE_OPENAI_RESOURCE_UID).config)[
+        "azureopenai_kind"] == '"AIServices"'
+
+    account["kind"] = "TextAnalytics"
+    azure.responses(fake_az.azure_openai_responses(account=account))
+    with pytest.raises(ValueError, match="expected 'AIServices' or 'OpenAI'"):
+        azure(resource_uid=fake_az.AZURE_OPENAI_RESOURCE_UID)
+
+
+def test_azure_openai_missing_public_network_state_fails_closed(azure):
+    account = fake_az.azure_openai_document()
+    account["properties"] = {}
+    azure.responses(fake_az.azure_openai_responses(account=account))
+    with pytest.raises(ValueError, match="publicNetworkAccess is invalid: None"):
+        azure(resource_uid=fake_az.AZURE_OPENAI_RESOURCE_UID)
+
+
 def test_azure_sql_capture_reads_complete_cmk_and_user_database_tde_contract(azure):
     azure.responses(fake_az.sql_responses())
     state = azure(resource_uid=fake_az.SQL_RESOURCE_UID)
@@ -991,6 +1025,43 @@ def test_container_registry_managed_identity_matches_cli_capture(
     azure.responses(fake_az.container_registry_responses())
     assert managed.config == azure(
         resource_uid=fake_az.CONTAINER_REGISTRY_RESOURCE_UID).config
+    assert len(requests) == 2
+
+
+def test_azure_openai_managed_identity_matches_cli_capture(azure, monkeypatch):
+    document = fake_az.azure_openai_document()
+    requests = []
+
+    class Response:
+        def __init__(self, payload):
+            self.payload = json.dumps(payload).encode()
+
+        def __enter__(self): return self
+        def __exit__(self, *_): return False
+        def read(self): return self.payload
+
+    def urlopen(request, timeout):
+        requests.append(request)
+        if request.full_url.startswith("http://localhost/"):
+            return Response({"access_token": "read-only-token"})
+        assert request.get_header("Authorization") == "Bearer read-only-token"
+        assert request.full_url == (
+            "https://management.azure.com" + fake_az.AZURE_OPENAI_RESOURCE_UID
+            + "?api-version=2025-06-01")
+        return Response(document)
+
+    monkeypatch.setattr("elcapitan.cloud.urllib.request.urlopen", urlopen)
+    managed_env = verification_env({
+        "ELCAP_SCANNER_AZURE_MANAGED_IDENTITY_CLIENT_ID": "scanner-client-id",
+        "IDENTITY_ENDPOINT": "http://localhost/token",
+        "IDENTITY_HEADER": "rotating-platform-header",
+    }, provider="azure")
+    managed = capture_cloud_state(
+        fake_az.AZURE_OPENAI_RESOURCE_UID,
+        provider="azure", env=managed_env)
+    azure.responses(fake_az.azure_openai_responses())
+    assert managed.config == azure(
+        resource_uid=fake_az.AZURE_OPENAI_RESOURCE_UID).config
     assert len(requests) == 2
 
 

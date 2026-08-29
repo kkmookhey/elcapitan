@@ -12,12 +12,13 @@ deployment and one non-production cloud boundary.
   Finding Format, plus the unchanged source export for chain of custody.
 - At least five resources with a useful mixture of true findings, stale
   findings, unsupported controls, shared services, and differing criticality.
-- Two or more findings covered by deterministic El Capitan validators. The
-  current Azure scope includes Storage public network access, Blob public
-  access, Blob versioning, and SQL Server CMK-backed TDE across every user
-  database. SQL validation has no planning or mutation authority. The current
-  AWS pilot includes S3 object versioning validation but no AWS mutation
-  authority.
+- Two or more findings covered by deterministic El Capitan validators. Use
+  `elcapitan capabilities` as the authoritative support matrix. The current
+  Azure scope spans selected Storage, SQL Server, Key Vault, subnet, App
+  Service/Functions, Container Registry, and Azure OpenAI controls. Most are
+  validation-only; only the capability output may be used to infer planning or
+  execution authority. The current AWS pilot includes S3 object versioning
+  validation and planning but no AWS mutation authority.
 - A read-only Terraform repository snapshot and sanitized state JSON for a
   small subset of validated resources. No secrets, provider credentials,
   access keys, connection strings, or data-plane content.

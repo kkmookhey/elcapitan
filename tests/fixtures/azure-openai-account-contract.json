@@ -1,0 +1,13 @@
+{
+  "id": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/elcap-openai-fixture-rg/providers/Microsoft.CognitiveServices/accounts/elcap-openai-fixture",
+  "name": "elcap-openai-fixture",
+  "type": "Microsoft.CognitiveServices/accounts",
+  "kind": "OpenAI",
+  "location": "centralindia",
+  "properties": {
+    "publicNetworkAccess": "Enabled"
+  },
+  "sku": {
+    "name": "S0"
+  }
+}
