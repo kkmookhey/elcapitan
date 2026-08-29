@@ -6,6 +6,27 @@ through live validation, risk prioritization, remediation planning, SRE review,
 change-window selection, rollback review, human approval, deployment,
 monitoring, verification, certificate issuance, and originator handoff.
 
+```mermaid
+flowchart LR
+    S[Scanner export] --> I[Intake and correlation]
+    I --> V[Bounded read-only validation]
+    V --> E[Typed immutable evidence]
+    E --> G[Deterministic policy gates]
+    M[Optional model workers] -. bounded typed proposals .-> G
+    G --> P[Hash-bound review package]
+    P --> H{Human decision}
+    H -->|reject| X[Stop with durable record]
+    H -->|approve| A[Separately authorized action plane]
+    A --> R[Checkpoint, monitor, verify or roll back]
+```
+
+The trust boundary is deliberate: scanner and observer identities are
+read-only; optional models receive minimized evidence and cannot transition
+workflow state; approval is bound to one exact package hash; and execution
+requires a separately proven connector, identity, health contract, checkpoint,
+and rollback path. Validation support never implies planning or execution
+authority.
+
 ## Five-minute local quickstart
 
 Start the read-only shadow console and PostgreSQL with no cloud or model
@@ -44,7 +65,10 @@ blueprint](docs/public-release-v0.1.md) for its product promise, distribution,
 security gates, and launch checklist. The
 [generated capability/evidence matrix](docs/generated/capability-matrix.md)
 keeps validation, planning, execution, and proof grade separate for every
-registered control.
+registered control. Draft launch material includes the
+[engineering design article](docs/engineering-deterministic-gates.md),
+[security design article](docs/security-design.md), and
+[v0.1.0 release notes](docs/release-notes-v0.1.0.md).
 
 ## AWS/Azure customer shadow fleet
 

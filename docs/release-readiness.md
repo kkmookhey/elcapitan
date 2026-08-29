@@ -33,7 +33,7 @@ be tagged or published.
 | Protected release environment | pending | Repository owner configures `release` reviewers before enabling the workflow |
 | OCI/distribution publication | blocked | Run guarded release workflow only after all release gates pass |
 | Customer shadow pilot | blocked | Requires an authorized non-production boundary, customer agreement, identities, data handling, and read-only access |
-| Public launch materials | blocked | Publication and consent are external writes and remain unapproved |
+| Public launch materials | blocked | Architecture/trust-boundary README, article drafts, release notes, and capture runbook exist; real screenshots, authorized live-lab recording, consent, and publication remain external gates |
 
 The release workflow is manual-only. It runs only on a tag, requires the exact
 `RELEASE APPROVED` input, uses the protected `release` environment, and then

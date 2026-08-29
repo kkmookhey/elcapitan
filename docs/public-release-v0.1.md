@@ -180,6 +180,12 @@ The launch should include:
    fail-closed behavior, and package-bound human approval.
 6. Release notes that state limitations as prominently as features.
 
+The local launch drafts are the [engineering article](engineering-deterministic-gates.md),
+[security design article](security-design.md), and [limitation-forward release
+notes](release-notes-v0.1.0.md). The [capture runbook](launch-capture-runbook.md)
+defines the seven-minute sequence and screenshot safety review. Actual media,
+the authorized live-lab segment, and publication remain external gates.
+
 ## Recommended sequence
 
 1. Finish the top Azure/AWS validation packs and generate the support matrix.

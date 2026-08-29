@@ -74,6 +74,12 @@ SBOM, local OCI provenance, and an authenticated synthetic quickstart in 10
 seconds. See `docs/release-readiness.md` and
 `docs/release-rehearsal-2026-08-28.md`.
 
+The local launch-package drafts also exist: the README architecture/trust
+boundary, engineering and security articles, limitation-forward release notes,
+and a timed demo/screenshot runbook. Actual screenshots could not be captured
+because no browser surface was connected in the completing session. The live
+lab recording segment and all publication remain separately authorized work.
+
 Run the complete suite with:
 
 ```bash
@@ -291,6 +297,10 @@ session. The implementation now:
 3. The remaining customer shadow pilot requires a separately authorized
    read-only customer boundary, identities, data handling, and consent. It is
    prohibited under the current no-customer-data objective.
+4. Capture real synthetic UI screenshots only with a connected browser and run
+   the live-lab demo segment only after its exact non-production resource and
+   read-only identity are approved. Recording and publication are external
+   writes and remain unapproved.
 
 The retired Claude/Hermes capability probe remains on
 `archive/claude-code-probe-2026-08-25`. It is not part of the product runtime,
