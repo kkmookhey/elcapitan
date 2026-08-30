@@ -56,6 +56,7 @@ def test_review_web_is_authenticated_and_has_no_execution_route(tmp_path):
             server, "GET", "/review.css", headers={"Cookie": cookie})
         assert status == 200
         assert b":focus-visible" in content
+        assert b".tenant-control input:focus-visible" in content
         assert b"prefers-reduced-motion:reduce" in content
 
         status, _, content = request(

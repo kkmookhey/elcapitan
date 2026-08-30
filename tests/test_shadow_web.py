@@ -58,6 +58,7 @@ def test_shadow_api_intake_fleet_and_case_detail_are_authenticated(tmp_path):
             server, "GET", "/fleet.css", headers={"Cookie": cookie})
         assert status == 200
         assert b":focus-visible" in content
+        assert b".tenant-control input:focus-visible" in content
         assert b"prefers-reduced-motion:reduce" in content
         status, headers, content = request(
             server, "GET", "/fleet.js", headers={"Cookie": cookie})

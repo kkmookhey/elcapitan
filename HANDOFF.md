@@ -93,14 +93,18 @@ because no browser surface was connected.
 The completed Azure E2E/deployment-hardening slice passes **540 tests**, the
 release-tree and shell-syntax checks, and both Python distribution builds.
 
-The current browser/release-gate slice passes **542 tests**. The authenticated
+The browser/release-gate slice passes **546 tests** locally after the final
+manual-browser corrections. The authenticated
 PostgreSQL quickstart now checks the hardened session cookie, UI assets and
 semantic labels, cross-origin rejection, and absence of a shadow execution
 route. The public runtime rebuilds pinned Terraform 1.16.0 source with patched
 Go 1.26.6 and a refreshed Python base; Trivy 0.70.0 reports zero fixed
 high/critical findings in the local Linux arm64 image. See
-`docs/release-verification-2026-08-29.md`. Rendered browser acceptance is still
-pending because no in-app browser surface was connected.
+`docs/release-verification-2026-08-29.md`. Manual Chromium acceptance completed
+on 2026-08-30 after correcting copy, focus, typography, hidden-state, and
+recursive-detail defects; see `docs/manual-browser-acceptance-2026-08-30.md`.
+Sanitized viewport-only launch images remain pending because the supplied
+acceptance captures included browser chrome or profile indicators.
 
 Remote CI run `33270941312` passed the 542-test/package job, complete-history
 secret scan, Linux amd64 high/critical container scan with zero findings, and
@@ -349,10 +353,11 @@ and remaining visual-browser limitation are in
 3. The remaining customer shadow pilot requires a separately authorized
    read-only customer boundary, identities, data handling, and consent. It is
    prohibited under the current no-customer-data objective.
-4. Capture real synthetic UI screenshots only with a connected browser and run
-   the live-lab demo segment only after its exact non-production resource and
-   read-only identity are approved. Recording and publication are external
-   writes and remain unapproved.
+4. Manual rendered UI acceptance is complete. Capture release-safe synthetic
+   screenshots only from a clean browser profile with application-viewport
+   crops, and run the live-lab demo segment only after its exact non-production
+   resource and read-only identity are approved. Recording and publication are
+   external writes and remain unapproved.
 5. The private repository's current GitHub plan does not expose protected
    environments or rulesets. Do not weaken the guarded release workflow; an
    owner must upgrade the plan or separately authorize public visibility before

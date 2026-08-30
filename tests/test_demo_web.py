@@ -62,3 +62,29 @@ def test_demo_web_rejects_cross_origin_writes(tmp_path):
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_demo_web_does_not_overstate_autonomy(tmp_path):
+    server = _DemoServer(("127.0.0.1", 0), DemoControlPlane(tmp_path))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        status, _, body = request(server, "GET", "/")
+
+        assert status == 200
+        assert b"Evidence-bound remediation fleet" in body
+        assert b"autonomous" not in body.lower()
+        status, _, script = request(server, "GET", "/app.js")
+        assert status == 200
+        assert b"summarizeRecordBody" in script
+        assert b'HumanReviewPackage.v1' in script
+        assert b"bound_records" in script
+        assert b"evidenceSummary" in script
+        status, _, stylesheet = request(server, "GET", "/app.css")
+        assert status == 200
+        assert b".detail-list.compact" in stylesheet
+        assert b".detail-object .detail-object .detail-row" in stylesheet
+        assert b'[hidden] { display: none !important; }' in stylesheet
+    finally:
+        server.shutdown()
+        server.server_close()

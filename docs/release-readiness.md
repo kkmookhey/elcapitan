@@ -8,7 +8,7 @@ be tagged or published.
 
 | Gate | Status | Evidence or next proof |
 |---|---|---|
-| Full Python suite | verified | 545 tests passed in the dated UI/release-gate verification; 538 passed independently in the clean-clone rehearsal at `44dd79e` |
+| Full Python suite | verified | 546 tests passed in the dated UI/release-gate verification; 538 passed independently in the clean-clone rehearsal at `44dd79e` |
 | Wheel and source distribution | verified | The post-E2E slice and clean-clone rehearsal both built wheel and source distributions successfully; rehearsal artifacts were inspected and checksummed at `44dd79e` |
 | Syntax/static checks | verified | Clean-clone compile and narrow Ruff error checks passed at `44dd79e`; repository-wide Ruff formatting remains migration debt |
 | Dependency review | implemented | GitHub dependency review rejects moderate-or-higher vulnerabilities on pull requests |
@@ -20,7 +20,7 @@ be tagged or published.
 | Lifecycle operations | implemented | `docs/operations.md` covers upgrade, backup, restore, retention, deletion, and uninstall |
 | Capability/evidence matrix | verified | Registry generates checked-in JSON/Markdown; CI rejects drift; CLI reports the same 36-control contract |
 | Docker Compose quickstart | verified | The dated verification reached the authenticated synthetic PostgreSQL result plus UI/cookie/write-boundary assertions in 10 seconds; independent new-host evidence remains |
-| UI release labels | verified at HTTP/contract level | Fleet API/browser separate synthetic/real input, live outcomes, validation/planning/execution, and evidence grade; semantic accessibility checks pass, while rendered browser acceptance and screenshots remain pending |
+| UI release labels | verified | Fleet API/browser separate synthetic/real input, live outcomes, validation/planning/execution, and evidence grade; semantic accessibility checks pass; [manual Chromium acceptance](manual-browser-acceptance-2026-08-30.md) verified the rendered fleet, review, lifecycle, dialog, and focus states after correcting the defects it exposed |
 | Local RC rehearsal | verified | [Dated evidence](release-rehearsal-2026-08-28.md) records the clean-clone suite/build, secret prevention scan, PostgreSQL quickstart, checksums, 370-component CycloneDX SBOM, OCI digest, and provenance at `44dd79e` |
 | Authorized Azure hosted E2E | verified | [Dated evidence](azure-e2e-2026-08-29.md) records fresh PostgreSQL isolation, authenticated intake, managed-identity validation, scanner mutation denial, both Storage success/rollback lifecycles, restoration, and cleanup at candidate source `57cfcb5` |
 
@@ -35,7 +35,7 @@ be tagged or published.
 | Remote CI | verified | [Run 33270941312](https://github.com/kkmookhey/elcapitan/actions/runs/33270941312) passed test/package, complete-history secret scan, high/critical container scan, and the expanded PostgreSQL/UI quickstart at `0cfbaf3` |
 | OCI/distribution publication | blocked | Run guarded release workflow only after all release gates pass |
 | Customer shadow pilot | blocked | Requires an authorized non-production boundary, customer agreement, identities, data handling, and read-only access |
-| Public launch materials | blocked | Architecture/trust-boundary README, article drafts, release notes, and capture runbook exist; real screenshots, authorized live-lab recording, consent, and publication remain external gates |
+| Public launch materials | blocked | Architecture/trust-boundary README, article drafts, release notes, and capture runbook exist; manual browser acceptance passed, while sanitized viewport-only launch screenshots, authorized live-lab recording, consent, and publication remain external gates |
 
 The release workflow is manual-only. It runs only on a tag, requires the exact
 `RELEASE APPROVED` input and the SHA-256 of the committed

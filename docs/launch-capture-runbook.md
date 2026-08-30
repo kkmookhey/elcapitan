@@ -47,7 +47,12 @@ PNG files and record the commit that produced them.
 The written sequence is ready. The authenticated PostgreSQL quickstart and UI
 HTTP/accessibility contract passed on 2026-08-29, including hardened cookies,
 read-only route boundaries, dialog semantics, keyboard-focus styling, and
-reduced-motion behavior. Rendered interaction, actual screenshots, and the
-recording remain pending because no browser surface was connected. The live-lab
-segment is outside the current no-cloud objective. Do not replace browser proof
-with HTTP assertions, a fabricated image, or an unlabeled synthetic claim.
+reduced-motion behavior. Manual Chromium acceptance passed on 2026-08-30 after
+correcting copy, focus, typography, hidden-placeholder, and recursive-detail
+defects; see the [dated record](manual-browser-acceptance-2026-08-30.md).
+
+The acceptance captures are not release assets because several include browser
+chrome or profile indicators. Clean viewport-only screenshots and the
+recording remain pending. The live-lab segment is outside the current no-cloud
+objective. Do not replace browser proof with HTTP assertions, a fabricated
+image, or an unlabeled synthetic claim.

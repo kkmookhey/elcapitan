@@ -8,7 +8,7 @@ this document. It is evidence for review, not authorization to tag or publish.
 
 | Check | Result |
 |---|---|
-| Python suite | 545 passed in 28.68 seconds under the locked Python 3.12 environment |
+| Python suite | 546 passed in 29.09 seconds under the locked Python 3.12 environment after the manual-browser corrections |
 | PostgreSQL quickstart | Passed in 10 seconds with synthetic input and no cloud/model credentials |
 | Authenticated UI contract | Login, hardened session cookie, fleet HTML/JS/CSS, intake, capability labels, and read-only boundary passed |
 | Write-boundary checks | Cross-origin intake returned 403; the shadow execution route returned 404 |
@@ -39,13 +39,18 @@ proof that the historical value was harmless or revoked. Security-owner review,
 rotation where necessary, and an explicit history decision remain release
 gates. No historical secret value was printed or copied during this run.
 
-## Remaining visual and external proof
+## Rendered and remaining external proof
 
-No in-app browser surface was connected, so rendered keyboard navigation,
-responsive layout, dialog interaction, and sanitized screenshots remain
-unverified. The browser artifacts must not be fabricated or substituted with
-HTTP assertions. Remote GitHub CI/container evidence passed for the implementing
-commit, and later release-candidate commits must retain a green run.
+No in-app browser surface was connected, so the owner performed the local
+Chromium pass manually. The [dated acceptance record](manual-browser-acceptance-2026-08-30.md)
+captures the fleet, case-detail, review, lifecycle, dialog, and keyboard-focus
+proof plus the copy, focus, typography, hidden-state, and recursive-detail
+defects corrected from the first pass. The supplied captures were not committed
+because several contained personal browser chrome or profile indicators.
+Sanitized viewport-only launch images and the recording remain pending; they
+must not be fabricated or substituted with HTTP assertions. Remote
+GitHub CI/container evidence passed for the prior implementing commit, and the
+final UI-polish commit must retain a green run.
 
 The repository is private on a GitHub plan that returned HTTP 403 for protected
 environments and repository rulesets. The guarded release workflow must retain

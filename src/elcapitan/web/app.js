@@ -123,7 +123,8 @@ function renderDetailValue(value, depth = 0) {
   }
   if (Array.isArray(value)) {
     if (!value.length) return `<span class="detail-empty">None</span>`;
-    return `<ul class="detail-list">${value.map(item => `<li>${renderDetailValue(item, depth + 1)}</li>`).join("")}</ul>`;
+    const compact = value.every(item => item === null || typeof item !== "object");
+    return `<ul class="detail-list${compact ? " compact" : ""}">${value.map(item => `<li>${renderDetailValue(item, depth + 1)}</li>`).join("")}</ul>`;
   }
   if (typeof value === "object") {
     const entries = Object.entries(value);
@@ -132,6 +133,47 @@ function renderDetailValue(value, depth = 0) {
       <div class="detail-row"><div class="detail-key">${escapeHtml(humanize(key))}</div><div>${renderDetailValue(child, depth + 1)}</div></div>`).join("")}</div>`;
   }
   return `<span class="detail-value">${escapeHtml(value)}</span>`;
+}
+
+function evidenceSummary(evidenceIds = []) {
+  return {
+    count: evidenceIds.length,
+    sample_ids: evidenceIds.slice(0, 4),
+    additional_ids: Math.max(0, evidenceIds.length - 4),
+  };
+}
+
+function summarizeRecordBody(item) {
+  const body = item.body || {};
+  if (item.record_type !== "HumanReviewPackage.v1") return body;
+  const boundRecords = {};
+  [
+    ["validation", body.validation],
+    ["iac_link", body.iac_link],
+    ["remediation_plan", body.remediation_plan],
+    ["sre_review", body.sre_review],
+    ["change_window", body.change_window],
+    ["rollback_review", body.rollback_review],
+    ["policy_decision", body.policy_decision],
+  ].forEach(([name, record]) => {
+    if (record?.record_id) boundRecords[name] = record.record_id;
+  });
+  return {
+    review_package_id: body.review_package_id,
+    requested_human_decision: body.requested_human_decision,
+    execution_status: body.execution_status,
+    case: {
+      case_id: body.case?.case_id,
+      tenant_id: body.case?.tenant_id,
+      state: body.case?.state,
+    },
+    risk: {
+      score: body.risk_assessment?.score,
+      urgency: body.risk_assessment?.urgency,
+      confidence: body.risk_assessment?.confidence,
+    },
+    bound_records: boundRecords,
+  };
 }
 
 function detailSection(title, identifier, document) {
@@ -166,8 +208,8 @@ function showStage(stageName) {
   }
   records.forEach(item => sections.push(detailSection(item.record_type, item.record_id, {
     created_at: item.created_at,
-    decision: item.body,
-    evidence_ids: item.evidence_ids,
+    record: summarizeRecordBody(item),
+    evidence: evidenceSummary(item.evidence_ids),
   })));
   const relatedEvents = currentState.events.filter(event => event.to_state === stageName);
   relatedEvents.forEach(event => sections.push(detailSection("Audit transition", event.event_id, event)));
@@ -186,7 +228,10 @@ function showEvent(index) {
     subtitle: `${humanize(event.from_state)} → ${humanize(event.to_state)} · ${event.actor}`,
     sections: [
       detailSection("Immutable transition", event.event_id, event),
-      ...associated.map(item => detailSection(item.record_type, item.record_id, {decision: item.body, evidence_ids: item.evidence_ids})),
+      ...associated.map(item => detailSection(item.record_type, item.record_id, {
+        record: summarizeRecordBody(item),
+        evidence: evidenceSummary(item.evidence_ids),
+      })),
     ],
   });
 }
@@ -198,8 +243,8 @@ function showRecordIndex() {
     subtitle: "Every material decision is typed, case-bound, timestamped, and linked to its evidence.",
     sections: currentState.records.map(item => detailSection(item.record_type, item.record_id, {
       created_at: item.created_at,
-      evidence_ids: item.evidence_ids,
-      decision: item.body,
+      evidence: evidenceSummary(item.evidence_ids),
+      record: summarizeRecordBody(item),
     })),
   });
 }
