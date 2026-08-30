@@ -3,9 +3,10 @@ import json
 import re
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
-from scripts.check_release_tree import check_release_approval
+from scripts.check_release_tree import check_release_approval, is_forbidden_tracked_path
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,11 +28,38 @@ def test_repository_readiness_check_passes_before_release():
     assert result.stdout == "release-tree checks passed\n"
 
 
-def test_final_release_check_fails_closed_without_license_and_dated_changelog():
+def test_repository_declares_the_approved_apache_license():
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
+    license_text = (ROOT / "LICENSE").read_text()
+    notice = (ROOT / "NOTICE").read_text()
+
+    assert project["license"] == {"text": "Apache-2.0"}
+    assert "License :: OSI Approved :: Apache Software License" in project[
+        "classifiers"
+    ]
+    assert "Apache License" in license_text
+    assert "Version 2.0, January 2004" in license_text
+    assert "Copyright 2026 Transilience, Inc." in notice
+
+
+def test_release_tree_rejects_terraform_state_and_variable_artifacts():
+    for name in (
+        "infra/terraform.tfstate",
+        "infra/prod.tfstate.backup",
+        "infra/prod.tfstate.1700000000",
+        "infra/private.tfvars",
+        "infra/private.tfvars.json",
+        "infra/deploy.tfplan",
+    ):
+        assert is_forbidden_tracked_path(name)
+
+    assert not is_forbidden_tracked_path("infra/main.tf")
+
+
+def test_final_release_check_fails_closed_without_approvals_and_dated_changelog():
     result = run_release_check("--release", "--tag", "v0.1.0")
 
     assert result.returncode == 1
-    assert "LICENSE is missing" in result.stderr
     assert "CHANGELOG 0.1.0 release date is still Unreleased" in result.stderr
     assert "--approval-sha256 is required" in result.stderr
     assert "RELEASE_APPROVAL.json is missing" in result.stderr

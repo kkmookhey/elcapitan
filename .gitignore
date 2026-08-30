@@ -9,6 +9,11 @@ __pycache__/
 .pytest_cache/
 .venv/
 .terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+*.tfplan
 /build/
 /release/
 environments/eiger/trap2/trap2.tfplan

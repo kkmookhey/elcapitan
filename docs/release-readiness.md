@@ -28,9 +28,9 @@ be tagged or published.
 
 | Gate | Status | Required authority/evidence |
 |---|---|---|
-| License selection | blocked | Legal/business owner selects and approves `LICENSE`; none is inferred by this repository |
-| Project-name approval | blocked | Business/legal owner records approval for the El Capitan name |
-| Historical secret response | blocked | Authorized owner adjudicates the 22 fingerprints, rotates any live material, and approves history rewrite if required |
+| License selection | verified | Transilience, Inc. approved Apache-2.0; the canonical license, package metadata, notice, and [dated owner record](owner-decisions-2026-08-30.md) are checked in |
+| Project-name approval | verified | Transilience, Inc. approved retaining El Capitan after the collision risk was surfaced; the [dated record](owner-decisions-2026-08-30.md) is a business decision, not a trademark opinion |
+| Historical secret response | blocked | The [sanitized review](historical-secret-review-2026-08-30.md) identifies two probable Eiger Azure Storage keys and one Eiger VM/admin password that require rotation or destruction proof; the Anna entry and ten other fingerprints remain outside the current review authorization |
 | Protected release environment | blocked | GitHub returned HTTP 403 because protected environments/rulesets are unavailable for this private repository on its current plan; an owner must upgrade or separately authorize public visibility, then configure `release` reviewers |
 | Remote CI | verified | [Run 33270941312](https://github.com/kkmookhey/elcapitan/actions/runs/33270941312) passed test/package, complete-history secret scan, high/critical container scan, and the expanded PostgreSQL/UI quickstart at `0cfbaf3` |
 | OCI/distribution publication | blocked | Run guarded release workflow only after all release gates pass |

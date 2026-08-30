@@ -172,9 +172,16 @@ into one generic "supported" claim.
 - Key Vault diagnostic logging is contract-tested, but its Monitor read has not
   yet been run against a lab vault; the other three Key Vault controls retain
   their existing E2E-measured evidence grade.
-- License and project-name clearance, historical-secret adjudication, protected
-  release-environment configuration, signing, and public
+- Apache-2.0 and the El Capitan name were explicitly approved by Transilience,
+  Inc. on 2026-08-30 and are recorded in
+  `docs/owner-decisions-2026-08-30.md`. Historical-secret adjudication,
+  protected release-environment configuration, signing, and public
   artifact publication/provenance remain external release gates.
+- The authorized Eiger-only historical-secret review found two distinct
+  probable Azure Storage account keys and one VM/admin password that must be
+  rotated or proven destroyed. The Anna entry was explicitly excluded, and ten
+  other fingerprints remain unresolved. No value was printed. See
+  `docs/historical-secret-review-2026-08-30.md`.
 
 ## Non-negotiable safety boundaries
 
@@ -343,8 +350,8 @@ and remaining visual-browser limitation are in
    scanning, clean packaging metadata, reproducible container inputs,
    SBOM/provenance generation, capability/evidence matrix generation,
    PostgreSQL quickstart, and release-candidate rehearsal.
-2. Do not tag or publish until authorized owners approve the license and name,
-   adjudicate and remediate the historical secret baseline, configure the
+2. Do not tag or publish until authorized owners adjudicate and remediate the
+   historical secret baseline, configure the
    protected release environment, and obtain successful remote CI/container
    scan evidence. Record those decisions in a committed
    `RELEASE_APPROVAL.json` based on the checked-in example and pass its exact

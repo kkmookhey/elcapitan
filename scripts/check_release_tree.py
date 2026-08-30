@@ -19,6 +19,8 @@ REQUIRED_FILES = (
     "CHANGELOG.md",
     "CODE_OF_CONDUCT.md",
     "CONTRIBUTING.md",
+    "LICENSE",
+    "NOTICE",
     "compose.yaml",
     "SECURITY.md",
     "SUPPORT.md",
@@ -39,6 +41,22 @@ FORBIDDEN_TRACKED_PARTS = {
     "terraform.tfstate",
     "terraform.tfstate.backup",
 }
+FORBIDDEN_TRACKED_SUFFIXES = (
+    ".tfplan",
+    ".tfstate",
+    ".tfstate.backup",
+    ".tfvars",
+    ".tfvars.json",
+)
+
+
+def is_forbidden_tracked_path(name: str) -> bool:
+    path = Path(name)
+    return (
+        bool(set(path.parts) & FORBIDDEN_TRACKED_PARTS)
+        or path.name.endswith(FORBIDDEN_TRACKED_SUFFIXES)
+        or ".tfstate." in path.name
+    )
 
 
 def _baseline_fingerprint_count() -> int:
@@ -115,7 +133,12 @@ def check_release_approval(
             errors.append("release approval license.decision must be approved")
         if not isinstance(spdx_id, str) or not spdx_id.strip() or "<" in spdx_id:
             errors.append("release approval license.spdx_id must be recorded")
-        if project_license != spdx_id:
+        declared_license = (
+            project_license.get("text")
+            if isinstance(project_license, Mapping)
+            else project_license
+        )
+        if declared_license != spdx_id:
             errors.append("project.license must match release approval license.spdx_id")
 
     name_record = document.get("project_name")
@@ -192,9 +215,10 @@ def check(
     tracked = tracked_files()
     if document["project"].get("requires-python") != "==3.12.*":
         errors.append("project.requires-python must remain pinned to Python 3.12")
+    if document["project"].get("license") != {"text": "Apache-2.0"}:
+        errors.append("project.license must remain Apache-2.0")
     for name in tracked:
-        parts = set(Path(name).parts)
-        if parts & FORBIDDEN_TRACKED_PARTS:
+        if is_forbidden_tracked_path(name):
             errors.append(f"forbidden generated or sensitive path is tracked: {name}")
     if release:
         if not (ROOT / "LICENSE").is_file():
