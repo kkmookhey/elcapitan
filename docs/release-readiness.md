@@ -12,7 +12,7 @@ be tagged or published.
 | Wheel and source distribution | verified | The post-E2E slice and clean-clone rehearsal both built wheel and source distributions successfully; rehearsal artifacts were inspected and checksummed at `44dd79e` |
 | Syntax/static checks | verified | Clean-clone compile and narrow Ruff error checks passed at `44dd79e`; repository-wide Ruff formatting remains migration debt |
 | Dependency review | implemented | GitHub dependency review rejects moderate-or-higher vulnerabilities on pull requests |
-| Secret scanning | blocked | CI prevents new leaks. The approved Eiger-only rewrite removed two generated Trap-2 state paths and resolved 11 legacy fingerprints; 11 entries remain pending owner disposition without any Anna or non-Eiger source review |
+| Secret scanning | blocked | CI prevents new leaks. The approved Eiger-only rewrite removed two generated Trap-2 state paths and resolved 11 legacy fingerprints; 11 entries remain pending owner disposition without any Anna or non-Eiger source review, and GitHub's affected PR refs/cached views still require server-side cleanup before public visibility |
 | Container scan | verified | The dated verification rebuilt Terraform 1.16.0 with patched Go; Trivy found zero fixed high/critical findings locally on Linux arm64 and remotely on Linux amd64 in [CI run 33270941312](https://github.com/kkmookhey/elcapitan/actions/runs/33270941312) |
 | Reproducible container inputs | verified | Python, Go, Terraform source, and PostgreSQL inputs are digest/checksum pinned; runtime Python dependencies are version/hash locked and CI checks export drift |
 | Governance policies | implemented | Security, contributing, conduct, support, versioning, and changelog files exist |

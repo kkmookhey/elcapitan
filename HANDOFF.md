@@ -183,7 +183,9 @@ into one generic "supported" claim.
   temporary account's recorded destroy state contains zero resources. The two
   state paths were purged from all reachable Git refs and the 11 resolved Eiger
   fingerprints were removed. The Anna entry was explicitly excluded, and ten
-  other fingerprints remain unresolved. No value was printed. See
+  other fingerprints remain unresolved. GitHub's eight affected read-only PR
+  refs and cached views still require server-side cleanup before public
+  visibility. No value was printed. See
   `docs/historical-secret-review-2026-08-30.md`.
 
 ## Non-negotiable safety boundaries

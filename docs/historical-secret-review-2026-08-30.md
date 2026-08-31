@@ -49,6 +49,21 @@ the affected Dependabot branches from clean history, removing all 11 resolved
 Eiger fingerprints, and rerunning complete-history scanning and CI. The
 authorization explicitly excluded Anna and the other ten entries.
 
+## Rewrite verification
+
+`git-filter-repo --sensitive-data-removal` rewrote 119 of 211 locally fetched
+commits and reported `0fb075fc9eab9d3b5ba2a32b1b181e3d20b4b121` as the first
+changed commit. Eight pull-request head refs (`1` through `8`) were affected;
+seven were open Dependabot updates and one was already closed. No tag was
+affected and Git LFS was not in use.
+
+The isolated rewritten mirror contained zero reachable objects at either
+approved state path. An all-ref Gitleaks scan passed with the retained
+11-entry baseline and the exact-field false-positive rule. The same scan with
+no baseline reported exactly the 11 entries that remain unresolved. GitHub's
+read-only pull-request refs and cached views require the separately documented
+server-side cleanup step before public visibility.
+
 ## Excluded Anna entry
 
 One baseline entry names Anna. The owner explicitly denied source review. It
