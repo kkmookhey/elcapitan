@@ -41,3 +41,12 @@ repository.
 No historical secret value may be printed or committed. An Anna-named baseline
 entry remains owner-reviewed outside this process or unresolved; it cannot be
 waived by the final release record.
+
+After reviewing a redacted occurrence listing, the owner confirmed that the
+Eiger-named files belonged to El Capitan's retired Azure capability probe, not
+to the Eiger application. The owner approved purging the two Trap-2 Terraform
+state paths from all Git history, force-pushing rewritten `main` and archive
+branches, closing/deleting and recreating the seven affected Dependabot
+branches, removing the 11 resolved Eiger fingerprints, correcting the durable
+record, and rerunning scans and CI. Anna and the other ten fingerprints remain
+explicitly excluded from that authorization.

@@ -1,12 +1,12 @@
 # Historical-secret review — 2026-08-30
 
 This is a sanitized, fail-closed review record for the `v0.1.0` release. It
-contains no credential value, value hash, source path, customer identifier, or
-cloud response. It is not authorization to publish or rewrite history.
+contains no credential value, value hash, customer identifier, or cloud
+response. It is not authorization to publish.
 
 ## Baseline inventory
 
-The checked-in `.gitleaksignore` contains 22 legacy fingerprints across 14
+The original `.gitleaksignore` contained 22 legacy fingerprints across 14
 reachable commits and five removed paths:
 
 - 21 `generic-api-key` detections;
@@ -15,8 +15,9 @@ reachable commits and five removed paths:
   occurrences, one Terraform source occurrence, and one Markdown occurrence;
 - 17 distinct historical source lines.
 
-No referenced path remains tracked in the current tree. That does not make a
-historical credential safe because Git history remains downloadable.
+Eleven Eiger fingerprints were resolved by the review and cleanup below. The
+checked-in baseline now retains the other 11 unresolved fingerprints. No
+referenced path remains tracked in the current tree.
 
 ## Authorized Eiger-only review
 
@@ -25,18 +26,26 @@ The review used explicit path filtering, did not enumerate commit trees, did
 not print values, and did not access or modify the separate Eiger repository or
 any cloud resource.
 
-The 11 Eiger fingerprints occur across three commits and three removed paths.
-They reduce to the following potential credential material:
+The 11 Eiger fingerprints occurred across three commits and three removed
+paths. They reduced to:
 
-- two distinct probable Azure Storage account keys for one account, appearing
-  four times directly and six times inside connection strings; and
-- one VM or administrative password embedded in Terraform source.
+- two distinct Azure Storage account keys generated for the temporary Trap-2
+  account, appearing four times directly and six times inside connection
+  strings across an applied state and its identical destroy-time backup; and
+- one detector false positive: a 12-character Container App secret-name
+  identifier assigned to `password_secret_name`. The actual ACR password was
+  a Terraform resource reference, not a source literal.
 
-None of those lines contains an explicit synthetic or placeholder marker. The
-storage keys and password must therefore be treated as compromised. Before
-release, the Eiger owner must either rotate the credentials or prove that the
-corresponding resources were destroyed, then provide a sanitized durable
-attestation. El Capitan will not test the values or mutate Eiger resources.
+These files belonged to El Capitan's retired Azure capability-probe environment,
+which ran the public Eiger Docker image; they were not Eiger application
+credentials. The recorded destroy commit left the Trap-2 Terraform state with
+zero resources, and a later commit removed the retired environment.
+
+The owner approved removing the two generated state paths from every reachable
+Git ref, force-pushing the rewritten `main` and archive branches, rebuilding
+the affected Dependabot branches from clean history, removing all 11 resolved
+Eiger fingerprints, and rerunning complete-history scanning and CI. The
+authorization explicitly excluded Anna and the other ten entries.
 
 ## Excluded Anna entry
 
@@ -48,15 +57,15 @@ value to this project, then provide a sanitized durable attestation.
 ## Remaining baseline
 
 The other ten fingerprints are outside the Eiger-only authorization and remain
-unresolved. Ten lines in the overall baseline contain an explicit synthetic
-marker, but marker text alone is insufficient proof that every associated
-value was non-sensitive.
+unresolved. Together with the excluded Anna entry, they are the 11 entries
+still present in `.gitleaksignore`. Ten lines in the original overall baseline
+contain an explicit synthetic marker, but marker text alone is insufficient
+proof that every associated value was non-sensitive.
 
 ## Required completion evidence
 
-Historical-secret response is complete only after all 22 fingerprints have a
-sanitized disposition, every potential credential is rotated or proven
-destroyed, the owner explicitly chooses whether history rewrite is required,
-the baseline is reduced to zero, and a complete-history scan passes without an
-ignore file. History rewrite is destructive and requires separate explicit
-approval after credential response is complete.
+Historical-secret response is complete only after all 22 original fingerprints
+have a sanitized disposition, every potential credential is rotated or proven
+destroyed, the baseline is reduced to zero, and a complete-history scan passes
+without an ignore file. The Eiger rewrite is approved and completed; no rewrite
+or source review is authorized for Anna or the other ten entries.

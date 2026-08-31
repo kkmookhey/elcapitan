@@ -12,7 +12,7 @@ be tagged or published.
 | Wheel and source distribution | verified | The post-E2E slice and clean-clone rehearsal both built wheel and source distributions successfully; rehearsal artifacts were inspected and checksummed at `44dd79e` |
 | Syntax/static checks | verified | Clean-clone compile and narrow Ruff error checks passed at `44dd79e`; repository-wide Ruff formatting remains migration debt |
 | Dependency review | implemented | GitHub dependency review rejects moderate-or-higher vulnerabilities on pull requests |
-| Secret scanning | blocked | CI prevents new leaks. Gitleaks 8.30.1 found zero current-rule matches across 181 commits without the baseline, but 22 legacy fingerprints remain pending credential adjudication, rotation where necessary, and an explicit history decision |
+| Secret scanning | blocked | CI prevents new leaks. The approved Eiger-only rewrite removed two generated Trap-2 state paths and resolved 11 legacy fingerprints; 11 entries remain pending owner disposition without any Anna or non-Eiger source review |
 | Container scan | verified | The dated verification rebuilt Terraform 1.16.0 with patched Go; Trivy found zero fixed high/critical findings locally on Linux arm64 and remotely on Linux amd64 in [CI run 33270941312](https://github.com/kkmookhey/elcapitan/actions/runs/33270941312) |
 | Reproducible container inputs | verified | Python, Go, Terraform source, and PostgreSQL inputs are digest/checksum pinned; runtime Python dependencies are version/hash locked and CI checks export drift |
 | Governance policies | implemented | Security, contributing, conduct, support, versioning, and changelog files exist |
@@ -30,7 +30,7 @@ be tagged or published.
 |---|---|---|
 | License selection | verified | Transilience, Inc. approved Apache-2.0; the canonical license, package metadata, notice, and [dated owner record](owner-decisions-2026-08-30.md) are checked in |
 | Project-name approval | verified | Transilience, Inc. approved retaining El Capitan after the collision risk was surfaced; the [dated record](owner-decisions-2026-08-30.md) is a business decision, not a trademark opinion |
-| Historical secret response | blocked | The [sanitized review](historical-secret-review-2026-08-30.md) identifies two probable Eiger Azure Storage keys and one Eiger VM/admin password that require rotation or destruction proof; the Anna entry and ten other fingerprints remain outside the current review authorization |
+| Historical secret response | blocked | The [sanitized review](historical-secret-review-2026-08-30.md) records the completed Eiger-only cleanup: two generated Trap-2 Storage keys were removed with their state files and one source hit was a secret-name false positive; the Anna entry and ten other fingerprints remain outside the authorization |
 | Protected release environment | blocked | GitHub returned HTTP 403 because protected environments/rulesets are unavailable for this private repository on its current plan; an owner must upgrade or separately authorize public visibility, then configure `release` reviewers |
 | Remote CI | verified | [Run 33270941312](https://github.com/kkmookhey/elcapitan/actions/runs/33270941312) passed test/package, complete-history secret scan, high/critical container scan, and the expanded PostgreSQL/UI quickstart at `0cfbaf3` |
 | OCI/distribution publication | blocked | Run guarded release workflow only after all release gates pass |

@@ -177,9 +177,12 @@ into one generic "supported" claim.
   `docs/owner-decisions-2026-08-30.md`. Historical-secret adjudication,
   protected release-environment configuration, signing, and public
   artifact publication/provenance remain external release gates.
-- The authorized Eiger-only historical-secret review found two distinct
-  probable Azure Storage account keys and one VM/admin password that must be
-  rotated or proven destroyed. The Anna entry was explicitly excluded, and ten
+- The authorized Eiger-only historical-secret review found two generated
+  Azure Storage account keys duplicated across Trap-2 state and backup files,
+  plus one false positive on a Container App secret-name identifier. The
+  temporary account's recorded destroy state contains zero resources. The two
+  state paths were purged from all reachable Git refs and the 11 resolved Eiger
+  fingerprints were removed. The Anna entry was explicitly excluded, and ten
   other fingerprints remain unresolved. No value was printed. See
   `docs/historical-secret-review-2026-08-30.md`.
 
