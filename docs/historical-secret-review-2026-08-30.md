@@ -64,6 +64,10 @@ no baseline reported exactly the 11 entries that remain unresolved. GitHub's
 read-only pull-request refs and cached views require the separately documented
 server-side cleanup step before public visibility.
 
+Post-rewrite CI run `33358160306` passed the 549-test/package job,
+complete-history branch scan, high/critical container scan, and PostgreSQL/UI
+quickstart at sanitized commit `6ea9663`.
+
 ## Excluded Anna entry
 
 One baseline entry names Anna. The owner explicitly denied source review. It

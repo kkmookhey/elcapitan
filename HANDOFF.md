@@ -106,9 +106,10 @@ recursive-detail defects; see `docs/manual-browser-acceptance-2026-08-30.md`.
 Sanitized viewport-only launch images remain pending because the supplied
 acceptance captures included browser chrome or profile indicators.
 
-Remote CI run `33270941312` passed the 542-test/package job, complete-history
-secret scan, Linux amd64 high/critical container scan with zero findings, and
-the expanded PostgreSQL/UI quickstart at implementing commit `0cfbaf3`.
+Post-rewrite CI run `33358160306` passed the 549-test/package job,
+complete-history secret scan, Linux amd64 high/critical container scan with
+zero findings, and the expanded PostgreSQL/UI quickstart at sanitized commit
+`6ea9663`.
 
 Run the complete suite with:
 
