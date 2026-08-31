@@ -65,9 +65,10 @@ guarded release workflow produces checksums, SBOM and provenance attestations,
 but it cannot run without an approved tag, an exact confirmation phrase, and a
 protected release environment.
 
-The preview is not ready for public publication yet. Legal/business owners must
-approve the license and project name, and an authorized security owner must
-adjudicate the checked-in baseline of 22 historical secret-scan fingerprints,
-rotate any live material, and approve history cleaning where required. The
-baseline prevents regression; it is not a declaration that old matches are
-safe.
+The preview is not ready for public publication yet. The license, project name,
+and all 22 historical secret-scan fingerprints have owner-reviewed durable
+dispositions; generated test credentials were destroyed and purged, the
+baseline is empty, and complete-history scanning passes under narrowly scoped
+false-positive rules. GitHub Support must still confirm removal of retained
+pull-request refs and cached views before the authorized public-visibility and
+protected release-environment steps proceed.

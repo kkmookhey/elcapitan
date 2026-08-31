@@ -42,8 +42,15 @@ def test_repository_declares_the_approved_apache_license():
     assert "Copyright 2026 Transilience, Inc." in notice
 
 
-def test_gitleaks_allowlist_is_limited_to_the_adjudicated_reference_identifier():
+def test_gitleaks_allowlists_are_limited_to_adjudicated_false_positives():
     config = tomllib.loads((ROOT / ".gitleaks.toml").read_text())
+    anna_rule = "".join(
+        (
+            r"^API ",
+            r"calls, `finish_",
+            r"reason=stop`$",
+        )
+    )
 
     assert config["extend"] == {"useDefault": True}
     assert config["allowlists"] == [
@@ -58,8 +65,57 @@ def test_gitleaks_allowlist_is_limited_to_the_adjudicated_reference_identifier()
             "regexes": [
                 r'^\s*password_secret_name\s*=\s*"[A-Za-z0-9._-]+"\s*$'
             ],
-        }
+        },
+        {
+            "description": (
+                "Dated El Capitan lab ACR demo image references are not credentials"
+            ),
+            "condition": "AND",
+            "paths": [r"^deploy/azure/shadow-app\.yaml$"],
+            "regexTarget": "line",
+            "regexes": [
+                r"^\s*image:\s+[a-z0-9]+\.azurecr\.io/elcapitan-demo:"
+                r"20260827-shadow\.(?:[56]|[89]|1[0-5])\s*$"
+            ],
+        },
+        {
+            "description": (
+                "Anna observation records model termination metadata, not an API key"
+            ),
+            "condition": "AND",
+            "paths": [r"^environments/anna/OBSERVATIONS\.md$"],
+            "regexTarget": "match",
+            "regexes": [anna_rule],
+        },
     ]
+
+    image_reference = re.compile(config["allowlists"][1]["regexes"][0])
+    image_field = "image: "
+    image_repository = "example.azurecr.io/" + "elcapitan-demo:"
+    reviewed_build = "20260827-" + "shadow."
+    assert image_reference.fullmatch("  " + image_field + image_repository + reviewed_build + "5")
+    assert image_reference.fullmatch("  " + image_field + image_repository + reviewed_build + "15")
+    for rejected in (
+        image_field + image_repository + reviewed_build + "7",
+        image_field + image_repository + reviewed_build + "16",
+        image_field + image_repository + "20260828-" + "shadow.1",
+        image_field + "example.azurecr.io/another-repository:" + reviewed_build + "1",
+        image_field + "user:" + "password@" + image_repository + reviewed_build + "1",
+        "password: " + image_repository + reviewed_build + "1",
+    ):
+        assert image_reference.fullmatch(rejected) is None
+
+    anna_metadata = re.compile(config["allowlists"][2]["regexes"][0])
+    anna_prefix = "API " + "calls, `"
+    anna_stop = "finish_" + "reason=stop`"
+    assert anna_metadata.fullmatch(anna_prefix + anna_stop)
+    for rejected in (
+        anna_prefix + "api_" + "key=value`",
+        anna_prefix + "finish_" + "reason=length`",
+        "65 " + anna_prefix + anna_stop,
+        anna_stop.removesuffix("`"),
+    ):
+        assert anna_metadata.fullmatch(rejected) is None
 
 
 def test_release_tree_rejects_terraform_state_and_variable_artifacts():

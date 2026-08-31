@@ -1,14 +1,2 @@
-# Historical baseline only. These fingerprints must be removed by the
-# pre-release history-cleaning and credential-rotation gate documented in
-# docs/release-readiness.md. New findings are never allowlisted here.
-512062ae9439673aa3c21c1dc36a50ed0f8889eb:deploy/azure/shadow-app.yaml:generic-api-key:31
-69105738d29a69bd4e755a89edf342bb7169d782:deploy/azure/shadow-app.yaml:generic-api-key:31
-c1d612108dc7bce6d54a61d4e12eb6d93a7e13fb:deploy/azure/shadow-app.yaml:generic-api-key:31
-a69b2cc5e43e0471ff7050db598c3edcefcdfdaa:deploy/azure/shadow-app.yaml:generic-api-key:31
-0f51d6307fe67b280ffc085c4c9797fa502dcdde:deploy/azure/shadow-app.yaml:generic-api-key:30
-983398df9a865e2be3a30fcda3f6c2e0fd0f7de1:deploy/azure/shadow-app.yaml:generic-api-key:31
-c2e8e9953f47d5660155abb75de8bb1d6a3b848b:deploy/azure/shadow-app.yaml:generic-api-key:31
-ff2fbd635529b6ef7c5843e3f5da05a0bdda854c:deploy/azure/shadow-app.yaml:generic-api-key:30
-d89222e430878911aa1d1980d49d6b2aadf7001b:environments/anna/OBSERVATIONS.md:generic-api-key:16
-401c7002a982f38b61c3ccb5c91f6f9a8d1cc26c:deploy/azure/shadow-app.yaml:generic-api-key:31
-f418dba2aafd5320fe4501ab265f12a61c349990:deploy/azure/shadow-app.yaml:generic-api-key:31
+# Historical baseline intentionally empty after owner-reviewed disposition of
+# all 22 original fingerprints. New findings are never added here.

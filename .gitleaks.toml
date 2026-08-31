@@ -10,3 +10,17 @@ condition = "AND"
 paths = ['''^environments/eiger/infra/app\.tf$''']
 regexTarget = "line"
 regexes = ['''^\s*password_secret_name\s*=\s*"[A-Za-z0-9._-]+"\s*$''']
+
+[[allowlists]]
+description = "Dated El Capitan lab ACR demo image references are not credentials"
+condition = "AND"
+paths = ['''^deploy/azure/shadow-app\.yaml$''']
+regexTarget = "line"
+regexes = ['''^\s*image:\s+[a-z0-9]+\.azurecr\.io/elcapitan-demo:20260827-shadow\.(?:[56]|[89]|1[0-5])\s*$''']
+
+[[allowlists]]
+description = "Anna observation records model termination metadata, not an API key"
+condition = "AND"
+paths = ['''^environments/anna/OBSERVATIONS\.md$''']
+regexTarget = "match"
+regexes = ['''^API calls, `finish_reason=stop`$''']

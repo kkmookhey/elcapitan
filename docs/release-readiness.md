@@ -8,11 +8,11 @@ be tagged or published.
 
 | Gate | Status | Evidence or next proof |
 |---|---|---|
-| Full Python suite | verified | 546 tests passed in the dated UI/release-gate verification; 538 passed independently in the clean-clone rehearsal at `44dd79e` |
+| Full Python suite | verified | 549 tests passed in the 2026-08-31 historical-review cleanup verification; 546 passed in the dated UI/release-gate verification and 538 passed independently in the clean-clone rehearsal at `44dd79e` |
 | Wheel and source distribution | verified | The post-E2E slice and clean-clone rehearsal both built wheel and source distributions successfully; rehearsal artifacts were inspected and checksummed at `44dd79e` |
 | Syntax/static checks | verified | Clean-clone compile and narrow Ruff error checks passed at `44dd79e`; repository-wide Ruff formatting remains migration debt |
 | Dependency review | implemented | GitHub dependency review rejects moderate-or-higher vulnerabilities on pull requests |
-| Secret scanning | blocked | CI prevents new leaks. The approved Eiger-only rewrite removed two generated Trap-2 state paths and resolved 11 legacy fingerprints; 11 entries remain pending owner disposition without any Anna or non-Eiger source review, and GitHub's affected PR refs/cached views still require server-side cleanup before public visibility |
+| Secret scanning | blocked | CI prevents new leaks. All 22 historical fingerprints have sanitized dispositions, `.gitleaksignore` is empty, and an isolated all-ref scan passes under three exact-field false-positive rules. GitHub Support ticket `#4715479` is open for removal of affected PR refs/cached views; keep the repository private until GitHub confirms cleanup |
 | Container scan | verified | The dated verification rebuilt Terraform 1.16.0 with patched Go; Trivy found zero fixed high/critical findings locally on Linux arm64 and remotely on Linux amd64 in post-rewrite [CI run 33358160306](https://github.com/kkmookhey/elcapitan/actions/runs/33358160306) |
 | Reproducible container inputs | verified | Python, Go, Terraform source, and PostgreSQL inputs are digest/checksum pinned; runtime Python dependencies are version/hash locked and CI checks export drift |
 | Governance policies | implemented | Security, contributing, conduct, support, versioning, and changelog files exist |
@@ -30,8 +30,8 @@ be tagged or published.
 |---|---|---|
 | License selection | verified | Transilience, Inc. approved Apache-2.0; the canonical license, package metadata, notice, and [dated owner record](owner-decisions-2026-08-30.md) are checked in |
 | Project-name approval | verified | Transilience, Inc. approved retaining El Capitan after the collision risk was surfaced; the [dated record](owner-decisions-2026-08-30.md) is a business decision, not a trademark opinion |
-| Historical secret response | blocked | The [sanitized review](historical-secret-review-2026-08-30.md) records the completed Eiger-only cleanup: two generated Trap-2 Storage keys were removed with their state files and one source hit was a secret-name false positive; the Anna entry and ten other fingerprints remain outside the authorization |
-| Protected release environment | blocked | GitHub returned HTTP 403 because protected environments/rulesets are unavailable for this private repository on its current plan; an owner must upgrade or separately authorize public visibility, then configure `release` reviewers |
+| Historical secret response | verified | The [sanitized review](historical-secret-review-2026-08-30.md) records all 22 dispositions, completed Eiger credential cleanup, three narrowly constrained false-positive rules, an empty baseline, and a zero-finding isolated all-ref scan |
+| Protected release environment | blocked | The owner authorized public visibility after Support ticket `#4715479` confirms PR-ref/cache cleanup, followed by a `release` environment requiring reviewer `kkmookhey`. Keep self-review prevention disabled unless another reviewer is approved; the repository remains private and the environment is not yet configured |
 | Remote CI | verified | Post-rewrite [run 33358160306](https://github.com/kkmookhey/elcapitan/actions/runs/33358160306) passed the 549-test/package job, complete-history secret scan, high/critical container scan, and expanded PostgreSQL/UI quickstart at `6ea9663` |
 | OCI/distribution publication | blocked | Run guarded release workflow only after all release gates pass |
 | Customer shadow pilot | blocked | Requires an authorized non-production boundary, customer agreement, identities, data handling, and read-only access |

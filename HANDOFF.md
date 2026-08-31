@@ -176,17 +176,26 @@ into one generic "supported" claim.
 - Apache-2.0 and the El Capitan name were explicitly approved by Transilience,
   Inc. on 2026-08-30 and are recorded in
   `docs/owner-decisions-2026-08-30.md`. Historical-secret adjudication,
-  protected release-environment configuration, signing, and public
-  artifact publication/provenance remain external release gates.
-- The authorized Eiger-only historical-secret review found two generated
+  GitHub's retained PR-ref/cache cleanup, protected release-environment
+  configuration, signing, and public artifact publication/provenance remain
+  external release gates.
+- The authorized historical-secret review found two generated
   Azure Storage account keys duplicated across Trap-2 state and backup files,
   plus one false positive on a Container App secret-name identifier. The
   temporary account's recorded destroy state contains zero resources. The two
   state paths were purged from all reachable Git refs and the 11 resolved Eiger
-  fingerprints were removed. The Anna entry was explicitly excluded, and ten
-  other fingerprints remain unresolved. GitHub's eight affected read-only PR
-  refs and cached views still require server-side cleanup before public
-  visibility. No value was printed. See
+  fingerprints were removed. A later owner-authorized review classified ten
+  Azure deployment-template detections as credential-free ACR demo-image
+  references and removed them from the baseline under an exact-field rule. A
+  complete current-tree/history audit found no named private-customer
+  identifier or finding data; only the previously recorded aggregate coverage
+  count remains. A final exact-line review found that the Anna detector matched
+  model termination metadata following the phrase `API calls`, not a
+  credential. All 22 fingerprints are dispositioned, `.gitleaksignore` is
+  empty, and the isolated all-ref scan passes. GitHub Support ticket `#4715479`
+  is open for removal of the eight affected read-only PR refs and cached views.
+  Keep the repository private until GitHub confirms cleanup. No credential
+  value was printed. See
   `docs/historical-secret-review-2026-08-30.md`.
 
 ## Non-negotiable safety boundaries
@@ -356,10 +365,11 @@ and remaining visual-browser limitation are in
    scanning, clean packaging metadata, reproducible container inputs,
    SBOM/provenance generation, capability/evidence matrix generation,
    PostgreSQL quickstart, and release-candidate rehearsal.
-2. Do not tag or publish until authorized owners adjudicate and remediate the
-   historical secret baseline, configure the
-   protected release environment, and obtain successful remote CI/container
-   scan evidence. Record those decisions in a committed
+2. Do not tag or publish until GitHub Support confirms PR-ref/cache cleanup,
+   the repository is made public under the recorded owner authorization, and
+   the protected `release` environment is configured with required reviewer
+   `kkmookhey`. Keep self-review prevention disabled unless a different
+   reviewer is approved. Record the completed gates in a committed
    `RELEASE_APPROVAL.json` based on the checked-in example and pass its exact
    SHA-256 to the manual release workflow; the release-tree check now rejects
    missing, pending, mismatched, or baseline-waiving records.
@@ -372,9 +382,10 @@ and remaining visual-browser limitation are in
    resource and read-only identity are approved. Recording and publication are
    external writes and remain unapproved.
 5. The private repository's current GitHub plan does not expose protected
-   environments or rulesets. Do not weaken the guarded release workflow; an
-   owner must upgrade the plan or separately authorize public visibility before
-   configuring required `release` reviewers.
+   environments or rulesets. The owner authorized public visibility on
+   2026-08-31, but only after GitHub Support ticket `#4715479` confirms removal
+   of the retained PR refs and cached views. Do not change visibility or weaken
+   the guarded release workflow before that confirmation.
 
 The retired Claude/Hermes capability probe remains on
 `archive/claude-code-probe-2026-08-25`. It is not part of the product runtime,
