@@ -21,7 +21,8 @@ Each installed pack registers explicit definitions containing:
 - a deterministic evaluator;
 - separate validation, planning, and execution capability flags.
 
-The built-in v1 packs are currently `aws-s3`, `azure-storage`, `azure-sql`,
+The built-in v1 packs are currently `aws-s3`, `aws-rds`,
+`aws-ec2-security-group`, `azure-storage`, `azure-sql`,
 `azure-key-vault`, `azure-network`, `azure-app-service`,
 `azure-container-registry`, `azure-cosmos-db`, and `azure-openai`. Registration
 is fail-closed: duplicate provider/rule keys,
@@ -31,6 +32,65 @@ types are rejected.
 Validation coverage never implies mutation coverage. For example,
 `sqlserver_tde_encrypted_with_cmk` supports live validation but explicitly has
 no remediation-planning or execution capability.
+
+The AWS S3 pack validates seven bucket controls. Object versioning retains its
+existing E2E-measured validation and remediation-planning proof. Six additional
+controls validate KMS default encryption, server access logging, event
+notifications, at least one enabled lifecycle rule, Object Lock, and MFA
+Delete. They consume the S3 API documents already collected for the bucket, so
+they add no cloud calls or scanner permissions. Known not-configured error
+codes remain explicit absent evidence; an authorization failure, unknown enum,
+malformed document, or invented absent marker blocks validation instead of
+becoming a confirmed finding. The six additions are contract tested and have
+no remediation-planning or live-execution capability.
+
+The AWS RDS pack validates eight DB-instance controls from one exact-resource
+`DescribeDBInstances` read: automated backups, copying tags to snapshots,
+enhanced monitoring, IAM database authentication, VPC placement, CloudWatch
+Logs exports, automatic minor-version upgrades, and storage encryption. The
+collector accepts only a DB-instance ARN, derives the query region from that
+ARN, rejects a conflicting finding region, and requires exactly one returned
+instance whose ARN matches the request. It stores only normalized control
+fields—not endpoints, usernames, tags, subnet IDs, or security groups.
+
+The applicability rules remain pinned to Prowler: backup findings exclude read
+replicas by default, copy-tags findings exclude Aurora engines, and IAM
+database-authentication findings apply only to the engines Prowler recognizes.
+An authorization error, absent or multiple resource, pagination marker,
+DocumentDB engine, response-ARN mismatch, or malformed field blocks validation.
+All eight controls are contract tested and validation-only; the pack adds no
+planning or execution authority. The API shape is pinned to AWS's
+[DescribeDBInstances contract](https://docs.aws.amazon.com/AmazonRDS/latest/APIReference/API_DescribeDBInstances.html)
+and [DBInstance response type](https://docs.aws.amazon.com/AmazonRDS/latest/APIReference/API_DBInstance.html),
+and the truth conditions are pinned to Prowler's
+[RDS checks](https://github.com/prowler-cloud/prowler/tree/master/prowler/providers/aws/services/rds).
+
+The AWS EC2 security-group pack validates twenty controls from two bounded
+read-only calls: one `DescribeSecurityGroups` request for the exact group ID
+and one filtered `DescribeNetworkInterfaces` request capped after the first
+attachment. The collector binds region and account to the finding ARN, requires
+exactly one matching group, validates any response ARN, and verifies that every
+returned interface is attached to the requested group. It persists only the
+group name, an in-use boolean, and normalized ingress/egress protocol, port,
+IPv4, and IPv6 fields; descriptions, tags, VPC IDs, interface IDs, and account
+details are excluded.
+
+The controls cover all-port exposure, Prowler's configured high-risk ports,
+fourteen named service-port families, broad globally routable IPv4 ranges,
+default-group traffic, Launch Wizard groups, and groups with more than fifty
+ingress or egress permission entries. The eighteen attachment-aware checks
+preserve Prowler's default exclusion of unused groups. Specific-port findings
+also preserve its duplicate suppression when the all-ports check is active.
+Denied, absent, multiple, mismatched, partially paginated, or malformed
+responses remain unavailable evidence. All twenty controls are contract tested
+and validation-only.
+
+The response shapes are pinned to AWS's
+[DescribeSecurityGroups](https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeSecurityGroups.html),
+[IpPermission](https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_IpPermission.html),
+and [DescribeNetworkInterfaces](https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeNetworkInterfaces.html)
+contracts. Truth conditions are pinned to Prowler's
+[EC2 security-group checks](https://github.com/prowler-cloud/prowler/tree/master/prowler/providers/aws/services/ec2).
 
 The Azure SQL evidence contract was also run end to end on 2026-08-28 inside a
 no-ingress Container Apps job using a user-assigned identity with `Reader` at

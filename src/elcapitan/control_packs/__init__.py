@@ -4,6 +4,8 @@ The platform workflow is provider-neutral. Each pack keeps service-specific
 evidence semantics explicit and testable without implying remediation or
 execution coverage.
 """
+from .aws_ec2 import AWS_EC2_SECURITY_GROUP_PACK
+from .aws_rds import AWS_RDS_PACK
 from .aws_s3 import AWS_S3_PACK
 from .azure_app_service import AZURE_APP_SERVICE_PACK
 from .azure_container_registry import AZURE_CONTAINER_REGISTRY_PACK
@@ -17,6 +19,8 @@ from .models import ControlDefinition, ControlEvaluation, ControlPack
 from .registry import ControlPackRegistry
 
 BUILTIN_CONTROL_PACKS = (
+    AWS_EC2_SECURITY_GROUP_PACK,
+    AWS_RDS_PACK,
     AWS_S3_PACK,
     AZURE_APP_SERVICE_PACK,
     AZURE_CONTAINER_REGISTRY_PACK,

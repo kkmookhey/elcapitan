@@ -6,15 +6,16 @@
 
 - This is a self-hosted technical preview, not an autonomous replacement for a
   DevOps or SRE team and not a public multi-tenant SaaS.
-- Read-only live validation covers 36 deterministic controls (35 Azure, 1 AWS),
+- Read-only live validation covers 70 deterministic controls (35 Azure, 35 AWS),
   but only four controls support verified remediation planning and only two
   Azure Storage controls have a proven live action connector.
 - Validation capability never grants planning or execution authority.
 - Shared-token browser authentication is for local demonstration and bounded
   pilots, not production customer approval.
 - Azure OpenAI and Cosmos DB controls are contract tested and export observed,
-  not E2E measured. Key Vault diagnostic logging is contract tested but not yet
-  measured in the lab.
+  not E2E measured. Key Vault diagnostic logging, the six added S3 controls,
+  eight RDS controls, and twenty EC2 security-group controls are contract tested
+  but not yet measured in the lab.
 - No unattended production remediation, generic VM/OS patching, arbitrary
   application-code remediation, broad AWS execution, or complete benchmark
   coverage is claimed.
@@ -57,8 +58,14 @@ PostgreSQL quickstart, generated a 370-component CycloneDX container SBOM, and
 recorded local OCI provenance. See the [dated rehearsal
 record](release-rehearsal-2026-08-28.md).
 
+The AWS parity checkpoint was built from source commit
+`499382d278afee8f750af74b8e879bd1cfbd8c2c`. It passes 680 tests, package and
+installed-wheel smoke checks, capability-matrix and release-tree checks,
+narrow Ruff checks, and `git diff --check`. No AWS execution, cloud write,
+model call, customer-system access, or external publication was performed.
+
 This evidence is not release approval. Before the version is tagged, the
-license and project name require recorded approval, historical secret findings
-require authorized adjudication and remediation, the protected release
-environment and remote CI evidence must exist, and the changelog date and
-release artifacts must be regenerated for the exact approved tag.
+GitHub Support must confirm retained PR-ref/cache cleanup, the approved public
+visibility change and protected release environment must be configured, and a
+committed digest-bound release approval must authorize the exact tag. The
+changelog date and release artifacts must then be regenerated for that tag.

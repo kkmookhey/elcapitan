@@ -15,6 +15,17 @@ from elcapitan.intake import RemediationIntake
 from elcapitan.product_records import SqliteProductRecordStore
 
 FIXTURE = Path(__file__).parent / "fixtures" / "prowler-ocsf-azure-sample.json"
+AWS_FIXTURE = Path(__file__).parent / "fixtures" / "prowler-ocsf-sample.json"
+AWS_S3_CONTRACT = json.loads(
+    (Path(__file__).parent / "fixtures" / "aws-s3-control-contract.json").read_text()
+)
+AWS_RDS_CONTRACT = json.loads(
+    (Path(__file__).parent / "fixtures" / "aws-rds-db-instance-contract.json").read_text()
+)
+AWS_EC2_SG_CONTRACT = json.loads(
+    (Path(__file__).parent / "fixtures" /
+     "aws-ec2-security-group-contract.json").read_text()
+)
 NOW = "2026-08-25T12:00:00Z"
 NETWORK_SUBNET_UID = (
     "/subscriptions/00000000-0000-0000-0000-000000000001/"
@@ -89,6 +100,68 @@ def raw(rule_id="storage_account_public_network_access_disabled", *, resource_ty
         document["resources"][0]["uid"] = APP_SERVICE_UID
         document["resources"][0]["name"] = "application"
     return document
+
+
+def raw_aws(rule_id):
+    document = json.loads(AWS_FIXTURE.read_text())
+    document["metadata"]["event_code"] = rule_id
+    document["unmapped"]["prowler_check_id"] = rule_id
+    if rule_id.startswith("rds_instance_"):
+        document["resources"][0]["type"] = "AwsRdsDbInstance"
+        document["resources"][0]["uid"] = AWS_RDS_CONTRACT["resource_uid"]
+        document["resources"][0]["name"] = "elcapitan-fixture"
+        document["cloud"]["region"] = "us-west-2"
+    elif rule_id.startswith("ec2_securitygroup_"):
+        document["resources"][0]["type"] = "AwsEc2SecurityGroup"
+        document["resources"][0]["uid"] = AWS_EC2_SG_CONTRACT["resource_uid"]
+        document["resources"][0]["name"] = "launch-wizard-1"
+        document["cloud"]["region"] = "us-west-2"
+    return document
+
+
+def aws_s3_state(profile="failing"):
+    values = AWS_S3_CONTRACT[profile]
+    return CloudState(
+        provider="aws", resource_uid="arn:aws:s3:::anna-assets",
+        region="us-east-1",
+        config=tuple(
+            (key, value if isinstance(value, str) else json.dumps(value))
+            for key, value in values.items()
+        ),
+    )
+
+
+def aws_rds_state(profile="failing"):
+    values = AWS_RDS_CONTRACT[profile]
+    return CloudState(
+        provider="aws", resource_uid=AWS_RDS_CONTRACT["resource_uid"],
+        region="us-west-2",
+        config=tuple((key, json.dumps(value)) for key, value in values.items()),
+    )
+
+
+def aws_ec2_sg_state(rule_id):
+    values = json.loads(json.dumps(AWS_EC2_SG_CONTRACT["failing"]))
+    if rule_id == "ec2_securitygroup_allow_ingress_from_internet_to_all_ports":
+        values["ec2_sg_ingress_rules"] = [{
+            "protocol": "-1", "from_port": None, "to_port": None,
+            "ipv4_cidrs": ["0.0.0.0/0"], "ipv6_cidrs": [],
+        }]
+    elif rule_id == "ec2_securitygroup_default_restrict_traffic":
+        values["ec2_sg_name"] = "default"
+    elif rule_id == "ec2_securitygroup_with_many_ingress_egress_rules":
+        values["ec2_sg_ingress_rules"] = [
+            {
+                "protocol": "tcp", "from_port": port, "to_port": port,
+                "ipv4_cidrs": ["10.0.0.0/8"], "ipv6_cidrs": [],
+            }
+            for port in range(51)
+        ]
+    return CloudState(
+        provider="aws", resource_uid=AWS_EC2_SG_CONTRACT["resource_uid"],
+        region="us-west-2",
+        config=tuple((key, json.dumps(value)) for key, value in values.items()),
+    )
 
 
 def state(public_network_access="Enabled"):
@@ -486,6 +559,83 @@ def test_expanded_storage_findings_use_registered_evaluators(
     outcome = validator(
         product, lambda finding, env: storage_security_state()).validate(
             opened.case.case_id, host_env={})
+    assert outcome.findings[0].status is FindingValidationStatus.CONFIRMED
+
+
+@pytest.mark.parametrize("rule_id", [
+    "s3_bucket_kms_encryption",
+    "s3_bucket_server_access_logging_enabled",
+    "s3_bucket_event_notifications_enabled",
+    "s3_bucket_lifecycle_enabled",
+    "s3_bucket_object_lock",
+    "s3_bucket_no_mfa_delete",
+])
+def test_expanded_s3_findings_use_registered_evaluators(product, rule_id):
+    *_, intake = product
+    opened = intake.ingest(raw_aws(rule_id), tenant_id="TEN-001")
+
+    failing = validator(
+        product, lambda finding, env: aws_s3_state()).validate(
+            opened.case.case_id, host_env={})
+
+    assert failing.case.state is CaseState.VALIDATED
+    assert failing.findings[0].status is FindingValidationStatus.CONFIRMED
+
+
+@pytest.mark.parametrize("rule_id", [
+    "rds_instance_backup_enabled",
+    "rds_instance_copy_tags_to_snapshots",
+    "rds_instance_enhanced_monitoring_enabled",
+    "rds_instance_iam_authentication_enabled",
+    "rds_instance_inside_vpc",
+    "rds_instance_integration_cloudwatch_logs",
+    "rds_instance_minor_version_upgrade_enabled",
+    "rds_instance_storage_encrypted",
+])
+def test_rds_findings_use_registered_resource_bound_evaluators(product, rule_id):
+    *_, intake = product
+    opened = intake.ingest(raw_aws(rule_id), tenant_id="TEN-001")
+
+    outcome = validator(
+        product, lambda finding, env: aws_rds_state()).validate(
+            opened.case.case_id, host_env={})
+
+    assert outcome.case.state is CaseState.VALIDATED
+    assert outcome.findings[0].status is FindingValidationStatus.CONFIRMED
+
+
+@pytest.mark.parametrize("rule_id", [
+    "ec2_securitygroup_allow_ingress_from_internet_to_all_ports",
+    "ec2_securitygroup_allow_ingress_from_internet_to_high_risk_tcp_ports",
+    "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_22",
+    "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_3389",
+    "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_cassandra_7199_9160_8888",
+    "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_elasticsearch_kibana_9200_9300_5601",
+    "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_ftp_20_21",
+    "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_kafka_9092",
+    "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_memcached_11211",
+    "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_mongodb_27017_27018",
+    "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_mysql_3306",
+    "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_oracle_1521_2483",
+    "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_postgres_5432",
+    "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_redis_6379",
+    "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_sql_server_1433_1434",
+    "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_telnet_23",
+    "ec2_securitygroup_allow_wide_open_public_ipv4",
+    "ec2_securitygroup_default_restrict_traffic",
+    "ec2_securitygroup_from_launch_wizard",
+    "ec2_securitygroup_with_many_ingress_egress_rules",
+])
+def test_ec2_security_group_findings_use_resource_bound_evaluators(
+        product, rule_id):
+    *_, intake = product
+    opened = intake.ingest(raw_aws(rule_id), tenant_id="TEN-001")
+
+    outcome = validator(
+        product, lambda finding, env: aws_ec2_sg_state(rule_id)).validate(
+            opened.case.case_id, host_env={})
+
+    assert outcome.case.state is CaseState.VALIDATED
     assert outcome.findings[0].status is FindingValidationStatus.CONFIRMED
 
 

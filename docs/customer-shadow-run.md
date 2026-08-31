@@ -35,6 +35,40 @@ provider-neutral while each service retains its exact evidence semantics.
 | Provider | Rule | Live validation | Live execution |
 |---|---|---:|---:|
 | AWS | `s3_bucket_object_versioning` | yes | no |
+| AWS | `s3_bucket_kms_encryption` | yes | no |
+| AWS | `s3_bucket_server_access_logging_enabled` | yes | no |
+| AWS | `s3_bucket_event_notifications_enabled` | yes | no |
+| AWS | `s3_bucket_lifecycle_enabled` | yes | no |
+| AWS | `s3_bucket_object_lock` | yes | no |
+| AWS | `s3_bucket_no_mfa_delete` | yes | no |
+| AWS | `rds_instance_backup_enabled` | yes | no |
+| AWS | `rds_instance_copy_tags_to_snapshots` | yes | no |
+| AWS | `rds_instance_enhanced_monitoring_enabled` | yes | no |
+| AWS | `rds_instance_iam_authentication_enabled` | yes | no |
+| AWS | `rds_instance_inside_vpc` | yes | no |
+| AWS | `rds_instance_integration_cloudwatch_logs` | yes | no |
+| AWS | `rds_instance_minor_version_upgrade_enabled` | yes | no |
+| AWS | `rds_instance_storage_encrypted` | yes | no |
+| AWS | `ec2_securitygroup_allow_ingress_from_internet_to_all_ports` | yes | no |
+| AWS | `ec2_securitygroup_allow_ingress_from_internet_to_high_risk_tcp_ports` | yes | no |
+| AWS | `ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_22` | yes | no |
+| AWS | `ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_3389` | yes | no |
+| AWS | `ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_cassandra_7199_9160_8888` | yes | no |
+| AWS | `ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_elasticsearch_kibana_9200_9300_5601` | yes | no |
+| AWS | `ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_ftp_20_21` | yes | no |
+| AWS | `ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_kafka_9092` | yes | no |
+| AWS | `ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_memcached_11211` | yes | no |
+| AWS | `ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_mongodb_27017_27018` | yes | no |
+| AWS | `ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_mysql_3306` | yes | no |
+| AWS | `ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_oracle_1521_2483` | yes | no |
+| AWS | `ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_postgres_5432` | yes | no |
+| AWS | `ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_redis_6379` | yes | no |
+| AWS | `ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_sql_server_1433_1434` | yes | no |
+| AWS | `ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_telnet_23` | yes | no |
+| AWS | `ec2_securitygroup_allow_wide_open_public_ipv4` | yes | no |
+| AWS | `ec2_securitygroup_default_restrict_traffic` | yes | no |
+| AWS | `ec2_securitygroup_from_launch_wizard` | yes | no |
+| AWS | `ec2_securitygroup_with_many_ingress_egress_rules` | yes | no |
 | Azure | `storage_account_public_network_access_disabled` | yes | separately gated |
 | Azure | `storage_blob_public_access_level_is_disabled` | yes | separately gated |
 | Azure | `storage_blob_versioning_is_enabled` | yes | no |
@@ -45,6 +79,24 @@ database inventory, and the TDE state of every user database. The immutable
 `master` database is excluded to match Azure and current Prowler semantics.
 Incomplete, denied, malformed, or out-of-scope reads block validation rather
 than producing a partial result.
+
+The seven S3 controls reuse one bounded bucket-state capture. The six new
+controls are contract tested; only object versioning currently carries an
+E2E-measured evidence grade and remediation-planning capability. No AWS control
+has live-execution capability.
+
+The eight RDS controls use one `DescribeDBInstances` call scoped to the exact
+DB-instance ARN and its ARN-derived region. They are contract tested and
+validation-only. The response must contain exactly that one instance; denied,
+missing, multiple, mismatched, paginated, DocumentDB, and malformed responses
+remain unavailable evidence rather than inferred configuration.
+
+The twenty EC2 security-group controls use one exact-ID group read plus one
+group-filtered attachment read capped after the first result. They validate
+public port and CIDR exposure, default and Launch Wizard groups, and excessive
+permission-entry counts. Prowler's unused-group exclusion and duplicate
+all-port/specific-port suppression remain explicit. Both reads are required;
+denied, absent, mismatched, partial-empty, and malformed responses fail closed.
 
 An unknown provider rejects the entire intake batch before persistence. An
 unknown rule may be retained in the portfolio for coverage reporting, but the

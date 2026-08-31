@@ -29,11 +29,12 @@ Three properties are deliberate:
   comparable value that would then match itself before and after and score the
   run green without checking anything.
 
-- **Honestly scoped.** AWS S3 and the explicitly registered Azure service
-  contracts are implemented. Every other provider and resource type raises a
-  named error rather than returning an empty state that would compare equal to
-  itself.
+- **Honestly scoped.** AWS S3, AWS RDS DB instances, AWS EC2 security groups,
+  and the explicitly registered Azure service contracts are implemented.
+  Every other provider and resource type raises a named error rather than
+  returning an empty state that would compare equal to itself.
 """
+import ipaddress
 import json
 import re
 import subprocess
@@ -214,7 +215,7 @@ def _s3_bucket(resource_uid: str) -> str:
     return bucket
 
 
-def _capture_aws(resource_uid: str, region: str, env: dict) -> tuple[tuple[str, str], ...]:
+def _capture_s3(resource_uid: str, region: str, env: dict) -> tuple[tuple[str, str], ...]:
     bucket = _s3_bucket(resource_uid)
     region_args = ["--region", region] if region else []
     config: list[tuple[str, str]] = []
@@ -252,6 +253,301 @@ def _capture_aws(resource_uid: str, region: str, env: dict) -> tuple[tuple[str, 
         config.append((aspect, canonical_json(document).decode("utf-8")))
 
     return tuple(config)
+
+
+def _rds_instance_arn(resource_uid: str) -> tuple[str, str]:
+    """Return (region, identifier) from one exact RDS DB instance ARN."""
+    parts = resource_uid.split(":", 5)
+    if (len(parts) != 6 or parts[0] != "arn"
+            or parts[1] not in {"aws", "aws-us-gov", "aws-cn"}
+            or parts[2] != "rds" or not parts[3]
+            or not re.fullmatch(r"[0-9]{12}", parts[4])):
+        raise ValueError(f"not an RDS DB instance ARN: {resource_uid!r}")
+    resource = parts[5]
+    if not resource.startswith("db:"):
+        raise ValueError(f"not an RDS DB instance ARN: {resource_uid!r}")
+    identifier = resource[3:]
+    if (not re.fullmatch(r"[A-Za-z][A-Za-z0-9-]{0,62}", identifier)
+            or identifier.endswith("-") or "--" in identifier):
+        raise ValueError(f"RDS DB instance ARN has invalid identifier: {resource_uid!r}")
+    return parts[3], identifier
+
+
+_RDS_REQUIRED = object()
+
+
+def _rds_bool(instance: dict, name: str, *, default=_RDS_REQUIRED) -> bool:
+    value = instance.get(name, default)
+    if value is _RDS_REQUIRED:
+        value = None
+    if not isinstance(value, bool):
+        raise ValueError(f"RDS DescribeDBInstances response has invalid {name} {value!r}")
+    return value
+
+
+def _capture_rds(
+        resource_uid: str, region: str, env: dict) -> tuple[tuple[str, str], ...]:
+    arn_region, _identifier = _rds_instance_arn(resource_uid)
+    if region and region != arn_region:
+        raise ValueError(
+            f"RDS finding region {region!r} does not match ARN region {arn_region!r}")
+    code, stdout, stderr = _aws(
+        env, "rds", "describe-db-instances",
+        "--db-instance-identifier", resource_uid,
+        "--region", arn_region, "--no-paginate", "--output", "json")
+    if code != 0:
+        raise ValueError(
+            f"could not read RDS DB instance {resource_uid}: aws rds "
+            f"describe-db-instances exited {code}: {stderr.strip() or stdout.strip()}")
+    try:
+        document = json.loads(stdout)
+    except (json.JSONDecodeError, RecursionError) as exc:
+        raise ValueError(
+            f"could not read RDS DB instance {resource_uid}: aws rds "
+            f"describe-db-instances returned unparseable output: {exc}") from exc
+    if not isinstance(document, dict):
+        raise ValueError("RDS DescribeDBInstances response is not an object")
+    if document.get("Marker"):
+        raise ValueError(
+            "RDS DescribeDBInstances returned a pagination marker for an exact ARN")
+    instances = document.get("DBInstances")
+    if (not isinstance(instances, list) or len(instances) != 1
+            or not isinstance(instances[0], dict)):
+        raise ValueError(
+            "RDS DescribeDBInstances response must contain exactly one DB instance")
+    instance = instances[0]
+    if instance.get("DBInstanceArn") != resource_uid:
+        raise ValueError(
+            "RDS DescribeDBInstances response ARN does not match the requested resource")
+    engine = instance.get("Engine")
+    if not isinstance(engine, str) or not engine or engine == "docdb":
+        raise ValueError(f"RDS DescribeDBInstances response has invalid Engine {engine!r}")
+    retention = instance.get("BackupRetentionPeriod")
+    if isinstance(retention, bool) or not isinstance(retention, int) or retention < 0:
+        raise ValueError(
+            "RDS DescribeDBInstances response has invalid BackupRetentionPeriod "
+            f"{retention!r}")
+    replica_source = instance.get("ReadReplicaSourceDBInstanceIdentifier")
+    if replica_source is not None and (
+            not isinstance(replica_source, str) or not replica_source):
+        raise ValueError(
+            "RDS DescribeDBInstances response has invalid read replica source")
+    monitoring_arn = instance.get("EnhancedMonitoringResourceArn")
+    if monitoring_arn is not None and (
+            not isinstance(monitoring_arn, str) or not monitoring_arn):
+        raise ValueError(
+            "RDS DescribeDBInstances response has invalid enhanced monitoring ARN")
+    subnet_group = instance.get("DBSubnetGroup")
+    if subnet_group is not None and not isinstance(subnet_group, dict):
+        raise ValueError("RDS DescribeDBInstances response has invalid DBSubnetGroup")
+    vpc_id = subnet_group.get("VpcId") if subnet_group else None
+    if vpc_id is not None and (not isinstance(vpc_id, str) or not vpc_id):
+        raise ValueError("RDS DescribeDBInstances response has invalid VpcId")
+    exports = instance.get("EnabledCloudwatchLogsExports")
+    if exports is None:
+        exports = []
+    if (not isinstance(exports, list)
+            or any(not isinstance(item, str) or not item for item in exports)
+            or len(exports) != len(set(exports))):
+        raise ValueError(
+            "RDS DescribeDBInstances response has invalid CloudWatch log exports")
+
+    values = {
+        "rds_engine": engine,
+        "rds_backup_retention_period": retention,
+        "rds_read_replica_source_present": replica_source is not None,
+        "rds_copy_tags_to_snapshot": _rds_bool(
+            instance, "CopyTagsToSnapshot", default=False),
+        "rds_enhanced_monitoring_enabled": monitoring_arn is not None,
+        "rds_iam_database_authentication_enabled": _rds_bool(
+            instance, "IAMDatabaseAuthenticationEnabled", default=False),
+        "rds_in_vpc": vpc_id is not None,
+        "rds_enabled_cloudwatch_logs_exports": sorted(exports),
+        "rds_auto_minor_version_upgrade": _rds_bool(
+            instance, "AutoMinorVersionUpgrade"),
+        "rds_storage_encrypted": _rds_bool(instance, "StorageEncrypted"),
+    }
+    return tuple(
+        (name, canonical_json(value).decode("utf-8"))
+        for name, value in sorted(values.items())
+    )
+
+
+def _ec2_security_group_arn(resource_uid: str) -> tuple[str, str, str]:
+    """Return (region, account, group id) from one security-group ARN."""
+    parts = resource_uid.split(":", 5)
+    if (len(parts) != 6 or parts[0] != "arn"
+            or parts[1] not in {"aws", "aws-us-gov", "aws-cn"}
+            or parts[2] != "ec2" or not parts[3]
+            or not re.fullmatch(r"[0-9]{12}", parts[4])
+            or not re.fullmatch(r"security-group/sg-[0-9a-f]{8,17}", parts[5])):
+        raise ValueError(f"not an EC2 security-group ARN: {resource_uid!r}")
+    return parts[3], parts[4], parts[5].split("/", 1)[1]
+
+
+def _ec2_cidrs(permission: dict, field: str, key: str, version: int) -> list[str]:
+    ranges = permission.get(field, [])
+    if (not isinstance(ranges, list)
+            or any(not isinstance(item, dict) for item in ranges)):
+        raise ValueError(f"EC2 security-group response has invalid {field}")
+    cidrs = []
+    for item in ranges:
+        value = item.get(key)
+        if not isinstance(value, str) or not value:
+            raise ValueError(f"EC2 security-group response has invalid {key} {value!r}")
+        try:
+            network = ipaddress.ip_network(value)
+        except ValueError as exc:
+            raise ValueError(
+                f"EC2 security-group response has invalid CIDR {value!r}") from exc
+        if network.version != version:
+            raise ValueError(
+                f"EC2 security-group response has invalid {key} {value!r}")
+        cidrs.append(str(network))
+    if len(cidrs) != len(set(cidrs)):
+        raise ValueError(f"EC2 security-group response has duplicate {field}")
+    return sorted(cidrs)
+
+
+def _ec2_permissions(group: dict, field: str) -> list[dict]:
+    permissions = group.get(field)
+    if (not isinstance(permissions, list)
+            or any(not isinstance(item, dict) for item in permissions)):
+        raise ValueError(f"EC2 security-group response has invalid {field}")
+    normalized = []
+    for permission in permissions:
+        protocol = permission.get("IpProtocol")
+        if not isinstance(protocol, str) or not protocol:
+            raise ValueError(
+                f"EC2 security-group response has invalid IpProtocol {protocol!r}")
+        start = permission.get("FromPort")
+        end = permission.get("ToPort")
+        if (start is None) != (end is None):
+            raise ValueError("EC2 security-group response has incomplete port range")
+        if start is not None and (
+                isinstance(start, bool) or isinstance(end, bool)
+                or not isinstance(start, int) or not isinstance(end, int)
+                or start < -1 or end > 65535 or start > end):
+            raise ValueError(
+                f"EC2 security-group response has invalid port range {start!r}-{end!r}")
+        normalized.append({
+            "protocol": protocol,
+            "from_port": start,
+            "to_port": end,
+            "ipv4_cidrs": _ec2_cidrs(
+                permission, "IpRanges", "CidrIp", 4),
+            "ipv6_cidrs": _ec2_cidrs(
+                permission, "Ipv6Ranges", "CidrIpv6", 6),
+        })
+    return sorted(
+        normalized,
+        key=lambda item: canonical_json(item),
+    )
+
+
+def _aws_document(
+        env: dict, args: tuple[str, ...], *, what: str) -> dict:
+    code, stdout, stderr = _aws(env, *args)
+    if code != 0:
+        raise ValueError(
+            f"could not read {what}: aws {' '.join(args[:2])} exited {code}: "
+            f"{stderr.strip() or stdout.strip()}")
+    try:
+        document = json.loads(stdout)
+    except (json.JSONDecodeError, RecursionError) as exc:
+        raise ValueError(
+            f"could not read {what}: aws {' '.join(args[:2])} returned "
+            f"unparseable output: {exc}") from exc
+    if not isinstance(document, dict):
+        raise ValueError(f"{what} response is not an object")
+    return document
+
+
+def _capture_ec2_security_group(
+        resource_uid: str, region: str, env: dict) -> tuple[tuple[str, str], ...]:
+    arn_region, account, group_id = _ec2_security_group_arn(resource_uid)
+    if region and region != arn_region:
+        raise ValueError(
+            f"EC2 finding region {region!r} does not match ARN region {arn_region!r}")
+
+    group_document = _aws_document(
+        env,
+        ("ec2", "describe-security-groups", "--group-ids", group_id,
+         "--region", arn_region, "--no-paginate", "--output", "json"),
+        what=f"EC2 security group {resource_uid}",
+    )
+    if group_document.get("NextToken"):
+        raise ValueError(
+            "EC2 DescribeSecurityGroups returned a pagination token for an exact ID")
+    groups = group_document.get("SecurityGroups")
+    if (not isinstance(groups, list) or len(groups) != 1
+            or not isinstance(groups[0], dict)):
+        raise ValueError(
+            "EC2 DescribeSecurityGroups response must contain exactly one group")
+    group = groups[0]
+    if group.get("GroupId") != group_id or group.get("OwnerId") != account:
+        raise ValueError(
+            "EC2 DescribeSecurityGroups response does not match the requested ARN")
+    response_arn = group.get("SecurityGroupArn")
+    if response_arn is not None and response_arn != resource_uid:
+        raise ValueError(
+            "EC2 DescribeSecurityGroups response ARN does not match the request")
+    name = group.get("GroupName")
+    if not isinstance(name, str) or not name:
+        raise ValueError(
+            f"EC2 DescribeSecurityGroups response has invalid GroupName {name!r}")
+    vpc_id = group.get("VpcId")
+    if not isinstance(vpc_id, str) or not re.fullmatch(r"vpc-[0-9a-f]{8,17}", vpc_id):
+        raise ValueError(
+            f"EC2 DescribeSecurityGroups response has invalid VpcId {vpc_id!r}")
+
+    interface_document = _aws_document(
+        env,
+        ("ec2", "describe-network-interfaces", "--filters",
+         f"Name=group-id,Values={group_id}", "--page-size", "5", "--max-items", "1",
+         "--region", arn_region, "--output", "json"),
+        what=f"network-interface attachment of {resource_uid}",
+    )
+    interfaces = interface_document.get("NetworkInterfaces")
+    if (not isinstance(interfaces, list)
+            or any(not isinstance(item, dict) for item in interfaces)):
+        raise ValueError(
+            "EC2 DescribeNetworkInterfaces response has invalid NetworkInterfaces")
+    if not interfaces and interface_document.get("NextToken"):
+        raise ValueError(
+            "EC2 DescribeNetworkInterfaces returned an empty partial response")
+    for interface in interfaces:
+        attached_groups = interface.get("Groups")
+        if (not isinstance(attached_groups, list)
+                or any(not isinstance(item, dict) for item in attached_groups)
+                or group_id not in {item.get("GroupId") for item in attached_groups}):
+            raise ValueError(
+                "EC2 DescribeNetworkInterfaces returned an interface outside the group filter")
+
+    values = {
+        "ec2_sg_name": name,
+        "ec2_sg_in_use": bool(interfaces),
+        "ec2_sg_ingress_rules": _ec2_permissions(group, "IpPermissions"),
+        "ec2_sg_egress_rules": _ec2_permissions(group, "IpPermissionsEgress"),
+    }
+    return tuple(
+        (name, canonical_json(value).decode("utf-8"))
+        for name, value in sorted(values.items())
+    )
+
+
+def _capture_aws(resource_uid: str, region: str, env: dict) -> tuple[tuple[str, str], ...]:
+    parts = resource_uid.split(":", 5)
+    service = parts[2] if len(parts) == 6 and parts[0] == "arn" else ""
+    if service == "s3":
+        return _capture_s3(resource_uid, region, env)
+    if service == "rds":
+        return _capture_rds(resource_uid, region, env)
+    if service == "ec2":
+        return _capture_ec2_security_group(resource_uid, region, env)
+    raise ValueError(
+        f"AWS cloud-state verification is not implemented for resource "
+        f"{resource_uid!r} (supported services: s3, rds, ec2 security groups)")
 
 
 

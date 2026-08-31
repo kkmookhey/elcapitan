@@ -1,16 +1,64 @@
 # El Capitan — fresh-session handoff
 
-**Prepared:** 2026-08-29
+**Prepared:** 2026-08-31
 
-**Baseline before this handoff:** `f5e1c86`
+**AWS expansion base:** `499382d278afee8f750af74b8e879bd1cfbd8c2c`
 
-**Release direction:** Azure-first `v0.1.0` technical preview; AWS coming soon
+**Release direction:** self-hosted `v0.1.0` technical preview with Azure/AWS
+validation-count parity, Azure-only live execution, and explicit evidence grades
 
 This file is the durable context for a fresh Codex session. Read it completely,
 then read `README.md`, `docs/public-release-v0.1.md`,
 `docs/product-architecture.md`, and `docs/control-packs.md`. Verify the current
 branch, latest commit, and worktree before acting. Do not reconstruct or repeat
 completed work from an earlier conversation.
+
+## Resume here — authoritative current checkpoint
+
+The completed AWS expansion was built on `main` from source base `499382d` and
+was preserved as one reviewable checkpoint. Do not reconstruct, split, or
+repeat it. If the worktree is unexpectedly dirty, inspect and preserve every
+change before acting.
+
+Current registry authority:
+
+- **70 deterministic validation controls:** 35 Azure and 35 AWS;
+- **4 remediation-planning controls:** 3 Azure Storage and 1 AWS S3;
+- **2 live-execution controls:** Azure Storage only;
+- evidence grades: 30 E2E measured, 35 contract tested, and 5 contract tested
+  plus export observed;
+- AWS validation: 7 S3, 8 RDS DB-instance, and 20 EC2 security-group controls;
+- only S3 object versioning has AWS planning capability; no AWS control has
+  live-execution capability.
+
+The completed checkpoint passes **680 tests**, the repository's narrow Ruff
+gate, wheel/source builds, distribution inspection, generated-matrix
+verification, release-tree checks, and `git diff --check`. No cloud call, model
+call, customer-data access, external write, tag, release, or publication was
+performed while building the AWS slices.
+
+Read these current authorities before acting:
+
+1. `HANDOFF.md` — safety boundaries, completed work, and resume contract.
+2. `docs/generated/capability-matrix.md` — generated per-control capability and
+   evidence authority.
+3. `docs/control-packs.md` — collector/evaluator semantics and proof grades.
+4. `docs/elcapitan-v0.1-overview.html` — local-only living product briefing.
+5. `docs/customer-shadow-run.md` and `docs/first-customer-pilot.md` — operator
+   scope and identity boundaries.
+
+First fresh-session actions should be read-only:
+
+```bash
+git status --short
+git diff --check
+uv run python scripts/generate_capability_matrix.py --check
+```
+
+Do not redo S3, RDS, or EC2 security-group work. Before implementing anything
+new, get an explicit bounded validation-only service-slice objective. Planning
+or execution expansion is a materially different objective and requires
+separate design, identity, operational, rollback, and authorization work.
 
 ## Product identity
 
@@ -60,9 +108,9 @@ registry contained **35 deterministic validation controls**: **34 Azure** and
 **1 AWS**.
 
 The completed Key Vault diagnostic logging slice passes **533 tests**, and both
-the Python wheel and source distribution build successfully. The current
-built-in registry contains **36 deterministic validation controls**: **35
-Azure** and **1 AWS**.
+the Python wheel and source distribution build successfully. At that
+checkpoint the built-in registry contained **36 deterministic validation
+controls**: **35 Azure** and **1 AWS**.
 
 The completed local `v0.1.0` release-preparation slices pass **538 tests**. They
 add release governance and guarded CI/publication workflows, dependency and
@@ -137,8 +185,9 @@ into one generic "supported" claim.
 - Read-only deterministic Azure packs for selected Storage, SQL Server, Key
   Vault, subnet, App Service, Function App, Container Registry, Cosmos DB, and
   Azure OpenAI controls.
-- One AWS S3 validation/planning proof. AWS must be described as coming soon,
-  not as equivalent current coverage.
+- Read-only deterministic AWS packs for seven S3, eight RDS DB-instance, and
+  twenty EC2 security-group controls. AWS and Azure have equal validator counts
+  but not equal service breadth, evidence strength, planning, or execution.
 - Conservative literal or state-grounded Terraform linkage.
 - Isolated complete-file remediation proposals with format, validation, and
   no-refresh plan checks. Planning never modifies the supplied repository and
@@ -173,6 +222,9 @@ into one generic "supported" claim.
 - Key Vault diagnostic logging is contract-tested, but its Monitor read has not
   yet been run against a lab vault; the other three Key Vault controls retain
   their existing E2E-measured evidence grade.
+- The six added S3 validators, all eight RDS validators, and all twenty EC2
+  security-group validators are contract tested rather than E2E measured.
+  Validation-count parity must not be described as execution or proof parity.
 - Apache-2.0 and the El Capitan name were explicitly approved by Transilience,
   Inc. on 2026-08-30 and are recorded in
   `docs/owner-decisions-2026-08-30.md`. Historical-secret adjudication,
@@ -390,3 +442,76 @@ and remaining visual-browser limitation are in
 The retired Claude/Hermes capability probe remains on
 `archive/claude-code-probe-2026-08-25`. It is not part of the product runtime,
 package, tests, or request lifecycle.
+
+## Completed checkpoint: AWS S3 + RDS + EC2 validation expansion
+
+This checkpoint was added on 2026-08-31 from source base `499382d`. It contains
+the completed AWS S3, RDS, and EC2 security-group validation slices plus the
+living HTML capability briefing; do not discard or reconstruct this work.
+
+The completed S3 slice:
+
+- expands the `aws-s3` pack from one to seven deterministic validators;
+- adds KMS default encryption, server access logging, event notifications,
+  lifecycle configuration, Object Lock, and MFA Delete;
+- reuses the existing bounded S3 evidence capture and adds no AWS calls or
+  scanner permissions;
+- rejects malformed documents, unknown enums, authorization errors disguised
+  as absence, and unrecognized absent markers;
+- keeps all six additions validation-only and contract tested;
+- preserves object versioning as the only AWS planning control and preserves
+  zero AWS live-execution controls.
+
+The completed RDS slice:
+
+- adds the `aws-rds` pack with eight deterministic DB-instance validators for
+  automated backups, snapshot tag copying, enhanced monitoring, IAM database
+  authentication, VPC placement, CloudWatch Logs exports, automatic minor
+  upgrades, and storage encryption;
+- uses one bounded `DescribeDBInstances` call for the exact DB-instance ARN,
+  derives region from the ARN, and rejects a conflicting finding region;
+- requires exactly one response instance with the requested ARN and rejects
+  denied, absent, multiple, paginated, mismatched, DocumentDB, and malformed
+  responses instead of inferring configuration;
+- persists only normalized control fields and excludes endpoints, usernames,
+  tags, subnet IDs, and security groups;
+- preserves Prowler's read-replica, Aurora, and engine applicability rules;
+- keeps all eight additions validation-only and contract tested, with no RDS
+  planning or execution authority.
+
+The completed EC2 security-group slice:
+
+- adds the `aws-ec2-security-group` pack with twenty deterministic validators
+  for all-port and high-risk exposure, fourteen named service-port families,
+  broad public IPv4 ranges, default-group traffic, Launch Wizard groups, and
+  excessive permission-entry counts;
+- uses one exact-ID `DescribeSecurityGroups` call and one group-filtered
+  `DescribeNetworkInterfaces` call capped after the first attachment;
+- binds region and account to the ARN, validates exact group identity and any
+  response ARN, and rejects interfaces outside the group filter;
+- preserves Prowler's default unused-group exclusion and its suppression of
+  duplicate specific-port findings when the all-ports check is active;
+- persists only group name, in-use state, and normalized protocol, port, IPv4,
+  and IPv6 rule fields; tags, descriptions, VPC IDs, interface IDs, and account
+  details are excluded;
+- keeps all twenty controls validation-only and contract tested, with no EC2
+  planning or execution authority;
+- brings the generated matrix to 70 validators: 35 Azure and 35 AWS, with
+  planning still 4 and execution still 2;
+- updates shadow UI labels, pilot/control-pack documentation, the changelog,
+  and `docs/elcapitan-v0.1-overview.html`; and
+- passes 680 tests, narrow Ruff checks, wheel/source builds, distribution
+  inspection, generated matrix verification, release-tree checks, and
+  `git diff --check` without a cloud or model call.
+
+The HTML overview is now an explicitly maintained living briefing built on the
+v0.1 foundation. Keep its headline metrics, capability cards, evidence grades,
+verification counts, roadmap, and honest-boundary copy synchronized with each
+future capability slice. It remains local-only unless publication is separately
+authorized.
+
+This checkpoint is ready for a fresh session. Preserve it exactly, run the
+read-only resume checks above, and require an explicit new bounded objective
+before beginning another validation-only service slice. Do not carry the old
+instruction to continue automatically into planning, execution, cloud
+operations, customer data, model calls, release work, or publication.

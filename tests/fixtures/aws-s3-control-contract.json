@@ -1,0 +1,60 @@
+{
+  "failing": {
+    "versioning": {},
+    "encryption": {
+      "ServerSideEncryptionConfiguration": {
+        "Rules": [
+          {
+            "ApplyServerSideEncryptionByDefault": {
+              "SSEAlgorithm": "AES256"
+            }
+          }
+        ]
+      }
+    },
+    "logging": {},
+    "notification": {},
+    "lifecycle": "<absent: NoSuchLifecycleConfiguration>",
+    "object_lock": "<absent: ObjectLockConfigurationNotFoundError>"
+  },
+  "passing": {
+    "versioning": {
+      "Status": "Enabled",
+      "MFADelete": "Enabled"
+    },
+    "encryption": {
+      "ServerSideEncryptionConfiguration": {
+        "Rules": [
+          {
+            "ApplyServerSideEncryptionByDefault": {
+              "SSEAlgorithm": "aws:kms"
+            }
+          }
+        ]
+      }
+    },
+    "logging": {
+      "LoggingEnabled": {
+        "TargetBucket": "central-log-bucket",
+        "TargetPrefix": "s3/"
+      }
+    },
+    "notification": {
+      "EventBridgeConfiguration": {}
+    },
+    "lifecycle": {
+      "Rules": [
+        {
+          "ID": "retain-noncurrent-versions",
+          "Status": "Enabled",
+          "Filter": {}
+        }
+      ]
+    },
+    "object_lock": {
+      "ObjectLockConfiguration": {
+        "ObjectLockEnabled": "Enabled"
+      }
+    }
+  }
+}

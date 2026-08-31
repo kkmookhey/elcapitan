@@ -1,0 +1,81 @@
+{
+  "resource_uid": "arn:aws:ec2:us-west-2:111122223333:security-group/sg-0123456789abcdef0",
+  "security_group_response": {
+    "SecurityGroups": [
+      {
+        "OwnerId": "111122223333",
+        "GroupId": "sg-0123456789abcdef0",
+        "GroupName": "launch-wizard-1",
+        "VpcId": "vpc-0123456789abcdef0",
+        "SecurityGroupArn": "arn:aws:ec2:us-west-2:111122223333:security-group/sg-0123456789abcdef0",
+        "IpPermissions": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 20,
+            "ToPort": 27018,
+            "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+            "Ipv6Ranges": []
+          }
+        ],
+        "IpPermissionsEgress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 443,
+            "ToPort": 443,
+            "IpRanges": [{"CidrIp": "8.0.0.0/8"}],
+            "Ipv6Ranges": []
+          }
+        ]
+      }
+    ]
+  },
+  "network_interfaces_response": {
+    "NetworkInterfaces": [
+      {
+        "NetworkInterfaceId": "eni-0123456789abcdef0",
+        "Groups": [
+          {
+            "GroupId": "sg-0123456789abcdef0",
+            "GroupName": "launch-wizard-1"
+          }
+        ]
+      }
+    ]
+  },
+  "failing": {
+    "ec2_sg_name": "launch-wizard-1",
+    "ec2_sg_in_use": true,
+    "ec2_sg_ingress_rules": [
+      {
+        "protocol": "tcp",
+        "from_port": 20,
+        "to_port": 27018,
+        "ipv4_cidrs": ["0.0.0.0/0"],
+        "ipv6_cidrs": []
+      }
+    ],
+    "ec2_sg_egress_rules": [
+      {
+        "protocol": "tcp",
+        "from_port": 443,
+        "to_port": 443,
+        "ipv4_cidrs": ["8.0.0.0/8"],
+        "ipv6_cidrs": []
+      }
+    ]
+  },
+  "passing": {
+    "ec2_sg_name": "application-sg",
+    "ec2_sg_in_use": true,
+    "ec2_sg_ingress_rules": [
+      {
+        "protocol": "tcp",
+        "from_port": 443,
+        "to_port": 443,
+        "ipv4_cidrs": ["10.0.0.0/8"],
+        "ipv6_cidrs": []
+      }
+    ],
+    "ec2_sg_egress_rules": []
+  }
+}

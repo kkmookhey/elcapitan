@@ -3,6 +3,559 @@
   "capabilities": [
     {
       "evidence_aspects": [
+        "ec2_sg_in_use",
+        "ec2_sg_ingress_rules"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-ec2-security-group",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "ec2_security_group",
+      "resource_types": [
+        "awsec2securitygroup"
+      ],
+      "rule_id": "ec2_securitygroup_allow_ingress_from_internet_to_all_ports"
+    },
+    {
+      "evidence_aspects": [
+        "ec2_sg_in_use",
+        "ec2_sg_ingress_rules"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-ec2-security-group",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "ec2_security_group",
+      "resource_types": [
+        "awsec2securitygroup"
+      ],
+      "rule_id": "ec2_securitygroup_allow_ingress_from_internet_to_high_risk_tcp_ports"
+    },
+    {
+      "evidence_aspects": [
+        "ec2_sg_in_use",
+        "ec2_sg_ingress_rules"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-ec2-security-group",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "ec2_security_group",
+      "resource_types": [
+        "awsec2securitygroup"
+      ],
+      "rule_id": "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_22"
+    },
+    {
+      "evidence_aspects": [
+        "ec2_sg_in_use",
+        "ec2_sg_ingress_rules"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-ec2-security-group",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "ec2_security_group",
+      "resource_types": [
+        "awsec2securitygroup"
+      ],
+      "rule_id": "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_3389"
+    },
+    {
+      "evidence_aspects": [
+        "ec2_sg_in_use",
+        "ec2_sg_ingress_rules"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-ec2-security-group",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "ec2_security_group",
+      "resource_types": [
+        "awsec2securitygroup"
+      ],
+      "rule_id": "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_cassandra_7199_9160_8888"
+    },
+    {
+      "evidence_aspects": [
+        "ec2_sg_in_use",
+        "ec2_sg_ingress_rules"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-ec2-security-group",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "ec2_security_group",
+      "resource_types": [
+        "awsec2securitygroup"
+      ],
+      "rule_id": "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_elasticsearch_kibana_9200_9300_5601"
+    },
+    {
+      "evidence_aspects": [
+        "ec2_sg_in_use",
+        "ec2_sg_ingress_rules"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-ec2-security-group",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "ec2_security_group",
+      "resource_types": [
+        "awsec2securitygroup"
+      ],
+      "rule_id": "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_ftp_20_21"
+    },
+    {
+      "evidence_aspects": [
+        "ec2_sg_in_use",
+        "ec2_sg_ingress_rules"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-ec2-security-group",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "ec2_security_group",
+      "resource_types": [
+        "awsec2securitygroup"
+      ],
+      "rule_id": "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_kafka_9092"
+    },
+    {
+      "evidence_aspects": [
+        "ec2_sg_in_use",
+        "ec2_sg_ingress_rules"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-ec2-security-group",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "ec2_security_group",
+      "resource_types": [
+        "awsec2securitygroup"
+      ],
+      "rule_id": "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_memcached_11211"
+    },
+    {
+      "evidence_aspects": [
+        "ec2_sg_in_use",
+        "ec2_sg_ingress_rules"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-ec2-security-group",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "ec2_security_group",
+      "resource_types": [
+        "awsec2securitygroup"
+      ],
+      "rule_id": "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_mongodb_27017_27018"
+    },
+    {
+      "evidence_aspects": [
+        "ec2_sg_in_use",
+        "ec2_sg_ingress_rules"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-ec2-security-group",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "ec2_security_group",
+      "resource_types": [
+        "awsec2securitygroup"
+      ],
+      "rule_id": "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_mysql_3306"
+    },
+    {
+      "evidence_aspects": [
+        "ec2_sg_in_use",
+        "ec2_sg_ingress_rules"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-ec2-security-group",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "ec2_security_group",
+      "resource_types": [
+        "awsec2securitygroup"
+      ],
+      "rule_id": "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_oracle_1521_2483"
+    },
+    {
+      "evidence_aspects": [
+        "ec2_sg_in_use",
+        "ec2_sg_ingress_rules"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-ec2-security-group",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "ec2_security_group",
+      "resource_types": [
+        "awsec2securitygroup"
+      ],
+      "rule_id": "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_postgres_5432"
+    },
+    {
+      "evidence_aspects": [
+        "ec2_sg_in_use",
+        "ec2_sg_ingress_rules"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-ec2-security-group",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "ec2_security_group",
+      "resource_types": [
+        "awsec2securitygroup"
+      ],
+      "rule_id": "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_redis_6379"
+    },
+    {
+      "evidence_aspects": [
+        "ec2_sg_in_use",
+        "ec2_sg_ingress_rules"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-ec2-security-group",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "ec2_security_group",
+      "resource_types": [
+        "awsec2securitygroup"
+      ],
+      "rule_id": "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_sql_server_1433_1434"
+    },
+    {
+      "evidence_aspects": [
+        "ec2_sg_in_use",
+        "ec2_sg_ingress_rules"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-ec2-security-group",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "ec2_security_group",
+      "resource_types": [
+        "awsec2securitygroup"
+      ],
+      "rule_id": "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_telnet_23"
+    },
+    {
+      "evidence_aspects": [
+        "ec2_sg_in_use",
+        "ec2_sg_ingress_rules",
+        "ec2_sg_egress_rules"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-ec2-security-group",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "ec2_security_group",
+      "resource_types": [
+        "awsec2securitygroup"
+      ],
+      "rule_id": "ec2_securitygroup_allow_wide_open_public_ipv4"
+    },
+    {
+      "evidence_aspects": [
+        "ec2_sg_in_use",
+        "ec2_sg_name",
+        "ec2_sg_ingress_rules",
+        "ec2_sg_egress_rules"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-ec2-security-group",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "ec2_security_group",
+      "resource_types": [
+        "awsec2securitygroup"
+      ],
+      "rule_id": "ec2_securitygroup_default_restrict_traffic"
+    },
+    {
+      "evidence_aspects": [
+        "ec2_sg_name"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-ec2-security-group",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "ec2_security_group",
+      "resource_types": [
+        "awsec2securitygroup"
+      ],
+      "rule_id": "ec2_securitygroup_from_launch_wizard"
+    },
+    {
+      "evidence_aspects": [
+        "ec2_sg_ingress_rules",
+        "ec2_sg_egress_rules"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-ec2-security-group",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "ec2_security_group",
+      "resource_types": [
+        "awsec2securitygroup"
+      ],
+      "rule_id": "ec2_securitygroup_with_many_ingress_egress_rules"
+    },
+    {
+      "evidence_aspects": [
+        "rds_backup_retention_period",
+        "rds_read_replica_source_present"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-rds",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "rds_db_instance",
+      "resource_types": [
+        "awsrdsdbinstance"
+      ],
+      "rule_id": "rds_instance_backup_enabled"
+    },
+    {
+      "evidence_aspects": [
+        "rds_engine",
+        "rds_copy_tags_to_snapshot"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-rds",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "rds_db_instance",
+      "resource_types": [
+        "awsrdsdbinstance"
+      ],
+      "rule_id": "rds_instance_copy_tags_to_snapshots"
+    },
+    {
+      "evidence_aspects": [
+        "rds_enhanced_monitoring_enabled"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-rds",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "rds_db_instance",
+      "resource_types": [
+        "awsrdsdbinstance"
+      ],
+      "rule_id": "rds_instance_enhanced_monitoring_enabled"
+    },
+    {
+      "evidence_aspects": [
+        "rds_engine",
+        "rds_iam_database_authentication_enabled"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-rds",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "rds_db_instance",
+      "resource_types": [
+        "awsrdsdbinstance"
+      ],
+      "rule_id": "rds_instance_iam_authentication_enabled"
+    },
+    {
+      "evidence_aspects": [
+        "rds_in_vpc"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-rds",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "rds_db_instance",
+      "resource_types": [
+        "awsrdsdbinstance"
+      ],
+      "rule_id": "rds_instance_inside_vpc"
+    },
+    {
+      "evidence_aspects": [
+        "rds_enabled_cloudwatch_logs_exports"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-rds",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "rds_db_instance",
+      "resource_types": [
+        "awsrdsdbinstance"
+      ],
+      "rule_id": "rds_instance_integration_cloudwatch_logs"
+    },
+    {
+      "evidence_aspects": [
+        "rds_auto_minor_version_upgrade"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-rds",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "rds_db_instance",
+      "resource_types": [
+        "awsrdsdbinstance"
+      ],
+      "rule_id": "rds_instance_minor_version_upgrade_enabled"
+    },
+    {
+      "evidence_aspects": [
+        "rds_storage_encrypted"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-rds",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "rds_db_instance",
+      "resource_types": [
+        "awsrdsdbinstance"
+      ],
+      "rule_id": "rds_instance_storage_encrypted"
+    },
+    {
+      "evidence_aspects": [
+        "notification"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-s3",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "s3_bucket",
+      "resource_types": [
+        "awss3bucket"
+      ],
+      "rule_id": "s3_bucket_event_notifications_enabled"
+    },
+    {
+      "evidence_aspects": [
+        "encryption"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-s3",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "s3_bucket",
+      "resource_types": [
+        "awss3bucket"
+      ],
+      "rule_id": "s3_bucket_kms_encryption"
+    },
+    {
+      "evidence_aspects": [
+        "lifecycle"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-s3",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "s3_bucket",
+      "resource_types": [
+        "awss3bucket"
+      ],
+      "rule_id": "s3_bucket_lifecycle_enabled"
+    },
+    {
+      "evidence_aspects": [
+        "versioning"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-s3",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "s3_bucket",
+      "resource_types": [
+        "awss3bucket"
+      ],
+      "rule_id": "s3_bucket_no_mfa_delete"
+    },
+    {
+      "evidence_aspects": [
+        "object_lock"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-s3",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "s3_bucket",
+      "resource_types": [
+        "awss3bucket"
+      ],
+      "rule_id": "s3_bucket_object_lock"
+    },
+    {
+      "evidence_aspects": [
         "versioning"
       ],
       "evidence_grade": "e2e_measured",
@@ -16,6 +569,22 @@
         "awss3bucket"
       ],
       "rule_id": "s3_bucket_object_versioning"
+    },
+    {
+      "evidence_aspects": [
+        "logging"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-s3",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "s3_bucket",
+      "resource_types": [
+        "awss3bucket"
+      ],
+      "rule_id": "s3_bucket_server_access_logging_enabled"
     },
     {
       "evidence_aspects": [
@@ -598,16 +1167,16 @@
   "project_version": "0.1.0",
   "schema_version": 1,
   "summary": {
-    "controls": 36,
+    "controls": 70,
     "evidence_grades": {
-      "contract_tested": 1,
+      "contract_tested": 35,
       "contract_tested_export_observed": 5,
       "e2e_measured": 30
     },
     "live_execution": 2,
-    "live_validation": 36,
+    "live_validation": 70,
     "providers": {
-      "aws": 1,
+      "aws": 35,
       "azure": 35
     },
     "remediation_planning": 4

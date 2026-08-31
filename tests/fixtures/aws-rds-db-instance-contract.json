@@ -1,0 +1,40 @@
+{
+  "resource_uid": "arn:aws:rds:us-west-2:111122223333:db:elcapitan-fixture",
+  "api_response": {
+    "DBInstances": [
+      {
+        "DBInstanceArn": "arn:aws:rds:us-west-2:111122223333:db:elcapitan-fixture",
+        "DBInstanceIdentifier": "elcapitan-fixture",
+        "Engine": "postgres",
+        "BackupRetentionPeriod": 0,
+        "AutoMinorVersionUpgrade": false,
+        "StorageEncrypted": false,
+        "EnabledCloudwatchLogsExports": []
+      }
+    ]
+  },
+  "failing": {
+    "rds_engine": "postgres",
+    "rds_backup_retention_period": 0,
+    "rds_read_replica_source_present": false,
+    "rds_copy_tags_to_snapshot": false,
+    "rds_enhanced_monitoring_enabled": false,
+    "rds_iam_database_authentication_enabled": false,
+    "rds_in_vpc": false,
+    "rds_enabled_cloudwatch_logs_exports": [],
+    "rds_auto_minor_version_upgrade": false,
+    "rds_storage_encrypted": false
+  },
+  "passing": {
+    "rds_engine": "postgres",
+    "rds_backup_retention_period": 7,
+    "rds_read_replica_source_present": false,
+    "rds_copy_tags_to_snapshot": true,
+    "rds_enhanced_monitoring_enabled": true,
+    "rds_iam_database_authentication_enabled": true,
+    "rds_in_vpc": true,
+    "rds_enabled_cloudwatch_logs_exports": ["postgresql", "upgrade"],
+    "rds_auto_minor_version_upgrade": true,
+    "rds_storage_encrypted": true
+  }
+}

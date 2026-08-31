@@ -14,6 +14,7 @@ before and after and score every run green having checked nothing.
 """
 import json
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -31,6 +32,13 @@ from elcapitan.control_packs import builtin_registry
 
 ARN = fake_aws.BUCKET_ARN
 REGION = "ap-south-1"
+RDS_CONTRACT = json.loads(
+    (Path(__file__).parent / "fixtures" / "aws-rds-db-instance-contract.json").read_text()
+)
+EC2_SG_CONTRACT = json.loads(
+    (Path(__file__).parent / "fixtures" /
+     "aws-ec2-security-group-contract.json").read_text()
+)
 
 
 @pytest.fixture
@@ -203,6 +211,29 @@ def test_an_empty_response_body_is_a_value_not_a_parse_error(aws):
     assert dict(state.config)["versioning"] == "{}"
 
 
+def test_existing_s3_capture_supplies_every_expanded_control(aws):
+    values = {}
+    for aspect, raw in aws().config:
+        try:
+            values[aspect] = json.loads(raw)
+        except json.JSONDecodeError:
+            values[aspect] = raw
+    registry = builtin_registry()
+    rule_ids = (
+        "s3_bucket_kms_encryption",
+        "s3_bucket_server_access_logging_enabled",
+        "s3_bucket_event_notifications_enabled",
+        "s3_bucket_lifecycle_enabled",
+        "s3_bucket_object_lock",
+        "s3_bucket_no_mfa_delete",
+    )
+
+    assert all(
+        registry.get("aws", rule_id).evaluator(values).confirmed
+        for rule_id in rule_ids
+    )
+
+
 def test_unparseable_output_is_a_named_failure(aws):
     responses = fake_aws.default_responses()
     responses["get-bucket-acl"] = {"stdout": "<html>not json</html>", "exit": 0}
@@ -231,6 +262,229 @@ def test_the_query_names_the_bucket_the_region_and_json_output(aws):
     assert "--bucket" in call["argv"] and fake_aws.BUCKET in call["argv"]
     assert call["argv"][call["argv"].index("--region") + 1] == REGION
     assert call["argv"][-2:] == ["--output", "json"]
+
+
+# --- AWS RDS DB instance capture ------------------------------------------
+
+def _rds_reply(document=None, *, exit=0, stderr=""):
+    return {
+        "describe-db-instances": {
+            "stdout": json.dumps(
+                RDS_CONTRACT["api_response"] if document is None else document),
+            "stderr": stderr,
+            "exit": exit,
+        },
+    }
+
+
+def test_rds_capture_normalizes_one_exact_describe_response(aws):
+    aws.responses(_rds_reply())
+
+    state = aws(
+        resource_uid=RDS_CONTRACT["resource_uid"], region="us-west-2")
+    values = {name: json.loads(value) for name, value in state.config}
+
+    assert values == RDS_CONTRACT["failing"]
+    call = fake_aws.calls(aws.bin_dir)[0]
+    assert call["argv"] == [
+        "rds", "describe-db-instances", "--db-instance-identifier",
+        RDS_CONTRACT["resource_uid"], "--region", "us-west-2",
+        "--no-paginate", "--output", "json",
+    ]
+
+
+def test_rds_change_is_detected_from_the_anchored_resource(aws):
+    changed = json.loads(json.dumps(RDS_CONTRACT["api_response"]))
+    changed["DBInstances"][0]["StorageEncrypted"] = True
+    response = _rds_reply()
+    response["describe-db-instances"]["then"] = {
+        "stdout": json.dumps(changed), "exit": 0,
+    }
+    aws.responses(response)
+
+    before = aws(resource_uid=RDS_CONTRACT["resource_uid"], region="us-west-2")
+    failures = assert_unchanged(before, env=aws.env())
+
+    assert len(failures) == 1
+    assert "rds_storage_encrypted" in failures[0]
+
+
+def test_rds_denial_is_never_recorded_as_configuration(aws):
+    aws.responses({"describe-db-instances": {
+        "stdout": "", "exit": 254,
+        "stderr": "An error occurred (AccessDenied) when calling the "
+                  "DescribeDBInstances operation: not authorized",
+    }})
+
+    with pytest.raises(ValueError, match="AccessDenied"):
+        aws(resource_uid=RDS_CONTRACT["resource_uid"], region="us-west-2")
+
+
+@pytest.mark.parametrize(
+    ("document", "message"),
+    [
+        ({"DBInstances": []}, "exactly one"),
+        ({"DBInstances": [{}, {}]}, "exactly one"),
+        ({"DBInstances": [{}], "Marker": "more"}, "pagination marker"),
+        ({"DBInstances": [{
+            **RDS_CONTRACT["api_response"]["DBInstances"][0],
+            "DBInstanceArn": "arn:aws:rds:us-west-2:111122223333:db:other",
+        }]}, "ARN does not match"),
+        ({"DBInstances": [{
+            **RDS_CONTRACT["api_response"]["DBInstances"][0],
+            "Engine": "docdb",
+        }]}, "invalid Engine"),
+        ({"DBInstances": [{
+            **RDS_CONTRACT["api_response"]["DBInstances"][0],
+            "StorageEncrypted": "false",
+        }]}, "invalid StorageEncrypted"),
+    ],
+)
+def test_rds_capture_rejects_unbound_or_malformed_responses(aws, document, message):
+    aws.responses(_rds_reply(document))
+    with pytest.raises(ValueError, match=message):
+        aws(resource_uid=RDS_CONTRACT["resource_uid"], region="us-west-2")
+
+
+def test_rds_region_must_match_the_resource_arn_before_any_call(aws):
+    aws.responses(_rds_reply())
+    with pytest.raises(ValueError, match="does not match ARN region"):
+        aws(resource_uid=RDS_CONTRACT["resource_uid"], region="us-east-1")
+    assert fake_aws.calls(aws.bin_dir) == []
+
+
+def test_unsupported_aws_service_fails_closed(aws):
+    with pytest.raises(ValueError, match="supported services: s3, rds, ec2"):
+        aws(resource_uid=(
+            "arn:aws:kms:us-west-2:111122223333:key/"
+            "00000000-0000-0000-0000-000000000001"))
+
+
+# --- AWS EC2 security-group capture ---------------------------------------
+
+def _ec2_sg_replies(group=None, interfaces=None):
+    return {
+        "describe-security-groups": {
+            "stdout": json.dumps(
+                EC2_SG_CONTRACT["security_group_response"]
+                if group is None else group),
+            "exit": 0,
+        },
+        "describe-network-interfaces": {
+            "stdout": json.dumps(
+                EC2_SG_CONTRACT["network_interfaces_response"]
+                if interfaces is None else interfaces),
+            "exit": 0,
+        },
+    }
+
+
+def test_ec2_security_group_capture_normalizes_two_bounded_reads(aws):
+    aws.responses(_ec2_sg_replies())
+
+    state = aws(
+        resource_uid=EC2_SG_CONTRACT["resource_uid"], region="us-west-2")
+    values = {name: json.loads(value) for name, value in state.config}
+
+    assert values == EC2_SG_CONTRACT["failing"]
+    calls = fake_aws.calls(aws.bin_dir)
+    assert calls[0]["argv"] == [
+        "ec2", "describe-security-groups", "--group-ids",
+        "sg-0123456789abcdef0", "--region", "us-west-2",
+        "--no-paginate", "--output", "json",
+    ]
+    assert calls[1]["argv"] == [
+        "ec2", "describe-network-interfaces", "--filters",
+        "Name=group-id,Values=sg-0123456789abcdef0",
+        "--page-size", "5", "--max-items", "1", "--region", "us-west-2",
+        "--output", "json",
+    ]
+
+
+def test_ec2_security_group_rule_change_is_detected(aws):
+    changed = json.loads(json.dumps(EC2_SG_CONTRACT["security_group_response"]))
+    changed["SecurityGroups"][0]["IpPermissions"] = []
+    responses = _ec2_sg_replies()
+    responses["describe-security-groups"]["then"] = {
+        "stdout": json.dumps(changed), "exit": 0,
+    }
+    aws.responses(responses)
+
+    before = aws(
+        resource_uid=EC2_SG_CONTRACT["resource_uid"], region="us-west-2")
+    failures = assert_unchanged(before, env=aws.env())
+
+    assert len(failures) == 1
+    assert "ec2_sg_ingress_rules" in failures[0]
+
+
+@pytest.mark.parametrize("operation", [
+    "describe-security-groups", "describe-network-interfaces",
+])
+def test_ec2_security_group_denial_is_never_recorded(aws, operation):
+    responses = _ec2_sg_replies()
+    responses[operation] = {
+        "stdout": "", "exit": 254,
+        "stderr": "An error occurred (UnauthorizedOperation) when calling the "
+                  "Describe operation: not authorized",
+    }
+    aws.responses(responses)
+
+    with pytest.raises(ValueError, match="UnauthorizedOperation"):
+        aws(resource_uid=EC2_SG_CONTRACT["resource_uid"], region="us-west-2")
+
+
+@pytest.mark.parametrize(
+    ("document", "message"),
+    [
+        ({"SecurityGroups": []}, "exactly one"),
+        ({"SecurityGroups": [{}, {}]}, "exactly one"),
+        ({"SecurityGroups": [{
+            **EC2_SG_CONTRACT["security_group_response"]["SecurityGroups"][0],
+            "OwnerId": "999999999999",
+        }]}, "does not match"),
+        ({"SecurityGroups": [{
+            **EC2_SG_CONTRACT["security_group_response"]["SecurityGroups"][0],
+            "SecurityGroupArn": (
+                "arn:aws:ec2:us-west-2:111122223333:security-group/sg-00000000"),
+        }]}, "ARN does not match"),
+        ({"SecurityGroups": [{
+            **EC2_SG_CONTRACT["security_group_response"]["SecurityGroups"][0],
+            "IpPermissions": [{
+                "IpProtocol": "tcp", "FromPort": 22, "ToPort": 22,
+                "IpRanges": [{"CidrIp": "not-a-cidr"}], "Ipv6Ranges": [],
+            }],
+        }]}, "invalid CIDR"),
+    ],
+)
+def test_ec2_security_group_rejects_unbound_or_malformed_group(
+        aws, document, message):
+    aws.responses(_ec2_sg_replies(group=document))
+    with pytest.raises(ValueError, match=message):
+        aws(resource_uid=EC2_SG_CONTRACT["resource_uid"], region="us-west-2")
+
+
+def test_ec2_security_group_rejects_an_interface_outside_the_filter(aws):
+    aws.responses(_ec2_sg_replies(interfaces={"NetworkInterfaces": [{
+        "NetworkInterfaceId": "eni-0123456789abcdef0",
+        "Groups": [{"GroupId": "sg-00000000", "GroupName": "other"}],
+    }]}))
+    with pytest.raises(ValueError, match="outside the group filter"):
+        aws(resource_uid=EC2_SG_CONTRACT["resource_uid"], region="us-west-2")
+
+
+def test_ec2_security_group_empty_attachment_page_is_a_real_unused_state(aws):
+    aws.responses(_ec2_sg_replies(interfaces={"NetworkInterfaces": []}))
+    state = aws(
+        resource_uid=EC2_SG_CONTRACT["resource_uid"], region="us-west-2")
+    assert json.loads(dict(state.config)["ec2_sg_in_use"]) is False
+
+
+def test_ec2_security_group_region_mismatch_stops_before_any_call(aws):
+    aws.responses(_ec2_sg_replies())
+    with pytest.raises(ValueError, match="does not match ARN region"):
+        aws(resource_uid=EC2_SG_CONTRACT["resource_uid"], region="us-east-1")
+    assert fake_aws.calls(aws.bin_dir) == []
 
 
 # --- the verification identity ---------------------------------------------

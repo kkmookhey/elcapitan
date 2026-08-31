@@ -9,12 +9,16 @@ separate process. argv construction, empty-stdout handling, the
 absent-vs-denied distinction and the environment scrubbing are therefore all
 genuinely exercised; only the account is fake.
 
-The defaults below are not invented. Every one is what the real
+The S3 defaults below are not invented. Every one is what the real
 `elcapitan-anna-scanner` role returned for the real Anna decks bucket on
 2026-08-09 — including the two that matter most and would never have been
 guessed: an unset configuration exits 0 with EMPTY stdout (not "{}"), and an
 absent object-lock configuration exits 254 with
 `ObjectLockConfigurationNotFoundError`.
+
+The RDS and EC2 defaults are synthetic resources built from the official
+DescribeDBInstances, DescribeSecurityGroups, and DescribeNetworkInterfaces
+response contracts. They are intentionally not described as live measurements.
 
 The script deliberately locates its own response file relative to __file__
 rather than through an environment variable, because cloud.verification_env
@@ -28,6 +32,9 @@ from pathlib import Path
 
 BUCKET_ARN = "arn:aws:s3:::anna-assets"
 BUCKET = "anna-assets"
+RDS_ARN = "arn:aws:rds:us-west-2:111122223333:db:elcapitan-fixture"
+EC2_SG_ARN = (
+    "arn:aws:ec2:us-west-2:111122223333:security-group/sg-0123456789abcdef0")
 
 _SCRIPT = '''#!/usr/bin/env python3
 import json, os, sys
@@ -112,6 +119,46 @@ def default_responses() -> dict:
                       "(ReplicationConfigurationNotFoundError) when calling the "
                       "GetBucketReplication operation: The replication "
                       "configuration was not found\n"},
+        "describe-db-instances": {
+            "stdout": json.dumps({"DBInstances": [{
+                "DBInstanceArn": RDS_ARN,
+                "DBInstanceIdentifier": "elcapitan-fixture",
+                "Engine": "postgres",
+                "BackupRetentionPeriod": 0,
+                "AutoMinorVersionUpgrade": False,
+                "StorageEncrypted": False,
+                "EnabledCloudwatchLogsExports": [],
+            }]}),
+            "exit": 0,
+        },
+        "describe-security-groups": {
+            "stdout": json.dumps({"SecurityGroups": [{
+                "OwnerId": "111122223333",
+                "GroupId": "sg-0123456789abcdef0",
+                "GroupName": "launch-wizard-1",
+                "VpcId": "vpc-0123456789abcdef0",
+                "SecurityGroupArn": EC2_SG_ARN,
+                "IpPermissions": [{
+                    "IpProtocol": "tcp", "FromPort": 20, "ToPort": 27018,
+                    "IpRanges": [{"CidrIp": "0.0.0.0/0"}], "Ipv6Ranges": [],
+                }],
+                "IpPermissionsEgress": [{
+                    "IpProtocol": "tcp", "FromPort": 443, "ToPort": 443,
+                    "IpRanges": [{"CidrIp": "8.0.0.0/8"}], "Ipv6Ranges": [],
+                }],
+            }]}),
+            "exit": 0,
+        },
+        "describe-network-interfaces": {
+            "stdout": json.dumps({"NetworkInterfaces": [{
+                "NetworkInterfaceId": "eni-0123456789abcdef0",
+                "Groups": [{
+                    "GroupId": "sg-0123456789abcdef0",
+                    "GroupName": "launch-wizard-1",
+                }],
+            }]}),
+            "exit": 0,
+        },
     }
 
 

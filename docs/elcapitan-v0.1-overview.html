@@ -1,0 +1,731 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="El Capitan current product, capability, customer-value, and roadmap briefing, built on the v0.1.0 foundation.">
+  <meta name="color-scheme" content="dark">
+  <title>El Capitan — Current Product Briefing</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #061013;
+      --bg-deep: #03090b;
+      --panel: #0c191d;
+      --panel-2: #102227;
+      --ink: #e9f0f2;
+      --muted: #97a8ae;
+      --faint: #61747b;
+      --line: #20363d;
+      --green: #62e5a8;
+      --green-soft: rgba(98, 229, 168, .11);
+      --blue: #7bbdff;
+      --blue-soft: rgba(123, 189, 255, .10);
+      --amber: #ffc76b;
+      --amber-soft: rgba(255, 199, 107, .11);
+      --red: #ff9292;
+      --radius: 18px;
+      --max: 1180px;
+      --shadow: 0 28px 80px rgba(0, 0, 0, .28);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 92px; }
+    body {
+      margin: 0;
+      min-width: 320px;
+      background:
+        radial-gradient(circle at 84% -5%, rgba(70, 187, 142, .13), transparent 31rem),
+        radial-gradient(circle at 7% 38%, rgba(50, 116, 169, .09), transparent 28rem),
+        var(--bg);
+      color: var(--ink);
+      font-size: 16px;
+      line-height: 1.55;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: .7;
+      background-image:
+        linear-gradient(rgba(255,255,255,.014) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.014) 1px, transparent 1px);
+      background-size: 44px 44px;
+      mask-image: linear-gradient(to bottom, black, transparent 78%);
+    }
+    a { color: inherit; }
+    button { font: inherit; }
+    .shell { width: min(var(--max), calc(100% - 40px)); margin-inline: auto; }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      border-bottom: 1px solid rgba(32, 54, 61, .85);
+      background: rgba(6, 16, 19, .86);
+      backdrop-filter: blur(18px);
+    }
+    .topbar-inner {
+      min-height: 70px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+    .brand { display: flex; align-items: center; gap: 11px; text-decoration: none; }
+    .brand-mark {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border: 1px solid #39785f;
+      border-radius: 10px;
+      color: var(--green);
+      background: #0d261e;
+      font: 750 11px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+      box-shadow: inset 0 0 18px rgba(98, 229, 168, .05);
+    }
+    .brand-copy strong, .brand-copy span { display: block; }
+    .brand-copy strong { font-size: 14px; letter-spacing: .01em; }
+    .brand-copy span { margin-top: 2px; color: var(--muted); font-size: 11px; }
+    .nav { display: flex; align-items: center; gap: 22px; }
+    .nav a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 650;
+    }
+    .nav a:hover, .nav a:focus-visible { color: var(--ink); }
+    .nav .status-link {
+      padding: 8px 11px;
+      border: 1px solid #46623a;
+      border-radius: 999px;
+      color: var(--amber);
+      background: var(--amber-soft);
+      font: 700 10px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+    }
+
+    main { position: relative; }
+    .hero {
+      min-height: 760px;
+      display: grid;
+      align-items: center;
+      padding: 92px 0 70px;
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.22fr) minmax(320px, .78fr);
+      gap: 72px;
+      align-items: center;
+    }
+    .eyebrow, .section-label {
+      margin: 0 0 13px;
+      color: var(--green);
+      font-size: 11px;
+      font-weight: 750;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+    }
+    h1 {
+      max-width: 800px;
+      margin: 0;
+      font-size: clamp(48px, 7vw, 86px);
+      font-weight: 540;
+      letter-spacing: -.058em;
+      line-height: .98;
+    }
+    .hero .lede {
+      max-width: 720px;
+      margin: 26px 0 0;
+      color: #b2c0c5;
+      font-size: clamp(17px, 1.9vw, 21px);
+      line-height: 1.62;
+    }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 34px; }
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 42px;
+      padding: 0 15px;
+      border: 1px solid #315059;
+      border-radius: 10px;
+      color: var(--ink);
+      background: rgba(13, 29, 34, .8);
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .button.primary { border-color: var(--green); color: #041a11; background: var(--green); }
+    .button:hover { transform: translateY(-1px); }
+    .button:focus-visible, .filter:focus-visible, summary:focus-visible, a:focus-visible {
+      outline: 3px solid var(--blue);
+      outline-offset: 3px;
+    }
+    .boundary-panel {
+      border: 1px solid #2d5949;
+      border-radius: 22px;
+      background: linear-gradient(145deg, rgba(17, 43, 35, .88), rgba(8, 20, 24, .94));
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .boundary-head { padding: 22px 23px 18px; border-bottom: 1px solid rgba(49, 94, 75, .7); }
+    .signal { display: flex; align-items: center; gap: 9px; }
+    .signal i {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 15px rgba(98, 229, 168, .75);
+    }
+    .signal span {
+      color: var(--green);
+      font: 750 10px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+    .boundary-head h2 { margin: 16px 0 7px; font-size: 23px; font-weight: 560; }
+    .boundary-head p { margin: 0; color: var(--muted); font-size: 13px; }
+    .boundary-list { margin: 0; padding: 10px 23px 18px; list-style: none; }
+    .boundary-list li {
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      gap: 10px;
+      padding: 13px 0;
+      border-bottom: 1px solid rgba(32, 54, 61, .76);
+      color: #c5d0d3;
+      font-size: 12px;
+    }
+    .boundary-list li:last-child { border-bottom: 0; }
+    .boundary-list b {
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      border: 1px solid #38604f;
+      border-radius: 7px;
+      color: var(--green);
+      font: 700 10px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+    .boundary-foot {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 15px 23px;
+      border-top: 1px solid rgba(49, 94, 75, .7);
+      background: rgba(4, 13, 15, .46);
+      color: var(--muted);
+      font: 650 10px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      margin-top: 64px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+    .metric { min-width: 0; padding: 22px; border-right: 1px solid var(--line); background: rgba(12, 25, 29, .82); }
+    .metric:last-child { border-right: 0; }
+    .metric small, .metric span { display: block; }
+    .metric small { color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+    .metric strong { display: block; margin: 11px 0 5px; font: 560 32px/1 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .metric span { color: var(--faint); font-size: 11px; }
+
+    .section { padding: 96px 0; border-top: 1px solid rgba(32, 54, 61, .62); }
+    .section-head { display: grid; grid-template-columns: .82fr 1.18fr; gap: 56px; align-items: end; margin-bottom: 44px; }
+    .section h2 { margin: 0; font-size: clamp(32px, 4.5vw, 54px); font-weight: 540; letter-spacing: -.045em; line-height: 1.05; }
+    .section-intro { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.7; }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 10px;
+      position: relative;
+    }
+    .flow-card {
+      min-height: 188px;
+      padding: 17px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(12, 25, 29, .78);
+      position: relative;
+    }
+    .flow-card::after {
+      content: "→";
+      position: absolute;
+      top: 29px;
+      right: -17px;
+      z-index: 2;
+      width: 22px;
+      height: 22px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      color: var(--green);
+      background: var(--bg);
+      font: 600 12px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+    .flow-card:last-child::after { display: none; }
+    .flow-card .num { color: var(--faint); font: 700 10px/1 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .flow-card h3 { margin: 24px 0 8px; font-size: 15px; }
+    .flow-card p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.58; }
+    .flow-card.gated { border-color: #4e5233; background: linear-gradient(155deg, rgba(60, 54, 25, .32), rgba(12, 25, 29, .82)); }
+    .flow-card.gated .num { color: var(--amber); }
+
+    .principles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 18px; }
+    .principle { padding: 20px; border: 1px solid var(--line); border-radius: 14px; background: rgba(8, 19, 23, .68); }
+    .principle span { color: var(--green); font: 700 10px/1 ui-monospace, SFMono-Regular, Consolas, monospace; text-transform: uppercase; letter-spacing: .08em; }
+    .principle h3 { margin: 14px 0 7px; font-size: 16px; }
+    .principle p { margin: 0; color: var(--muted); font-size: 12px; }
+
+    .capability-summary {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+    .capability-total {
+      padding: 25px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: linear-gradient(145deg, rgba(15, 35, 40, .92), rgba(8, 20, 23, .82));
+    }
+    .capability-total small { color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+    .capability-total strong { display: block; margin: 12px 0 8px; font: 560 43px/1 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .capability-total p { margin: 0; color: var(--muted); font-size: 12px; }
+    .capability-total.plan { border-color: #365a70; }
+    .capability-total.plan strong { color: var(--blue); }
+    .capability-total.execute { border-color: #655833; }
+    .capability-total.execute strong { color: var(--amber); }
+
+    .filter-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 25px 0 18px; }
+    .filter {
+      padding: 8px 12px;
+      border: 1px solid #2b464f;
+      border-radius: 999px;
+      color: var(--muted);
+      background: rgba(12, 25, 29, .75);
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .filter[aria-pressed="true"] { border-color: #438169; color: var(--green); background: var(--green-soft); }
+    .capability-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .cap-card {
+      min-height: 183px;
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(12, 25, 29, .8);
+    }
+    .cap-card[hidden] { display: none; }
+    .cap-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .provider {
+      padding: 5px 7px;
+      border-radius: 5px;
+      color: var(--blue);
+      background: var(--blue-soft);
+      font: 750 9px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+    }
+    .control-count { color: var(--muted); font: 650 10px/1 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .cap-card h3 { margin: 18px 0 7px; font-size: 17px; }
+    .cap-card p { margin: 0; min-height: 42px; color: var(--muted); font-size: 12px; }
+    .cap-flags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 17px; }
+    .flag { padding: 5px 7px; border: 1px solid #315846; border-radius: 999px; color: var(--green); font: 700 9px/1 ui-monospace, SFMono-Regular, Consolas, monospace; text-transform: uppercase; }
+    .flag.plan { border-color: #365a70; color: var(--blue); }
+    .flag.execute { border-color: #655833; color: var(--amber); }
+    .evidence-note { margin-top: 20px; padding: 17px 20px; border-left: 3px solid var(--green); color: var(--muted); background: rgba(98, 229, 168, .055); font-size: 12px; }
+
+    .use-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+    .use-card { padding: 27px; border: 1px solid var(--line); border-radius: 16px; background: rgba(12, 25, 29, .8); }
+    .use-card .index { color: var(--green); font: 700 10px/1 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .use-card h3 { margin: 19px 0 9px; font-size: 21px; letter-spacing: -.015em; }
+    .use-card p { margin: 0; color: var(--muted); font-size: 13px; }
+    .use-card ul { margin: 17px 0 0; padding: 0; list-style: none; }
+    .use-card li { position: relative; padding: 7px 0 7px 18px; color: #bdc9cd; font-size: 12px; border-top: 1px solid rgba(32, 54, 61, .58); }
+    .use-card li::before { content: "+"; position: absolute; left: 0; color: var(--green); font-family: ui-monospace, monospace; }
+
+    .benefit-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+    .benefit { min-height: 225px; padding: 20px; border: 1px solid var(--line); border-radius: 14px; background: rgba(8, 19, 23, .7); }
+    .benefit b { display: block; color: var(--green); font: 700 24px/1 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .benefit h3 { margin: 28px 0 9px; font-size: 15px; }
+    .benefit p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.65; }
+
+    .evidence-layout { display: grid; grid-template-columns: .88fr 1.12fr; gap: 18px; }
+    .proof-card { padding: 27px; border: 1px solid var(--line); border-radius: 16px; background: rgba(12, 25, 29, .82); }
+    .proof-card h3 { margin: 0 0 18px; font-size: 20px; }
+    .proof-row { display: grid; grid-template-columns: 105px 1fr; gap: 18px; padding: 16px 0; border-top: 1px solid var(--line); }
+    .proof-row strong { color: var(--green); font: 650 13px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .proof-row p { margin: 0; color: var(--muted); font-size: 12px; }
+    .verification-card { padding: 27px; border: 1px solid #365747; border-radius: 16px; background: linear-gradient(145deg, rgba(16, 45, 34, .68), rgba(9, 20, 24, .88)); }
+    .verification-card h3 { margin: 0; font-size: 20px; }
+    .verification-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 22px; }
+    .verification-item { padding: 15px; border: 1px solid rgba(49, 94, 75, .72); border-radius: 11px; background: rgba(3, 12, 14, .34); }
+    .verification-item strong { display: block; color: var(--ink); font-size: 13px; }
+    .verification-item span { display: block; margin-top: 5px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+    .verification-meta { margin: 18px 0 0; color: var(--muted); font: 650 10px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; }
+
+    .roadmap { display: grid; gap: 12px; }
+    .roadmap-item {
+      display: grid;
+      grid-template-columns: 140px 1fr auto;
+      gap: 28px;
+      align-items: start;
+      padding: 25px;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      background: rgba(12, 25, 29, .78);
+    }
+    .roadmap-time { color: var(--green); font: 750 10px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; text-transform: uppercase; letter-spacing: .08em; }
+    .roadmap-item h3 { margin: -2px 0 7px; font-size: 18px; }
+    .roadmap-item p { margin: 0; color: var(--muted); font-size: 12px; }
+    .roadmap-status { padding: 6px 8px; border: 1px solid #315846; border-radius: 999px; color: var(--green); font: 700 9px/1 ui-monospace, SFMono-Regular, Consolas, monospace; text-transform: uppercase; white-space: nowrap; }
+    .roadmap-item.blocked { border-color: #585032; }
+    .roadmap-item.blocked .roadmap-time, .roadmap-item.blocked .roadmap-status { color: var(--amber); }
+    .roadmap-item.blocked .roadmap-status { border-color: #655833; }
+    .roadmap-item.future .roadmap-status { border-color: #365a70; color: var(--blue); }
+
+    .release-gate {
+      margin-top: 34px;
+      padding: 25px;
+      border: 1px solid #655833;
+      border-radius: 16px;
+      background: linear-gradient(120deg, rgba(70, 56, 20, .3), rgba(12, 25, 29, .82));
+    }
+    .release-gate-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+    .release-gate h3 { margin: 0; font-size: 20px; }
+    .gate-pill { padding: 6px 9px; border: 1px solid #655833; border-radius: 999px; color: var(--amber); font: 700 9px/1 ui-monospace, SFMono-Regular, Consolas, monospace; text-transform: uppercase; letter-spacing: .07em; }
+    .release-gate p { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
+    .gate-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; margin-top: 20px; }
+    .gate-step { padding: 13px; border: 1px solid rgba(101, 88, 51, .68); border-radius: 10px; color: #c7c0ad; font-size: 10px; }
+    .gate-step strong { display: block; margin-bottom: 5px; color: var(--amber); font: 700 9px/1 ui-monospace, SFMono-Regular, Consolas, monospace; }
+
+    .limits { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    details { border: 1px solid var(--line); border-radius: 13px; background: rgba(8, 19, 23, .7); }
+    summary { padding: 17px 19px; cursor: pointer; color: var(--ink); font-size: 13px; font-weight: 700; }
+    details p { margin: 0; padding: 0 19px 18px; color: var(--muted); font-size: 12px; }
+
+    footer { padding: 36px 0 54px; border-top: 1px solid var(--line); }
+    .footer-grid { display: flex; align-items: flex-start; justify-content: space-between; gap: 30px; }
+    .footer-grid p { max-width: 690px; margin: 0; color: var(--muted); font-size: 11px; }
+    .footer-meta { text-align: right; color: var(--faint); font: 650 10px/1.7 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+    @media (max-width: 1000px) {
+      .hero { min-height: auto; }
+      .hero-grid, .section-head, .evidence-layout { grid-template-columns: 1fr; }
+      .hero-grid { gap: 42px; }
+      .flow { grid-template-columns: repeat(3, 1fr); }
+      .flow-card:nth-child(3)::after { display: none; }
+      .capability-grid { grid-template-columns: 1fr 1fr; }
+      .benefit-grid { grid-template-columns: repeat(3, 1fr); }
+      .roadmap-item { grid-template-columns: 120px 1fr; }
+      .roadmap-status { grid-column: 2; justify-self: start; }
+      .gate-steps { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 720px) {
+      .shell { width: min(100% - 28px, var(--max)); }
+      .topbar-inner { min-height: 64px; }
+      .brand-copy span { display: none; }
+      .nav a:not(.status-link) { display: none; }
+      .hero { padding: 66px 0 54px; }
+      .hero-grid { gap: 30px; }
+      h1 { font-size: clamp(44px, 15vw, 66px); }
+      .metrics, .capability-summary { grid-template-columns: 1fr 1fr; }
+      .metric:nth-child(2) { border-right: 0; }
+      .metric:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+      .section { padding: 70px 0; }
+      .section-head { gap: 20px; }
+      .flow { grid-template-columns: 1fr 1fr; }
+      .flow-card:nth-child(3)::after { display: grid; }
+      .flow-card:nth-child(even)::after { display: none; }
+      .principles, .capability-grid, .use-grid, .limits { grid-template-columns: 1fr; }
+      .benefit-grid { grid-template-columns: 1fr 1fr; }
+      .verification-list { grid-template-columns: 1fr; }
+      .roadmap-item { grid-template-columns: 1fr; gap: 12px; }
+      .roadmap-status { grid-column: 1; }
+      .gate-steps { grid-template-columns: 1fr; }
+      .footer-grid { display: grid; }
+      .footer-meta { text-align: left; }
+    }
+    @media (max-width: 470px) {
+      .metrics, .capability-summary, .benefit-grid, .flow { grid-template-columns: 1fr; }
+      .metric { border-right: 0; border-bottom: 1px solid var(--line); }
+      .metric:last-child { border-bottom: 0; }
+      .flow-card::after { display: none !important; }
+      .boundary-foot, .release-gate-head { align-items: flex-start; flex-direction: column; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .button:hover { transform: none; }
+    }
+    @media print {
+      :root { color-scheme: light; --bg: #fff; --panel: #fff; --panel-2: #fff; --ink: #162126; --muted: #43545b; --faint: #66777d; --line: #ccd5d8; --green: #087c53; --blue: #216aa6; --amber: #9a5b00; }
+      body { background: #fff; }
+      body::before, .topbar { display: none; }
+      .hero { min-height: auto; padding-top: 30px; }
+      .section { break-inside: avoid; }
+      .boundary-panel, .metric, .flow-card, .principle, .capability-total, .cap-card, .use-card, .benefit, .proof-card, .verification-card, .roadmap-item, details, .release-gate { box-shadow: none; background: #fff; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="shell topbar-inner">
+      <a class="brand" href="#top" aria-label="El Capitan product briefing home">
+        <span class="brand-mark" aria-hidden="true">EC</span>
+        <span class="brand-copy"><strong>El Capitan</strong><span>living product briefing · v0.1 foundation</span></span>
+      </a>
+      <nav class="nav" aria-label="Briefing sections">
+        <a href="#product">Product</a>
+        <a href="#capabilities">Capabilities</a>
+        <a href="#value">Customer value</a>
+        <a href="#roadmap">Roadmap</a>
+        <a class="status-link" href="#release-gate">Release gated</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="shell">
+        <div class="hero-grid">
+          <div>
+            <p class="eyebrow">Evidence-bound cloud remediation</p>
+            <h1>Know what is real.<br>Control what happens next.</h1>
+            <p class="lede">El Capitan turns noisy cloud findings into a validated, prioritized, auditable remediation queue—then keeps human authority and deterministic safety gates in control of every consequential step.</p>
+            <div class="hero-actions">
+              <a class="button primary" href="#product">See how it works <span aria-hidden="true">↓</span></a>
+              <a class="button" href="generated/capability-matrix.md">Open the capability matrix</a>
+            </div>
+          </div>
+
+          <aside class="boundary-panel" aria-label="Product trust boundary">
+            <div class="boundary-head">
+              <div class="signal"><i aria-hidden="true"></i><span>v0.1 foundation · AWS expansion</span></div>
+              <h2>Safe by separation</h2>
+              <p>The product separates evidence, decisions, human approval, and action authority.</p>
+            </div>
+            <ol class="boundary-list">
+              <li><b>01</b><span>Scanner and observer identities are read-only.</span></li>
+              <li><b>02</b><span>Models produce bounded typed proposals—not workflow transitions.</span></li>
+              <li><b>03</b><span>Human approval binds to one exact package hash.</span></li>
+              <li><b>04</b><span>Execution needs its own proven connector, identity, monitor, checkpoint, and rollback.</span></li>
+            </ol>
+            <div class="boundary-foot"><span>Self-hosted</span><span>Human-gated</span><span>Fail-closed</span></div>
+          </aside>
+        </div>
+
+        <div class="metrics" aria-label="Current build metrics">
+          <article class="metric"><small>Validation controls</small><strong>70</strong><span>35 Azure · 35 AWS</span></article>
+          <article class="metric"><small>Planning controls</small><strong>4</strong><span>3 Azure Storage · 1 AWS S3</span></article>
+          <article class="metric"><small>Execution controls</small><strong>2</strong><span>Azure Storage only</span></article>
+          <article class="metric"><small>Current verification</small><strong>680</strong><span>Working-tree tests passed</span></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="product">
+      <div class="shell">
+        <div class="section-head">
+          <div><p class="section-label">What we built</p><h2>A remediation control plane—not an agent free-for-all.</h2></div>
+          <p class="section-intro">El Capitan coordinates scanner intake, live validation, evidence, operational review, approval, and guarded execution. Deterministic code owns state, retries, credentials, scheduling, rollback, and audit; optional models are confined to typed specialist work.</p>
+        </div>
+
+        <div class="flow" aria-label="El Capitan workflow">
+          <article class="flow-card"><span class="num">01 / INTAKE</span><h3>Normalize findings</h3><p>Import OCSF or Security Hub ASFF with exact FAIL, PASS, and MANUAL accounting.</p></article>
+          <article class="flow-card"><span class="num">02 / VALIDATE</span><h3>Re-query reality</h3><p>Use bounded read-only cloud identities to confirm, clear, or block supported findings.</p></article>
+          <article class="flow-card"><span class="num">03 / EVIDENCE</span><h3>Record the proof</h3><p>Persist minimized, typed, immutable evidence with provenance and explicit availability.</p></article>
+          <article class="flow-card"><span class="num">04 / PREPARE</span><h3>Build the package</h3><p>Link exact Terraform, verify the proposal, and run SRE, window, and rollback review.</p></article>
+          <article class="flow-card gated"><span class="num">05 / HUMAN GATE</span><h3>Decide deliberately</h3><p>Approve or reject one immutable package hash through a separate review plane.</p></article>
+          <article class="flow-card"><span class="num">06 / ACTION</span><h3>Execute narrowly</h3><p>Checkpoint, deploy, monitor, verify, roll back if needed, and issue a completion record.</p></article>
+        </div>
+
+        <div class="principles">
+          <article class="principle"><span>Evidence first</span><h3>Claims must be traceable</h3><p>Every material conclusion points to admitted evidence. Missing, stale, malformed, or unsupported evidence fails closed.</p></article>
+          <article class="principle"><span>Authority is explicit</span><h3>Capabilities never blur</h3><p>Validation, remediation planning, and live execution are independent permissions—not one generic “supported” badge.</p></article>
+          <article class="principle"><span>Humans retain control</span><h3>Approval is a boundary</h3><p>No model can approve its own work, grant credentials, skip a stage, or turn a recommendation into a cloud change.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="capabilities">
+      <div class="shell">
+        <div class="section-head">
+          <div><p class="section-label">Current capabilities</p><h2>Broad read-only insight. Narrow action authority.</h2></div>
+          <p class="section-intro">The v0.1 foundation now has validation parity by count: 70 exact controls across eleven service packs, split evenly between Azure and AWS. AWS covers seven S3, eight RDS DB-instance, and twenty EC2 security-group controls. Verified planning remains limited to four controls, and live execution remains limited to two independently proven Azure Storage changes.</p>
+        </div>
+
+        <div class="capability-summary">
+          <article class="capability-total"><small>Deterministic validation</small><strong>70</strong><p>Live, service-aware evaluation with typed evidence and denied/unknown states.</p></article>
+          <article class="capability-total plan"><small>Verified planning</small><strong>4</strong><p>Exact IaC linkage plus format, validation, and no-refresh plan checks.</p></article>
+          <article class="capability-total execute"><small>Live execution</small><strong>2</strong><p>Azure Storage only, with exact scope, checkpoint, monitoring, and rollback.</p></article>
+        </div>
+
+        <div class="filter-row" role="group" aria-label="Filter capability families">
+          <button class="filter" type="button" data-filter="all" aria-pressed="true">All families</button>
+          <button class="filter" type="button" data-filter="azure" aria-pressed="false">Azure</button>
+          <button class="filter" type="button" data-filter="aws" aria-pressed="false">AWS</button>
+          <button class="filter" type="button" data-filter="planning" aria-pressed="false">Planning available</button>
+          <button class="filter" type="button" data-filter="execution" aria-pressed="false">Execution available</button>
+        </div>
+
+        <div class="capability-grid" id="capability-grid">
+          <article class="cap-card" data-tags="azure planning execution"><div class="cap-top"><span class="provider">Azure</span><span class="control-count">14 controls</span></div><h3>Storage</h3><p>Network access, anonymous blobs, encryption, resilience, identity defaults, retention, key rotation, and secure SMB.</p><div class="cap-flags"><span class="flag">Validate 14</span><span class="flag plan">Plan 3</span><span class="flag execute">Execute 2</span></div></article>
+          <article class="cap-card" data-tags="azure"><div class="cap-top"><span class="provider">Azure</span><span class="control-count">7 controls</span></div><h3>App Service + Functions</h3><p>Authentication, client certificates, HTTP/2, logs, FTPS, public access, and VNet integration.</p><div class="cap-flags"><span class="flag">Validate 7</span></div></article>
+          <article class="cap-card" data-tags="azure"><div class="cap-top"><span class="provider">Azure</span><span class="control-count">4 controls</span></div><h3>Key Vault</h3><p>RBAC, recoverability, private endpoints, and diagnostic logging with minimized evidence.</p><div class="cap-flags"><span class="flag">Validate 4</span></div></article>
+          <article class="cap-card" data-tags="azure"><div class="cap-top"><span class="provider">Azure</span><span class="control-count">4 controls</span></div><h3>Cosmos DB</h3><p>Automatic failover, continuous backup, minimum TLS, and public-network posture.</p><div class="cap-flags"><span class="flag">Validate 4</span></div></article>
+          <article class="cap-card" data-tags="azure"><div class="cap-top"><span class="provider">Azure</span><span class="control-count">3 controls</span></div><h3>Container Registry</h3><p>Admin-user disablement, public-network exposure, and private-link presence.</p><div class="cap-flags"><span class="flag">Validate 3</span></div></article>
+          <article class="cap-card" data-tags="azure"><div class="cap-top"><span class="provider">Azure</span><span class="control-count">1 control</span></div><h3>SQL Server</h3><p>Transparent data encryption using a customer-managed Azure Key Vault protector.</p><div class="cap-flags"><span class="flag">Validate 1</span></div></article>
+          <article class="cap-card" data-tags="azure"><div class="cap-top"><span class="provider">Azure</span><span class="control-count">1 control</span></div><h3>Network</h3><p>Exact subnet security-group association with explicit platform-subnet exclusions.</p><div class="cap-flags"><span class="flag">Validate 1</span></div></article>
+          <article class="cap-card" data-tags="azure"><div class="cap-top"><span class="provider">Azure</span><span class="control-count">1 control</span></div><h3>Azure OpenAI</h3><p>Public-network access posture with account-kind validation and fail-closed enum handling.</p><div class="cap-flags"><span class="flag">Validate 1</span></div></article>
+          <article class="cap-card" data-tags="aws planning"><div class="cap-top"><span class="provider">AWS</span><span class="control-count">7 controls</span></div><h3>S3</h3><p>Object versioning, KMS encryption, access logging, event notifications, lifecycle configuration, Object Lock, and MFA Delete.</p><div class="cap-flags"><span class="flag">Validate 7</span><span class="flag plan">Plan 1</span></div></article>
+          <article class="cap-card" data-tags="aws"><div class="cap-top"><span class="provider">AWS</span><span class="control-count">8 controls</span></div><h3>RDS DB instances</h3><p>Backups, snapshot tags, enhanced monitoring, IAM authentication, VPC placement, CloudWatch Logs, minor upgrades, and storage encryption.</p><div class="cap-flags"><span class="flag">Validate 8</span></div></article>
+          <article class="cap-card" data-tags="aws"><div class="cap-top"><span class="provider">AWS</span><span class="control-count">20 controls</span></div><h3>EC2 security groups</h3><p>Internet-exposed ports, broad public CIDRs, default and Launch Wizard groups, attachment scope, and excessive rule counts.</p><div class="cap-flags"><span class="flag">Validate 20</span></div></article>
+        </div>
+        <p class="evidence-note"><strong>Evidence grades stay visible.</strong> Most Azure controls and AWS S3 object versioning are E2E measured. The six newer S3 controls, eight RDS controls, twenty EC2 security-group controls, and Key Vault logging are contract tested; Azure OpenAI and Cosmos DB are contract tested plus export observed. Evidence grade never grants mutation authority.</p>
+      </div>
+    </section>
+
+    <section class="section" id="use-cases">
+      <div class="shell">
+        <div class="section-head">
+          <div><p class="section-label">Use cases</p><h2>Useful before the first cloud change.</h2></div>
+          <p class="section-intro">El Capitan creates value in read-only shadow mode, then supports progressively stronger workflows only where evidence, customer policy, identity, and rollback readiness permit.</p>
+        </div>
+        <div class="use-grid">
+          <article class="use-card"><span class="index">USE CASE 01</span><h3>Validate scanner findings</h3><p>Turn a long export into a live, evidence-backed picture of what is confirmed, cleared, unavailable, or unsupported.</p><ul><li>OCSF and Security Hub ASFF intake</li><li>Replay-safe deduplication and exact-asset correlation</li><li>Bounded read-only Azure and AWS collectors</li></ul></article>
+          <article class="use-card"><span class="index">USE CASE 02</span><h3>Prioritize a cloud remediation fleet</h3><p>Rank resource-oriented cases with transparent factors instead of treating scanner severity as the entire business decision.</p><ul><li>Severity, exposure, exploitability, and reachability</li><li>Asset criticality and compensating controls</li><li>Tenant isolation and service/window collision visibility</li></ul></article>
+          <article class="use-card"><span class="index">USE CASE 03</span><h3>Prepare an auditable change</h3><p>Link a supported finding to one exact Terraform resource and produce a complete review package without modifying the source repository.</p><ul><li>Conservative literal or state-backed source linkage</li><li>Real Terraform format, validation, and plan gates</li><li>Independent SRE, window, and rollback reviews</li></ul></article>
+          <article class="use-card"><span class="index">USE CASE 04</span><h3>Prove safe execution patterns</h3><p>For the two supported Azure Storage actions, demonstrate tightly scoped execution with recovery built into the lifecycle.</p><ul><li>Package-bound approval and durable scheduling</li><li>Checkpoint, health monitoring, and post-change validation</li><li>Automatic rollback, certificate, and originator handoff</li></ul></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="value">
+      <div class="shell">
+        <div class="section-head">
+          <div><p class="section-label">Customer benefits</p><h2>More signal, less operational ambiguity.</h2></div>
+          <p class="section-intro">The product is designed for security and platform teams that need to reduce finding noise without trading away change control, provenance, or the ability to explain exactly what happened.</p>
+        </div>
+        <div class="benefit-grid">
+          <article class="benefit"><b>01</b><h3>Reduce false urgency</h3><p>Re-check supported findings against current cloud state and separate cleared, confirmed, unavailable, and unsupported outcomes.</p></article>
+          <article class="benefit"><b>02</b><h3>Make evidence portable</h3><p>Typed, immutable records let security, SRE, and change reviewers inspect the same bounded facts and provenance.</p></article>
+          <article class="benefit"><b>03</b><h3>Shorten review cycles</h3><p>Package the exact IaC diff, operational context, window, verification, and rollback plan before asking for approval.</p></article>
+          <article class="benefit"><b>04</b><h3>Constrain blast radius</h3><p>Separate identities and exact-resource connectors prevent validation authority from quietly becoming mutation authority.</p></article>
+          <article class="benefit"><b>05</b><h3>Recover visibly</h3><p>Durable budgets, circuit breakers, checkpoints, rollback outcomes, and handoff records make failure explicit and reviewable.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="evidence">
+      <div class="shell">
+        <div class="section-head">
+          <div><p class="section-label">Why believe it</p><h2>Capability claims are tied to proof.</h2></div>
+          <p class="section-intro">The current build distinguishes live measurement from contract coverage and offline observation. The same discipline applies to build, security, quickstart, and hosted execution evidence.</p>
+        </div>
+        <div class="evidence-layout">
+          <article class="proof-card">
+            <h3>Evidence vocabulary</h3>
+            <div class="proof-row"><strong>E2E measured</strong><p>Collector and evaluator ran through a least-privilege identity against an authorized disposable or non-production resource.</p></div>
+            <div class="proof-row"><strong>Contract tested</strong><p>Official response shapes and sanitized fixtures cover success, failure, malformed, denied, and absent-property branches.</p></div>
+            <div class="proof-row"><strong>Export observed</strong><p>An authorized scanner export established rule and resource shape offline; no customer cloud request is implied.</p></div>
+          </article>
+          <article class="verification-card">
+            <h3>Current verification</h3>
+            <div class="verification-list">
+              <div class="verification-item"><strong>680 tests</strong><span>Full Python suite passed with the AWS S3, RDS, and EC2 security-group expansion.</span></div>
+              <div class="verification-item"><strong>Complete-history scan</strong><span>Zero findings with an empty baseline under three constrained false-positive rules.</span></div>
+              <div class="verification-item"><strong>Packages inspected</strong><span>Wheel and source distribution built and passed content checks.</span></div>
+              <div class="verification-item"><strong>Container scanned</strong><span>Linux amd64 runtime rejected high and critical fixed vulnerabilities.</span></div>
+              <div class="verification-item"><strong>Quickstart passed</strong><span>Authenticated PostgreSQL and UI acceptance completed in CI.</span></div>
+              <div class="verification-item"><strong>Azure lifecycle proven</strong><span>Success and automatic rollback exercised for both live Storage controls.</span></div>
+            </div>
+            <p class="verification-meta">WORKTREE VERIFIED 2026-08-31 · BASE COMMIT 499382d · VERSION 0.1.0 FOUNDATION</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="roadmap">
+      <div class="shell">
+        <div class="section-head">
+          <div><p class="section-label">Roadmap ahead</p><h2>Release safely, then deepen trust.</h2></div>
+          <p class="section-intro">The immediate roadmap is a controlled public technical preview. Product expansion follows the same rule as the current system: add authority only after the evidence, identity, operational contract, and recovery path are proven.</p>
+        </div>
+
+        <div class="roadmap">
+          <article class="roadmap-item"><span class="roadmap-time">Now · candidate</span><div><h3>Azure-first v0.1 foundation</h3><p>Complete the evidence-bound workflow, capability matrix, governance, packaging, security scans, synthetic quickstart, and narrow live-action proof.</p></div><span class="roadmap-status">Built</span></article>
+          <article class="roadmap-item blocked"><span class="roadmap-time">Next · release</span><div><h3>Clear the external publication gates</h3><p>Receive GitHub confirmation that retained PR refs and cached views are purged; then configure public visibility and the protected release environment. Tagging and publication still require explicit final authorization.</p></div><span class="roadmap-status">Blocked externally</span></article>
+          <article class="roadmap-item future"><span class="roadmap-time">Near term</span><div><h3>Harden customer identity and pilot operations</h3><p>Add Microsoft Entra approval authentication, production-grade named-user audit, and a separately authorized read-only customer shadow pilot with explicit data handling.</p></div><span class="roadmap-status">Planned</span></article>
+          <article class="roadmap-item"><span class="roadmap-time">Now · expansion</span><div><h3>Broaden AWS validation safely</h3><p>AWS now matches Azure's validator count through S3, RDS DB instances, and EC2 security groups. Additional services will follow customer finding volume while planning, execution, and evidence grades remain independent.</p></div><span class="roadmap-status">Validation parity reached</span></article>
+          <article class="roadmap-item future"><span class="roadmap-time">Later</span><div><h3>Enterprise integrations and portable operations</h3><p>Extend workload identity, CI and source-control workflows, customer notifications, and deployment options only as concrete customer workflows justify them.</p></div><span class="roadmap-status">Deferred</span></article>
+        </div>
+
+        <aside class="release-gate" id="release-gate">
+          <div class="release-gate-head"><h3>The candidate is ready; publication is not yet authorized.</h3><span class="gate-pill">Fail-closed gate</span></div>
+          <p>GitHub Support ticket #4715479 remains open. The repository must remain private until GitHub confirms the purge. No tag, release workflow, package, image, or public launch may proceed without explicit final authorization.</p>
+          <div class="gate-steps" aria-label="Remaining release gates">
+            <div class="gate-step"><strong>01 · WAIT</strong>GitHub confirms PR-ref and cache cleanup</div>
+            <div class="gate-step"><strong>02 · CONFIGURE</strong>Public visibility and protected release environment</div>
+            <div class="gate-step"><strong>03 · AUTHORIZE</strong>Receive explicit final tag and publication approval</div>
+            <div class="gate-step"><strong>04 · RECORD + RUN</strong>Commit the approval record, verify its digest, then run the guarded release</div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="section" id="limits">
+      <div class="shell">
+        <div class="section-head">
+          <div><p class="section-label">Honest boundaries</p><h2>What v0.1 does not claim.</h2></div>
+          <p class="section-intro">The technical preview is deliberately narrow. These boundaries protect customers from interpreting a validated concept as production authority.</p>
+        </div>
+        <div class="limits">
+          <details open><summary>No unattended production remediation</summary><p>Human approval remains mandatory, and production execution requires separately proven identities, connectors, health contracts, checkpoints, and rollback paths.</p></details>
+          <details><summary>No universal remediation engine</summary><p>The product does not claim generic VM or OS patching, arbitrary application-code changes, or execution for every validated control.</p></details>
+          <details><summary>No broad AWS execution</summary><p>AWS currently has seven S3, eight RDS, and twenty EC2 security-group validation controls, but only S3 object versioning supports verified planning and no AWS control supports live execution. Validation breadth is not mutation authority.</p></details>
+          <details><summary>No public multi-tenant SaaS guarantee</summary><p>v0.1 is self-hosted. Shared-token interfaces are demonstration and bounded-pilot bridges, not production customer identity.</p></details>
+          <details><summary>No complete benchmark coverage</summary><p>Unsupported services and controls remain visible. Coverage is never inferred from neighboring resource types or related checks.</p></details>
+          <details><summary>No unbounded model autonomy</summary><p>Optional model workers have strict typed contracts, timeouts, retry budgets, idempotent replay, and circuit breakers. They cannot control workflow state or credentials.</p></details>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="shell footer-grid">
+      <p>El Capitan is an evidence-bound cloud remediation control plane. This living briefing tracks the current build on the v0.1.0 foundation and intentionally keeps validation, planning, execution, and proof grade separate.</p>
+      <div class="footer-meta">UPDATED 2026-08-31<br>BASE COMMIT 499382d<br>STATUS UNRELEASED</div>
+    </div>
+  </footer>
+
+  <script>
+    (() => {
+      const buttons = Array.from(document.querySelectorAll('.filter'));
+      const cards = Array.from(document.querySelectorAll('.cap-card'));
+
+      buttons.forEach((button) => {
+        button.addEventListener('click', () => {
+          const filter = button.dataset.filter;
+          buttons.forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
+          cards.forEach((card) => {
+            card.hidden = filter !== 'all' && !card.dataset.tags.split(' ').includes(filter);
+          });
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

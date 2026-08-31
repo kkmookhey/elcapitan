@@ -6,6 +6,16 @@ All notable changes to El Capitan are recorded here. Dates use ISO 8601.
 
 ### Added
 
+- Twenty validation-only AWS EC2 security-group controls for public port and
+  CIDR exposure, default and Launch Wizard groups, and excessive rule counts,
+  using exact-group and bounded attachment reads.
+- Eight validation-only AWS RDS DB-instance controls for backups, snapshot tag
+  copying, enhanced monitoring, IAM database authentication, VPC placement,
+  CloudWatch Logs exports, automatic minor upgrades, and storage encryption,
+  using one exact-ARN `DescribeDBInstances` read.
+- Six validation-only AWS S3 controls for KMS encryption, server access
+  logging, event notifications, lifecycle configuration, Object Lock, and MFA
+  Delete, using the existing bounded bucket-state collector.
 - Release governance, CI security gates, and guarded artifact provenance.
 - Registry-generated capability/evidence matrix and explicit browser labels for
   source type, live outcome, validation, planning, execution, and evidence grade.

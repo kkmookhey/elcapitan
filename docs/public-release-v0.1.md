@@ -48,7 +48,7 @@ the time of this blueprint it reports:
 
 | Capability | Count | Public interpretation |
 |---|---:|---|
-| Deterministic live-validation rules | 36 | 35 Azure, 1 AWS |
+| Deterministic live-validation rules | 70 | 35 Azure, 35 AWS |
 | Verified remediation-planning rules | 4 | 3 Azure Storage, 1 AWS S3 |
 | Live execution rules | 2 | Azure Storage only; disabled from the shadow service |
 
@@ -65,7 +65,11 @@ The documentation and UI must never collapse these three columns into a single
 Azure OpenAI and Cosmos DB enter v0.1 as contract tested and export observed,
 not E2E measured. That distinction is a feature of the trust model, not a
 footnote. Key Vault's diagnostic-logging extension is contract tested while
-the other Key Vault controls retain their E2E-measured grade.
+the other Key Vault controls retain their E2E-measured grade. The six added S3
+controls, eight RDS controls, and twenty EC2 security-group controls are also
+contract tested rather than E2E measured. Equal Azure/AWS validation-rule
+counts do not imply equal service breadth, evidence depth, planning coverage,
+or execution authority.
 
 ## Shape of the release
 
@@ -193,13 +197,14 @@ the authorized live-lab segment, and publication remain external gates.
 
 ## Recommended sequence
 
-1. Finish the top Azure/AWS validation packs and generate the support matrix.
-2. Add Entra authentication to the review plane and harden tenant isolation.
-3. Add release governance, CI, artifact signing, SBOM, and repository hygiene.
-4. Produce the Docker Compose quickstart and clean-machine acceptance test.
-5. Run one authorized customer shadow pilot without model egress or action
+1. Preserve the completed 35-Azure/35-AWS validation checkpoint and generated
+   support matrix; deepen evidence only through explicitly authorized lab work.
+2. Complete the remaining external cleanup and protected-release gates.
+3. Add Entra authentication and named-user auditability to the review plane.
+4. Run one authorized customer shadow pilot without model egress or action
    identity; publish only anonymized aggregate lessons with consent.
-6. Tag `v0.1.0`, publish artifacts, and call it a technical preview.
+5. Obtain committed, digest-bound release approval for the exact artifact set,
+   then tag `v0.1.0`, publish artifacts, and call it a technical preview.
 
 Success for v0.1 is not the number of checks. It is whether a skeptical security
 or SRE reviewer can trace every supported claim, understand every unsupported

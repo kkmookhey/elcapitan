@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import pytest
 
 from elcapitan.control_packs import (
@@ -22,11 +25,13 @@ def definition(*, pack_id="fixture", provider="azure", rule_id="fixture_rule"):
 
 def test_builtin_registry_is_composed_from_service_packs():
     assert {pack.pack_id for pack in BUILTIN_CONTROL_PACKS} == {
-        "aws-s3", "azure-app-service", "azure-container-registry",
+        "aws-ec2-security-group", "aws-rds", "aws-s3", "azure-app-service",
+        "azure-container-registry",
         "azure-cosmos-db", "azure-key-vault", "azure-network", "azure-openai",
         "azure-sql", "azure-storage"}
     registry = builtin_registry()
-    assert len(registry.list()) == 36
+    assert len(registry.list()) == 70
+    assert len(registry.list(provider="aws")) == 35
     assert registry.get("AZURE", "sqlserver_tde_encrypted_with_cmk").pack_id == (
         "azure-sql")
     assert registry.get(
@@ -46,6 +51,254 @@ def test_builtin_registry_is_composed_from_service_packs():
                for item in registry.list()) == 5
     assert registry.get(
         "azure", "keyvault_logging_enabled").evidence_grade == "contract_tested"
+
+
+S3_CONTRACT = json.loads(
+    (Path(__file__).parent / "fixtures" / "aws-s3-control-contract.json").read_text()
+)
+RDS_CONTRACT = json.loads(
+    (Path(__file__).parent / "fixtures" / "aws-rds-db-instance-contract.json").read_text()
+)
+EC2_SG_CONTRACT = json.loads(
+    (Path(__file__).parent / "fixtures" /
+     "aws-ec2-security-group-contract.json").read_text()
+)
+
+EC2_SG_PORT_RULES = (
+    "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_22",
+    "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_3389",
+    "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_cassandra_7199_9160_8888",
+    "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_elasticsearch_kibana_9200_9300_5601",
+    "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_ftp_20_21",
+    "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_kafka_9092",
+    "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_memcached_11211",
+    "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_mongodb_27017_27018",
+    "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_mysql_3306",
+    "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_oracle_1521_2483",
+    "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_postgres_5432",
+    "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_redis_6379",
+    "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_sql_server_1433_1434",
+    "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_telnet_23",
+)
+EC2_SG_RULES = (
+    "ec2_securitygroup_allow_ingress_from_internet_to_all_ports",
+    "ec2_securitygroup_allow_ingress_from_internet_to_high_risk_tcp_ports",
+    *EC2_SG_PORT_RULES,
+    "ec2_securitygroup_allow_wide_open_public_ipv4",
+    "ec2_securitygroup_default_restrict_traffic",
+    "ec2_securitygroup_from_launch_wizard",
+    "ec2_securitygroup_with_many_ingress_egress_rules",
+)
+
+
+@pytest.mark.parametrize("rule_id", [
+    "s3_bucket_kms_encryption",
+    "s3_bucket_server_access_logging_enabled",
+    "s3_bucket_event_notifications_enabled",
+    "s3_bucket_lifecycle_enabled",
+    "s3_bucket_object_lock",
+    "s3_bucket_no_mfa_delete",
+])
+def test_expanded_s3_pack_matches_pinned_prowler_truth_conditions(rule_id):
+    control = builtin_registry().get("aws", rule_id)
+
+    assert control.evaluator(S3_CONTRACT["failing"]).confirmed is True
+    assert control.evaluator(S3_CONTRACT["passing"]).confirmed is False
+    assert control.live_validation is True
+    assert control.remediation_planning is False
+    assert control.live_execution is False
+    assert control.evidence_grade == "contract_tested"
+
+
+@pytest.mark.parametrize(
+    ("rule_id", "values"),
+    [
+        ("s3_bucket_object_versioning", {"versioning": {"Status": "Unknown"}}),
+        ("s3_bucket_kms_encryption", {"encryption": {
+            "ServerSideEncryptionConfiguration": {"Rules": []}}}),
+        ("s3_bucket_server_access_logging_enabled", {
+            "logging": {"LoggingEnabled": True}}),
+        ("s3_bucket_event_notifications_enabled", {
+            "notification": {"QueueConfigurations": {}}}),
+        ("s3_bucket_lifecycle_enabled", {
+            "lifecycle": {"Rules": [{"Status": "Pending"}]}}),
+        ("s3_bucket_object_lock", {
+            "object_lock": {"ObjectLockConfiguration": {}}}),
+        ("s3_bucket_no_mfa_delete", {
+            "versioning": {"MFADelete": None}}),
+    ],
+)
+def test_s3_pack_rejects_malformed_or_unknown_evidence(rule_id, values):
+    with pytest.raises(ValueError, match="invalid"):
+        builtin_registry().get("aws", rule_id).evaluator(values)
+
+
+def test_s3_pack_rejects_an_unrecognized_absent_marker():
+    with pytest.raises(ValueError, match="invalid encryption response"):
+        builtin_registry().get("aws", "s3_bucket_kms_encryption").evaluator({
+            "encryption": "<absent: AccessDenied>",
+        })
+
+
+@pytest.mark.parametrize("rule_id", [
+    "rds_instance_backup_enabled",
+    "rds_instance_copy_tags_to_snapshots",
+    "rds_instance_enhanced_monitoring_enabled",
+    "rds_instance_iam_authentication_enabled",
+    "rds_instance_inside_vpc",
+    "rds_instance_integration_cloudwatch_logs",
+    "rds_instance_minor_version_upgrade_enabled",
+    "rds_instance_storage_encrypted",
+])
+def test_rds_pack_matches_pinned_prowler_truth_conditions(rule_id):
+    control = builtin_registry().get("aws", rule_id)
+
+    assert control.evaluator(RDS_CONTRACT["failing"]).confirmed is True
+    assert control.evaluator(RDS_CONTRACT["passing"]).confirmed is False
+    assert control.live_validation is True
+    assert control.remediation_planning is False
+    assert control.live_execution is False
+    assert control.evidence_grade == "contract_tested"
+    assert control.resource_types == ("awsrdsdbinstance",)
+
+
+@pytest.mark.parametrize(
+    ("rule_id", "values"),
+    [
+        ("rds_instance_backup_enabled", {
+            "rds_backup_retention_period": "7",
+            "rds_read_replica_source_present": False,
+        }),
+        ("rds_instance_copy_tags_to_snapshots", {
+            "rds_engine": "postgres",
+            "rds_copy_tags_to_snapshot": 0,
+        }),
+        ("rds_instance_enhanced_monitoring_enabled", {
+            "rds_enhanced_monitoring_enabled": "false",
+        }),
+        ("rds_instance_iam_authentication_enabled", {
+            "rds_engine": "postgres",
+            "rds_iam_database_authentication_enabled": None,
+        }),
+        ("rds_instance_inside_vpc", {"rds_in_vpc": 1}),
+        ("rds_instance_integration_cloudwatch_logs", {
+            "rds_enabled_cloudwatch_logs_exports": ["postgresql", "postgresql"],
+        }),
+        ("rds_instance_minor_version_upgrade_enabled", {
+            "rds_auto_minor_version_upgrade": "true",
+        }),
+        ("rds_instance_storage_encrypted", {"rds_storage_encrypted": 1}),
+    ],
+)
+def test_rds_pack_rejects_malformed_evidence(rule_id, values):
+    with pytest.raises(ValueError, match="invalid"):
+        builtin_registry().get("aws", rule_id).evaluator(values)
+
+
+def test_rds_pack_preserves_pinned_prowler_applicability_rules():
+    replica = dict(RDS_CONTRACT["failing"])
+    replica["rds_read_replica_source_present"] = True
+    aurora = dict(RDS_CONTRACT["failing"])
+    aurora["rds_engine"] = "aurora-postgresql"
+    unsupported_iam = dict(RDS_CONTRACT["failing"])
+    unsupported_iam["rds_engine"] = "oracle-ee"
+
+    assert not builtin_registry().get(
+        "aws", "rds_instance_backup_enabled").evaluator(replica).confirmed
+    assert not builtin_registry().get(
+        "aws", "rds_instance_copy_tags_to_snapshots").evaluator(aurora).confirmed
+    assert not builtin_registry().get(
+        "aws", "rds_instance_iam_authentication_enabled").evaluator(
+            unsupported_iam).confirmed
+
+
+@pytest.mark.parametrize("rule_id", (
+    "ec2_securitygroup_allow_ingress_from_internet_to_high_risk_tcp_ports",
+    *EC2_SG_PORT_RULES,
+    "ec2_securitygroup_allow_wide_open_public_ipv4",
+    "ec2_securitygroup_from_launch_wizard",
+))
+def test_ec2_security_group_pack_matches_shared_failing_contract(rule_id):
+    control = builtin_registry().get("aws", rule_id)
+
+    assert control.evaluator(EC2_SG_CONTRACT["failing"]).confirmed is True
+    assert control.evaluator(EC2_SG_CONTRACT["passing"]).confirmed is False
+    assert control.live_validation is True
+    assert control.remediation_planning is False
+    assert control.live_execution is False
+    assert control.evidence_grade == "contract_tested"
+    assert control.resource_types == ("awsec2securitygroup",)
+
+
+def test_ec2_security_group_specialized_truth_conditions():
+    registry = builtin_registry()
+    all_ports = dict(EC2_SG_CONTRACT["failing"])
+    all_ports["ec2_sg_ingress_rules"] = [{
+        "protocol": "-1", "from_port": None, "to_port": None,
+        "ipv4_cidrs": ["0.0.0.0/0"], "ipv6_cidrs": [],
+    }]
+    default = dict(EC2_SG_CONTRACT["failing"])
+    default["ec2_sg_name"] = "default"
+    many = dict(EC2_SG_CONTRACT["passing"])
+    many["ec2_sg_ingress_rules"] = [
+        {
+            "protocol": "tcp", "from_port": port, "to_port": port,
+            "ipv4_cidrs": ["10.0.0.0/8"], "ipv6_cidrs": [],
+        }
+        for port in range(51)
+    ]
+
+    assert registry.get(
+        "aws", "ec2_securitygroup_allow_ingress_from_internet_to_all_ports"
+    ).evaluator(all_ports).confirmed
+    assert registry.get(
+        "aws", "ec2_securitygroup_default_restrict_traffic"
+    ).evaluator(default).confirmed
+    assert registry.get(
+        "aws", "ec2_securitygroup_with_many_ingress_egress_rules"
+    ).evaluator(many).confirmed
+
+
+@pytest.mark.parametrize("rule_id", EC2_SG_RULES)
+def test_ec2_security_group_passing_contract_clears_every_control(rule_id):
+    assert builtin_registry().get(
+        "aws", rule_id).evaluator(EC2_SG_CONTRACT["passing"]).confirmed is False
+
+
+def test_ec2_security_group_preserves_unused_and_duplicate_suppression():
+    registry = builtin_registry()
+    unused = dict(EC2_SG_CONTRACT["failing"])
+    unused["ec2_sg_in_use"] = False
+    all_ports = dict(EC2_SG_CONTRACT["failing"])
+    all_ports["ec2_sg_ingress_rules"] = [{
+        "protocol": "-1", "from_port": None, "to_port": None,
+        "ipv4_cidrs": ["0.0.0.0/0"], "ipv6_cidrs": [],
+    }]
+
+    assert not registry.get(
+        "aws", "ec2_securitygroup_allow_ingress_from_internet_to_all_ports"
+    ).evaluator(unused).confirmed
+    assert not registry.get(
+        "aws", "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_22"
+    ).evaluator(all_ports).confirmed
+
+
+@pytest.mark.parametrize("values", [
+    {"ec2_sg_in_use": "true", "ec2_sg_ingress_rules": []},
+    {"ec2_sg_in_use": True, "ec2_sg_ingress_rules": [{
+        "protocol": "tcp", "from_port": 22, "to_port": None,
+        "ipv4_cidrs": ["0.0.0.0/0"], "ipv6_cidrs": [],
+    }]},
+    {"ec2_sg_in_use": True, "ec2_sg_ingress_rules": [{
+        "protocol": "tcp", "from_port": 22, "to_port": 22,
+        "ipv4_cidrs": ["not-a-cidr"], "ipv6_cidrs": [],
+    }]},
+])
+def test_ec2_security_group_pack_rejects_malformed_evidence(values):
+    with pytest.raises(ValueError, match="invalid|incomplete"):
+        builtin_registry().get(
+            "aws", "ec2_securitygroup_allow_ingress_from_internet_to_all_ports"
+        ).evaluator(values)
 
 
 def test_control_definition_serialization_never_exposes_executable_callable():
