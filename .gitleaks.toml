@@ -1,0 +1,12 @@
+title = "El Capitan secret scanning"
+minVersion = "v8.25.0"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Terraform Container App password_secret_name is a reference identifier"
+condition = "AND"
+paths = ['''^environments/eiger/infra/app\.tf$''']
+regexTarget = "line"
+regexes = ['''^\s*password_secret_name\s*=\s*"[A-Za-z0-9._-]+"\s*$''']

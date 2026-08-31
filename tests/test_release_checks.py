@@ -42,6 +42,26 @@ def test_repository_declares_the_approved_apache_license():
     assert "Copyright 2026 Transilience, Inc." in notice
 
 
+def test_gitleaks_allowlist_is_limited_to_the_adjudicated_reference_identifier():
+    config = tomllib.loads((ROOT / ".gitleaks.toml").read_text())
+
+    assert config["extend"] == {"useDefault": True}
+    assert config["allowlists"] == [
+        {
+            "description": (
+                "Terraform Container App password_secret_name is a reference "
+                "identifier"
+            ),
+            "condition": "AND",
+            "paths": [r"^environments/eiger/infra/app\.tf$"],
+            "regexTarget": "line",
+            "regexes": [
+                r'^\s*password_secret_name\s*=\s*"[A-Za-z0-9._-]+"\s*$'
+            ],
+        }
+    ]
+
+
 def test_release_tree_rejects_terraform_state_and_variable_artifacts():
     for name in (
         "infra/terraform.tfstate",

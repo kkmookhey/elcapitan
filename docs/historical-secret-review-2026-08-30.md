@@ -34,7 +34,9 @@ paths. They reduced to:
   strings across an applied state and its identical destroy-time backup; and
 - one detector false positive: a 12-character Container App secret-name
   identifier assigned to `password_secret_name`. The actual ACR password was
-  a Terraform resource reference, not a source literal.
+  a Terraform resource reference, not a source literal. Its legacy fingerprint
+  was removed and a fail-closed Gitleaks rule now allows only that exact field
+  shape at that exact retired source path.
 
 These files belonged to El Capitan's retired Azure capability-probe environment,
 which ran the public Eiger Docker image; they were not Eiger application
