@@ -1,14 +1,14 @@
 # Historical baseline only. These fingerprints must be removed by the
 # pre-release history-cleaning and credential-rotation gate documented in
 # docs/release-readiness.md. New findings are never allowlisted here.
-39de123d0a227c54b0accfede6fd0cf568a091fd:deploy/azure/shadow-app.yaml:generic-api-key:31
-61bff379bcbe7648592f672fa5bf5963c0a03381:deploy/azure/shadow-app.yaml:generic-api-key:31
-924eed32324b524589aff2575fddd3d9972e040d:deploy/azure/shadow-app.yaml:generic-api-key:31
-9730ce42cd2a9dd3a9fe9dcbbf5f95ac4a9d8b4e:deploy/azure/shadow-app.yaml:generic-api-key:31
-ab499796b6119adea957d553f4720219a8c958e7:deploy/azure/shadow-app.yaml:generic-api-key:30
-ac28a972d5deeff53c852863aee73b5515e5493b:deploy/azure/shadow-app.yaml:generic-api-key:31
-b9a861d086831cf6ae0ce3235215b97083ba00b6:deploy/azure/shadow-app.yaml:generic-api-key:31
-c047f2f38b7787f7633f02c85e86e3831e8198d4:deploy/azure/shadow-app.yaml:generic-api-key:30
+512062ae9439673aa3c21c1dc36a50ed0f8889eb:deploy/azure/shadow-app.yaml:generic-api-key:31
+69105738d29a69bd4e755a89edf342bb7169d782:deploy/azure/shadow-app.yaml:generic-api-key:31
+c1d612108dc7bce6d54a61d4e12eb6d93a7e13fb:deploy/azure/shadow-app.yaml:generic-api-key:31
+a69b2cc5e43e0471ff7050db598c3edcefcdfdaa:deploy/azure/shadow-app.yaml:generic-api-key:31
+0f51d6307fe67b280ffc085c4c9797fa502dcdde:deploy/azure/shadow-app.yaml:generic-api-key:30
+983398df9a865e2be3a30fcda3f6c2e0fd0f7de1:deploy/azure/shadow-app.yaml:generic-api-key:31
+c2e8e9953f47d5660155abb75de8bb1d6a3b848b:deploy/azure/shadow-app.yaml:generic-api-key:31
+ff2fbd635529b6ef7c5843e3f5da05a0bdda854c:deploy/azure/shadow-app.yaml:generic-api-key:30
 d89222e430878911aa1d1980d49d6b2aadf7001b:environments/anna/OBSERVATIONS.md:generic-api-key:16
-e2640f8e72229979b0e4695c275d99166011a942:deploy/azure/shadow-app.yaml:generic-api-key:31
-e8050c6ec7cef3f2917eaa201f5aa7a6ed375419:deploy/azure/shadow-app.yaml:generic-api-key:31
+401c7002a982f38b61c3ccb5c91f6f9a8d1cc26c:deploy/azure/shadow-app.yaml:generic-api-key:31
+f418dba2aafd5320fe4501ab265f12a61c349990:deploy/azure/shadow-app.yaml:generic-api-key:31
