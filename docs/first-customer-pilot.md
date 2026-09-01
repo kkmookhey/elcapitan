@@ -18,9 +18,9 @@ deployment and one non-production cloud boundary.
   Service/Functions, Container Registry, Cosmos DB, and Azure OpenAI controls.
   Most are validation-only; only the capability output may be used to infer
   planning or execution authority. The current AWS pilot validates seven S3
-  controls, eight RDS DB-instance controls, and twenty EC2 security-group
-  controls. Only S3 object versioning supports planning, and there is no AWS
-  mutation authority.
+  controls, eight RDS DB-instance controls, twenty EC2 security-group controls,
+  and two EBS volume controls. Only S3 object versioning supports planning, and
+  there is no AWS mutation authority.
 - A read-only Terraform repository snapshot and sanitized state JSON for a
   small subset of validated resources. No secrets, provider credentials,
   access keys, connection strings, or data-plane content.

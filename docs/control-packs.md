@@ -21,7 +21,7 @@ Each installed pack registers explicit definitions containing:
 - a deterministic evaluator;
 - separate validation, planning, and execution capability flags.
 
-The built-in v1 packs are currently `aws-s3`, `aws-rds`,
+The built-in v1 packs are currently `aws-s3`, `aws-rds`, `aws-ebs-volume`,
 `aws-ec2-security-group`, `azure-storage`, `azure-sql`,
 `azure-key-vault`, `azure-network`, `azure-app-service`,
 `azure-container-registry`, `azure-cosmos-db`, and `azure-openai`. Registration
@@ -91,6 +91,26 @@ The response shapes are pinned to AWS's
 and [DescribeNetworkInterfaces](https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeNetworkInterfaces.html)
 contracts. Truth conditions are pinned to Prowler's
 [EC2 security-group checks](https://github.com/prowler-cloud/prowler/tree/master/prowler/providers/aws/services/ec2).
+
+The AWS EBS volume pack validates two controls from two exact-resource reads:
+volume encryption and the presence of at least one snapshot owned by the
+audited account. `DescribeVolumes` is limited to the volume ID bound into the
+finding ARN. `DescribeSnapshots` is limited to owner `self`, filtered to that
+volume ID, and capped after the first result because the Prowler condition is
+existence rather than snapshot inventory.
+
+The collector binds region and account to the ARN, requires exactly one
+matching volume, and validates the owner and volume of any returned snapshot.
+It persists only the encryption boolean and owned-snapshot-presence boolean;
+snapshot IDs, KMS identifiers, tags, attachments, descriptions, timestamps,
+and sizes are excluded. Denied, absent-volume, multiple-volume, mismatched,
+malformed, or empty-partial responses remain unavailable evidence. Both
+controls are contract tested and validation-only, with no planning or
+execution authority. The shapes are pinned to AWS's
+[DescribeVolumes](https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeVolumes.html)
+and [DescribeSnapshots](https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeSnapshots.html)
+contracts, and the truth conditions to Prowler's
+[EBS checks](https://github.com/prowler-cloud/prowler/tree/master/prowler/providers/aws/services/ec2).
 
 The Azure SQL evidence contract was also run end to end on 2026-08-28 inside a
 no-ingress Container Apps job using a user-assigned identity with `Reader` at

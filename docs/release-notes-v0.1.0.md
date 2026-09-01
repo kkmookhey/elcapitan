@@ -6,7 +6,7 @@
 
 - This is a self-hosted technical preview, not an autonomous replacement for a
   DevOps or SRE team and not a public multi-tenant SaaS.
-- Read-only live validation covers 70 deterministic controls (35 Azure, 35 AWS),
+- Read-only live validation covers 72 deterministic controls (35 Azure, 37 AWS),
   but only four controls support verified remediation planning and only two
   Azure Storage controls have a proven live action connector.
 - Validation capability never grants planning or execution authority.
@@ -14,8 +14,8 @@
   pilots, not production customer approval.
 - Azure OpenAI and Cosmos DB controls are contract tested and export observed,
   not E2E measured. Key Vault diagnostic logging, the six added S3 controls,
-  eight RDS controls, and twenty EC2 security-group controls are contract tested
-  but not yet measured in the lab.
+  eight RDS controls, twenty EC2 security-group controls, and two EBS volume
+  controls are contract tested but not yet measured in the lab.
 - No unattended production remediation, generic VM/OS patching, arbitrary
   application-code remediation, broad AWS execution, or complete benchmark
   coverage is claimed.
@@ -63,6 +63,12 @@ The AWS parity checkpoint was built from source commit
 installed-wheel smoke checks, capability-matrix and release-tree checks,
 narrow Ruff checks, and `git diff --check`. No AWS execution, cloud write,
 model call, customer-system access, or external publication was performed.
+
+The subsequent EBS volume checkpoint was built from source commit
+`f441de9ecaa8d947a24e33acbd4b5e000c46bd88`. It passes 703 tests, compile and
+narrow Ruff checks, generated-matrix and release-tree verification,
+wheel/source builds, distribution inspection, and `git diff --check`. It used
+only synthetic AWS contract fixtures and made no cloud or model call.
 
 This evidence is not release approval. Before the version is tagged, the
 GitHub Support must confirm retained PR-ref/cache cleanup, the approved public

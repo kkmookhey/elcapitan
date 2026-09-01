@@ -48,7 +48,7 @@ the time of this blueprint it reports:
 
 | Capability | Count | Public interpretation |
 |---|---:|---|
-| Deterministic live-validation rules | 70 | 35 Azure, 35 AWS |
+| Deterministic live-validation rules | 72 | 35 Azure, 37 AWS |
 | Verified remediation-planning rules | 4 | 3 Azure Storage, 1 AWS S3 |
 | Live execution rules | 2 | Azure Storage only; disabled from the shadow service |
 
@@ -66,8 +66,8 @@ Azure OpenAI and Cosmos DB enter v0.1 as contract tested and export observed,
 not E2E measured. That distinction is a feature of the trust model, not a
 footnote. Key Vault's diagnostic-logging extension is contract tested while
 the other Key Vault controls retain their E2E-measured grade. The six added S3
-controls, eight RDS controls, and twenty EC2 security-group controls are also
-contract tested rather than E2E measured. Equal Azure/AWS validation-rule
+controls, eight RDS controls, twenty EC2 security-group controls, and two EBS
+volume controls are also contract tested rather than E2E measured. Validator
 counts do not imply equal service breadth, evidence depth, planning coverage,
 or execution authority.
 
@@ -197,8 +197,8 @@ the authorized live-lab segment, and publication remain external gates.
 
 ## Recommended sequence
 
-1. Preserve the completed 35-Azure/35-AWS validation checkpoint and generated
-   support matrix; deepen evidence only through explicitly authorized lab work.
+1. Preserve the completed validation checkpoints and generated support matrix;
+   deepen evidence only through explicitly authorized lab work.
 2. Complete the remaining external cleanup and protected-release gates.
 3. Add Entra authentication and named-user auditability to the review plane.
 4. Run one authorized customer shadow pilot without model egress or action

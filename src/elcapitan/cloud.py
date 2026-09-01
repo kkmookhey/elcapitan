@@ -30,9 +30,9 @@ Three properties are deliberate:
   run green without checking anything.
 
 - **Honestly scoped.** AWS S3, AWS RDS DB instances, AWS EC2 security groups,
-  and the explicitly registered Azure service contracts are implemented.
-  Every other provider and resource type raises a named error rather than
-  returning an empty state that would compare equal to itself.
+  AWS EBS volumes, and the explicitly registered Azure service contracts are
+  implemented. Every other provider and resource type raises a named error
+  rather than returning an empty state that would compare equal to itself.
 """
 import ipaddress
 import json
@@ -536,6 +536,85 @@ def _capture_ec2_security_group(
     )
 
 
+def _ec2_ebs_volume_arn(resource_uid: str) -> tuple[str, str, str]:
+    """Return (region, account, volume id) from one exact EBS volume ARN."""
+    parts = resource_uid.split(":", 5)
+    if (len(parts) != 6 or parts[0] != "arn"
+            or parts[1] not in {"aws", "aws-us-gov", "aws-cn"}
+            or parts[2] != "ec2" or not parts[3]
+            or not re.fullmatch(r"[0-9]{12}", parts[4])
+            or not re.fullmatch(r"volume/vol-[0-9a-f]{8,17}", parts[5])):
+        raise ValueError(f"not an EBS volume ARN: {resource_uid!r}")
+    return parts[3], parts[4], parts[5].split("/", 1)[1]
+
+
+def _capture_ec2_ebs_volume(
+        resource_uid: str, region: str, env: dict) -> tuple[tuple[str, str], ...]:
+    arn_region, account, volume_id = _ec2_ebs_volume_arn(resource_uid)
+    if region and region != arn_region:
+        raise ValueError(
+            f"EBS finding region {region!r} does not match ARN region {arn_region!r}")
+
+    volume_document = _aws_document(
+        env,
+        ("ec2", "describe-volumes", "--volume-ids", volume_id,
+         "--region", arn_region, "--no-paginate", "--output", "json"),
+        what=f"EBS volume {resource_uid}",
+    )
+    if volume_document.get("NextToken"):
+        raise ValueError(
+            "EC2 DescribeVolumes returned a pagination token for an exact ID")
+    volumes = volume_document.get("Volumes")
+    if (not isinstance(volumes, list) or len(volumes) != 1
+            or not isinstance(volumes[0], dict)):
+        raise ValueError(
+            "EC2 DescribeVolumes response must contain exactly one volume")
+    volume = volumes[0]
+    if volume.get("VolumeId") != volume_id:
+        raise ValueError(
+            "EC2 DescribeVolumes response does not match the requested ARN")
+    encrypted = volume.get("Encrypted")
+    if not isinstance(encrypted, bool):
+        raise ValueError(
+            f"EC2 DescribeVolumes response has invalid Encrypted {encrypted!r}")
+
+    snapshot_document = _aws_document(
+        env,
+        ("ec2", "describe-snapshots", "--owner-ids", "self", "--filters",
+         f"Name=volume-id,Values={volume_id}", "--page-size", "5", "--max-items", "1",
+         "--region", arn_region, "--output", "json"),
+        what=f"owned snapshot of EBS volume {resource_uid}",
+    )
+    snapshots = snapshot_document.get("Snapshots")
+    if (not isinstance(snapshots, list) or len(snapshots) > 1
+            or any(not isinstance(item, dict) for item in snapshots)):
+        raise ValueError(
+            "EC2 DescribeSnapshots response must contain at most one snapshot")
+    next_token = snapshot_document.get("NextToken")
+    if next_token is not None and (
+            not isinstance(next_token, str) or not next_token):
+        raise ValueError("EC2 DescribeSnapshots response has invalid NextToken")
+    if not snapshots and next_token:
+        raise ValueError("EC2 DescribeSnapshots returned an empty partial response")
+    for snapshot in snapshots:
+        snapshot_id = snapshot.get("SnapshotId")
+        if (not isinstance(snapshot_id, str)
+                or not re.fullmatch(r"snap-[0-9a-f]{8,17}", snapshot_id)
+                or snapshot.get("VolumeId") != volume_id
+                or snapshot.get("OwnerId") != account):
+            raise ValueError(
+                "EC2 DescribeSnapshots response does not match the requested volume owner")
+
+    values = {
+        "ebs_volume_encrypted": encrypted,
+        "ebs_volume_owned_snapshot_present": bool(snapshots),
+    }
+    return tuple(
+        (name, canonical_json(value).decode("utf-8"))
+        for name, value in sorted(values.items())
+    )
+
+
 def _capture_aws(resource_uid: str, region: str, env: dict) -> tuple[tuple[str, str], ...]:
     parts = resource_uid.split(":", 5)
     service = parts[2] if len(parts) == 6 and parts[0] == "arn" else ""
@@ -544,10 +623,14 @@ def _capture_aws(resource_uid: str, region: str, env: dict) -> tuple[tuple[str, 
     if service == "rds":
         return _capture_rds(resource_uid, region, env)
     if service == "ec2":
-        return _capture_ec2_security_group(resource_uid, region, env)
+        resource = parts[5]
+        if resource.startswith("security-group/"):
+            return _capture_ec2_security_group(resource_uid, region, env)
+        if resource.startswith("volume/"):
+            return _capture_ec2_ebs_volume(resource_uid, region, env)
     raise ValueError(
         f"AWS cloud-state verification is not implemented for resource "
-        f"{resource_uid!r} (supported services: s3, rds, ec2 security groups)")
+        f"{resource_uid!r} (supported services: s3, rds, ec2 security groups/volumes)")
 
 
 

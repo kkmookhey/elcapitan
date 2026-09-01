@@ -2,10 +2,10 @@
 
 **Prepared:** 2026-08-31
 
-**AWS expansion base:** `499382d278afee8f750af74b8e879bd1cfbd8c2c`
+**Current source base:** `f441de9ecaa8d947a24e33acbd4b5e000c46bd88`
 
-**Release direction:** self-hosted `v0.1.0` technical preview with Azure/AWS
-validation-count parity, Azure-only live execution, and explicit evidence grades
+**Release direction:** self-hosted `v0.1.0` technical preview with explicit
+Azure/AWS validation breadth, Azure-only live execution, and evidence grades
 
 This file is the durable context for a fresh Codex session. Read it completely,
 then read `README.md`, `docs/public-release-v0.1.md`,
@@ -15,27 +15,28 @@ completed work from an earlier conversation.
 
 ## Resume here — authoritative current checkpoint
 
-The completed AWS expansion was built on `main` from source base `499382d` and
-was preserved as one reviewable checkpoint. Do not reconstruct, split, or
-repeat it. If the worktree is unexpectedly dirty, inspect and preserve every
-change before acting.
+The `main` worktree is intentionally dirty on source base `f441de9`. It contains
+one completed, uncommitted validation-only EBS volume checkpoint; none of its
+modified or untracked files are disposable. Do not reset, reconstruct, split,
+or overwrite it before reviewing the diff.
 
 Current registry authority:
 
-- **70 deterministic validation controls:** 35 Azure and 35 AWS;
+- **72 deterministic validation controls:** 35 Azure and 37 AWS;
 - **4 remediation-planning controls:** 3 Azure Storage and 1 AWS S3;
 - **2 live-execution controls:** Azure Storage only;
-- evidence grades: 30 E2E measured, 35 contract tested, and 5 contract tested
+- evidence grades: 30 E2E measured, 37 contract tested, and 5 contract tested
   plus export observed;
-- AWS validation: 7 S3, 8 RDS DB-instance, and 20 EC2 security-group controls;
+- AWS validation: 7 S3, 8 RDS DB-instance, 20 EC2 security-group, and 2 EBS
+  volume controls;
 - only S3 object versioning has AWS planning capability; no AWS control has
   live-execution capability.
 
-The completed checkpoint passes **680 tests**, the repository's narrow Ruff
-gate, wheel/source builds, distribution inspection, generated-matrix
-verification, release-tree checks, and `git diff --check`. No cloud call, model
-call, customer-data access, external write, tag, release, or publication was
-performed while building the AWS slices.
+The completed checkpoint passes **703 tests**, the repository's narrow Ruff
+gate, compile checks, wheel/source builds, distribution inspection,
+generated-matrix verification, release-tree checks, and `git diff --check`. No
+cloud call, model call, customer-data access, external write, tag, release, or
+publication was performed while building the EBS slice.
 
 Read these current authorities before acting:
 
@@ -55,8 +56,9 @@ git diff --check
 uv run python scripts/generate_capability_matrix.py --check
 ```
 
-Do not redo S3, RDS, or EC2 security-group work. Before implementing anything
-new, get an explicit bounded validation-only service-slice objective. Planning
+Do not redo S3, RDS, EC2 security-group, or EBS volume work. Before implementing
+anything new, get an explicit choice between committing this complete
+checkpoint and starting another bounded validation-only service slice. Planning
 or execution expansion is a materially different objective and requires
 separate design, identity, operational, rollback, and authorization work.
 
@@ -185,9 +187,9 @@ into one generic "supported" claim.
 - Read-only deterministic Azure packs for selected Storage, SQL Server, Key
   Vault, subnet, App Service, Function App, Container Registry, Cosmos DB, and
   Azure OpenAI controls.
-- Read-only deterministic AWS packs for seven S3, eight RDS DB-instance, and
-  twenty EC2 security-group controls. AWS and Azure have equal validator counts
-  but not equal service breadth, evidence strength, planning, or execution.
+- Read-only deterministic AWS packs for seven S3, eight RDS DB-instance,
+  twenty EC2 security-group, and two EBS volume controls. Validator counts do
+  not imply equal service breadth, evidence strength, planning, or execution.
 - Conservative literal or state-grounded Terraform linkage.
 - Isolated complete-file remediation proposals with format, validation, and
   no-refresh plan checks. Planning never modifies the supplied repository and
@@ -222,9 +224,10 @@ into one generic "supported" claim.
 - Key Vault diagnostic logging is contract-tested, but its Monitor read has not
   yet been run against a lab vault; the other three Key Vault controls retain
   their existing E2E-measured evidence grade.
-- The six added S3 validators, all eight RDS validators, and all twenty EC2
-  security-group validators are contract tested rather than E2E measured.
-  Validation-count parity must not be described as execution or proof parity.
+- The six added S3 validators, all eight RDS validators, all twenty EC2
+  security-group validators, and both EBS volume validators are contract tested
+  rather than E2E measured. Validation counts must not be described as
+  execution or proof parity.
 - Apache-2.0 and the El Capitan name were explicitly approved by Transilience,
   Inc. on 2026-08-30 and are recorded in
   `docs/owner-decisions-2026-08-30.md`. Historical-secret adjudication,
@@ -510,8 +513,39 @@ verification counts, roadmap, and honest-boundary copy synchronized with each
 future capability slice. It remains local-only unless publication is separately
 authorized.
 
+This completed parity checkpoint is preserved in commit `f441de9`. Do not
+reconstruct or repeat it.
+
+## Current uncommitted checkpoint: AWS EBS volume validation
+
+This checkpoint was added on 2026-08-31 from source base `f441de9`. It:
+
+- adds the validation-only `aws-ebs-volume` pack for
+  `ec2_ebs_volume_encryption` and `ec2_ebs_volume_snapshots_exists`;
+- accepts only an `AwsEc2Volume` finding with an exact EC2 volume ARN whose
+  partition, region, account, and volume ID are validated;
+- uses one exact-ID `DescribeVolumes` read and one owner-`self`, volume-filtered
+  `DescribeSnapshots` read capped after the first result;
+- requires exactly one matching volume and validates the owner and volume of
+  any returned snapshot;
+- rejects denied, absent-volume, multiple-volume, mismatched, malformed, and
+  empty-partial responses instead of inferring configuration;
+- persists only encryption and owned-snapshot-presence booleans, excluding
+  snapshot IDs, KMS identifiers, tags, attachments, descriptions, timestamps,
+  and sizes;
+- keeps both controls contract tested and validation-only, with no planning or
+  live-execution authority;
+- brings the generated matrix to 72 validators: 35 Azure and 37 AWS, with
+  planning still 4 and execution still 2;
+- updates shadow UI labels, operator/pilot documentation, release material,
+  the changelog, generated capability artifacts, and the living HTML briefing;
+  and
+- passes 703 tests, compile checks, narrow Ruff checks, wheel/source builds,
+  distribution inspection, generated-matrix verification, release-tree checks,
+  and `git diff --check` without a cloud or model call.
+
 This checkpoint is ready for a fresh session. Preserve it exactly, run the
-read-only resume checks above, and require an explicit new bounded objective
-before beginning another validation-only service slice. Do not carry the old
-instruction to continue automatically into planning, execution, cloud
-operations, customer data, model calls, release work, or publication.
+read-only resume checks above, and ask whether to commit it or begin a new
+bounded validation-only service slice. Do not carry the instruction to continue
+automatically into planning, execution, cloud operations, customer data, model
+calls, release work, or publication.

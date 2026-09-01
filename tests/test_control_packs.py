@@ -25,13 +25,13 @@ def definition(*, pack_id="fixture", provider="azure", rule_id="fixture_rule"):
 
 def test_builtin_registry_is_composed_from_service_packs():
     assert {pack.pack_id for pack in BUILTIN_CONTROL_PACKS} == {
-        "aws-ec2-security-group", "aws-rds", "aws-s3", "azure-app-service",
-        "azure-container-registry",
+        "aws-ebs-volume", "aws-ec2-security-group", "aws-rds", "aws-s3",
+        "azure-app-service", "azure-container-registry",
         "azure-cosmos-db", "azure-key-vault", "azure-network", "azure-openai",
         "azure-sql", "azure-storage"}
     registry = builtin_registry()
-    assert len(registry.list()) == 70
-    assert len(registry.list(provider="aws")) == 35
+    assert len(registry.list()) == 72
+    assert len(registry.list(provider="aws")) == 37
     assert registry.get("AZURE", "sqlserver_tde_encrypted_with_cmk").pack_id == (
         "azure-sql")
     assert registry.get(
@@ -55,6 +55,9 @@ def test_builtin_registry_is_composed_from_service_packs():
 
 S3_CONTRACT = json.loads(
     (Path(__file__).parent / "fixtures" / "aws-s3-control-contract.json").read_text()
+)
+EBS_VOLUME_CONTRACT = json.loads(
+    (Path(__file__).parent / "fixtures" / "aws-ebs-volume-contract.json").read_text()
 )
 RDS_CONTRACT = json.loads(
     (Path(__file__).parent / "fixtures" / "aws-rds-db-instance-contract.json").read_text()
@@ -89,6 +92,36 @@ EC2_SG_RULES = (
     "ec2_securitygroup_from_launch_wizard",
     "ec2_securitygroup_with_many_ingress_egress_rules",
 )
+
+
+@pytest.mark.parametrize("rule_id", [
+    "ec2_ebs_volume_encryption",
+    "ec2_ebs_volume_snapshots_exists",
+])
+def test_ebs_volume_pack_matches_pinned_prowler_truth_conditions(rule_id):
+    control = builtin_registry().get("aws", rule_id)
+
+    assert control.evaluator(EBS_VOLUME_CONTRACT["failing"]).confirmed is True
+    assert control.evaluator(EBS_VOLUME_CONTRACT["passing"]).confirmed is False
+    assert control.live_validation is True
+    assert control.remediation_planning is False
+    assert control.live_execution is False
+    assert control.evidence_grade == "contract_tested"
+    assert control.resource_types == ("awsec2volume",)
+
+
+@pytest.mark.parametrize(
+    ("rule_id", "values"),
+    [
+        ("ec2_ebs_volume_encryption", {"ebs_volume_encrypted": "false"}),
+        ("ec2_ebs_volume_snapshots_exists", {
+            "ebs_volume_owned_snapshot_present": 0,
+        }),
+    ],
+)
+def test_ebs_volume_pack_rejects_malformed_evidence(rule_id, values):
+    with pytest.raises(ValueError, match="invalid"):
+        builtin_registry().get("aws", rule_id).evaluator(values)
 
 
 @pytest.mark.parametrize("rule_id", [

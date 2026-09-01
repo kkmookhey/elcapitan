@@ -35,6 +35,9 @@ REGION = "ap-south-1"
 RDS_CONTRACT = json.loads(
     (Path(__file__).parent / "fixtures" / "aws-rds-db-instance-contract.json").read_text()
 )
+EBS_VOLUME_CONTRACT = json.loads(
+    (Path(__file__).parent / "fixtures" / "aws-ebs-volume-contract.json").read_text()
+)
 EC2_SG_CONTRACT = json.loads(
     (Path(__file__).parent / "fixtures" /
      "aws-ec2-security-group-contract.json").read_text()
@@ -353,8 +356,151 @@ def test_rds_region_must_match_the_resource_arn_before_any_call(aws):
     assert fake_aws.calls(aws.bin_dir) == []
 
 
+# --- AWS EBS volume capture -----------------------------------------------
+
+def _ebs_replies(volume=None, snapshots=None):
+    return {
+        "describe-volumes": {
+            "stdout": json.dumps(
+                EBS_VOLUME_CONTRACT["volume_response"]
+                if volume is None else volume),
+            "exit": 0,
+        },
+        "describe-snapshots": {
+            "stdout": json.dumps(
+                EBS_VOLUME_CONTRACT["snapshots_response"]
+                if snapshots is None else snapshots),
+            "exit": 0,
+        },
+    }
+
+
+def test_ebs_volume_capture_normalizes_two_exact_bounded_reads(aws):
+    aws.responses(_ebs_replies())
+
+    state = aws(
+        resource_uid=EBS_VOLUME_CONTRACT["resource_uid"], region="us-west-2")
+    values = {name: json.loads(value) for name, value in state.config}
+
+    assert values == EBS_VOLUME_CONTRACT["failing"]
+    calls = fake_aws.calls(aws.bin_dir)
+    assert calls[0]["argv"] == [
+        "ec2", "describe-volumes", "--volume-ids", "vol-0123456789abcdef0",
+        "--region", "us-west-2", "--no-paginate", "--output", "json",
+    ]
+    assert calls[1]["argv"] == [
+        "ec2", "describe-snapshots", "--owner-ids", "self", "--filters",
+        "Name=volume-id,Values=vol-0123456789abcdef0", "--page-size", "5",
+        "--max-items", "1", "--region", "us-west-2", "--output", "json",
+    ]
+
+
+def test_ebs_volume_owned_snapshot_is_recorded_without_its_identifier(aws):
+    volume = json.loads(json.dumps(EBS_VOLUME_CONTRACT["volume_response"]))
+    volume["Volumes"][0]["Encrypted"] = True
+    aws.responses(_ebs_replies(
+        volume=volume,
+        snapshots=EBS_VOLUME_CONTRACT["owned_snapshot_response"],
+    ))
+
+    state = aws(
+        resource_uid=EBS_VOLUME_CONTRACT["resource_uid"], region="us-west-2")
+    values = {name: json.loads(value) for name, value in state.config}
+
+    assert values == EBS_VOLUME_CONTRACT["passing"]
+    assert "snap-" not in json.dumps(values)
+
+
+def test_ebs_volume_change_is_detected_from_the_anchored_resource(aws):
+    changed = json.loads(json.dumps(EBS_VOLUME_CONTRACT["volume_response"]))
+    changed["Volumes"][0]["Encrypted"] = True
+    responses = _ebs_replies()
+    responses["describe-volumes"]["then"] = {
+        "stdout": json.dumps(changed), "exit": 0,
+    }
+    aws.responses(responses)
+
+    before = aws(
+        resource_uid=EBS_VOLUME_CONTRACT["resource_uid"], region="us-west-2")
+    failures = assert_unchanged(before, env=aws.env())
+
+    assert len(failures) == 1
+    assert "ebs_volume_encrypted" in failures[0]
+
+
+@pytest.mark.parametrize("operation", ["describe-volumes", "describe-snapshots"])
+def test_ebs_volume_denial_is_never_recorded(aws, operation):
+    responses = _ebs_replies()
+    responses[operation] = {
+        "stdout": "", "exit": 254,
+        "stderr": "An error occurred (UnauthorizedOperation) when calling the "
+                  "Describe operation: not authorized",
+    }
+    aws.responses(responses)
+
+    with pytest.raises(ValueError, match="UnauthorizedOperation"):
+        aws(resource_uid=EBS_VOLUME_CONTRACT["resource_uid"], region="us-west-2")
+
+
+@pytest.mark.parametrize(
+    ("document", "message"),
+    [
+        ({"Volumes": []}, "exactly one"),
+        ({"Volumes": [{}, {}]}, "exactly one"),
+        ({"Volumes": [{
+            **EBS_VOLUME_CONTRACT["volume_response"]["Volumes"][0],
+            "VolumeId": "vol-00000000",
+        }]}, "does not match"),
+        ({"Volumes": [{
+            **EBS_VOLUME_CONTRACT["volume_response"]["Volumes"][0],
+            "Encrypted": "false",
+        }]}, "invalid Encrypted"),
+        ({"Volumes": EBS_VOLUME_CONTRACT["volume_response"]["Volumes"],
+          "NextToken": "more"}, "pagination token"),
+    ],
+)
+def test_ebs_volume_rejects_unbound_or_malformed_volume(aws, document, message):
+    aws.responses(_ebs_replies(volume=document))
+    with pytest.raises(ValueError, match=message):
+        aws(resource_uid=EBS_VOLUME_CONTRACT["resource_uid"], region="us-west-2")
+
+
+@pytest.mark.parametrize(
+    ("document", "message"),
+    [
+        ({"Snapshots": {}}, "at most one"),
+        ({"Snapshots": [{
+            **EBS_VOLUME_CONTRACT["owned_snapshot_response"]["Snapshots"][0],
+            "VolumeId": "vol-00000000",
+        }]}, "does not match"),
+        ({"Snapshots": [{
+            **EBS_VOLUME_CONTRACT["owned_snapshot_response"]["Snapshots"][0],
+            "OwnerId": "999999999999",
+        }]}, "does not match"),
+        ({"Snapshots": [{
+            **EBS_VOLUME_CONTRACT["owned_snapshot_response"]["Snapshots"][0],
+            "SnapshotId": "not-a-snapshot",
+        }]}, "does not match"),
+        ({"Snapshots": [], "NextToken": "more"}, "empty partial"),
+        ({"Snapshots": [], "NextToken": 1}, "invalid NextToken"),
+    ],
+)
+def test_ebs_volume_rejects_unbound_or_malformed_snapshots(aws, document, message):
+    aws.responses(_ebs_replies(snapshots=document))
+    with pytest.raises(ValueError, match=message):
+        aws(resource_uid=EBS_VOLUME_CONTRACT["resource_uid"], region="us-west-2")
+
+
+def test_ebs_volume_region_mismatch_stops_before_any_call(aws):
+    aws.responses(_ebs_replies())
+    with pytest.raises(ValueError, match="does not match ARN region"):
+        aws(resource_uid=EBS_VOLUME_CONTRACT["resource_uid"], region="us-east-1")
+    assert fake_aws.calls(aws.bin_dir) == []
+
+
 def test_unsupported_aws_service_fails_closed(aws):
-    with pytest.raises(ValueError, match="supported services: s3, rds, ec2"):
+    with pytest.raises(
+            ValueError, match="supported services: s3, rds, ec2 security groups/volumes"):
         aws(resource_uid=(
             "arn:aws:kms:us-west-2:111122223333:key/"
             "00000000-0000-0000-0000-000000000001"))

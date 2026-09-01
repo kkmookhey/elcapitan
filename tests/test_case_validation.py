@@ -19,6 +19,9 @@ AWS_FIXTURE = Path(__file__).parent / "fixtures" / "prowler-ocsf-sample.json"
 AWS_S3_CONTRACT = json.loads(
     (Path(__file__).parent / "fixtures" / "aws-s3-control-contract.json").read_text()
 )
+AWS_EBS_VOLUME_CONTRACT = json.loads(
+    (Path(__file__).parent / "fixtures" / "aws-ebs-volume-contract.json").read_text()
+)
 AWS_RDS_CONTRACT = json.loads(
     (Path(__file__).parent / "fixtures" / "aws-rds-db-instance-contract.json").read_text()
 )
@@ -106,7 +109,12 @@ def raw_aws(rule_id):
     document = json.loads(AWS_FIXTURE.read_text())
     document["metadata"]["event_code"] = rule_id
     document["unmapped"]["prowler_check_id"] = rule_id
-    if rule_id.startswith("rds_instance_"):
+    if rule_id.startswith("ec2_ebs_volume_"):
+        document["resources"][0]["type"] = "AwsEc2Volume"
+        document["resources"][0]["uid"] = AWS_EBS_VOLUME_CONTRACT["resource_uid"]
+        document["resources"][0]["name"] = "vol-0123456789abcdef0"
+        document["cloud"]["region"] = "us-west-2"
+    elif rule_id.startswith("rds_instance_"):
         document["resources"][0]["type"] = "AwsRdsDbInstance"
         document["resources"][0]["uid"] = AWS_RDS_CONTRACT["resource_uid"]
         document["resources"][0]["name"] = "elcapitan-fixture"
@@ -135,6 +143,15 @@ def aws_rds_state(profile="failing"):
     values = AWS_RDS_CONTRACT[profile]
     return CloudState(
         provider="aws", resource_uid=AWS_RDS_CONTRACT["resource_uid"],
+        region="us-west-2",
+        config=tuple((key, json.dumps(value)) for key, value in values.items()),
+    )
+
+
+def aws_ebs_volume_state(profile="failing"):
+    values = AWS_EBS_VOLUME_CONTRACT[profile]
+    return CloudState(
+        provider="aws", resource_uid=AWS_EBS_VOLUME_CONTRACT["resource_uid"],
         region="us-west-2",
         config=tuple((key, json.dumps(value)) for key, value in values.items()),
     )
@@ -580,6 +597,22 @@ def test_expanded_s3_findings_use_registered_evaluators(product, rule_id):
 
     assert failing.case.state is CaseState.VALIDATED
     assert failing.findings[0].status is FindingValidationStatus.CONFIRMED
+
+
+@pytest.mark.parametrize("rule_id", [
+    "ec2_ebs_volume_encryption",
+    "ec2_ebs_volume_snapshots_exists",
+])
+def test_ebs_volume_findings_use_resource_bound_evaluators(product, rule_id):
+    *_, intake = product
+    opened = intake.ingest(raw_aws(rule_id), tenant_id="TEN-001")
+
+    outcome = validator(
+        product, lambda finding, env: aws_ebs_volume_state()).validate(
+            opened.case.case_id, host_env={})
+
+    assert outcome.case.state is CaseState.VALIDATED
+    assert outcome.findings[0].status is FindingValidationStatus.CONFIRMED
 
 
 @pytest.mark.parametrize("rule_id", [

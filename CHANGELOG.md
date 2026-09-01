@@ -6,6 +6,9 @@ All notable changes to El Capitan are recorded here. Dates use ISO 8601.
 
 ### Added
 
+- Two validation-only AWS EBS volume controls for encryption and owned-snapshot
+  presence, using exact-resource `DescribeVolumes` and bounded
+  `DescribeSnapshots` reads.
 - Twenty validation-only AWS EC2 security-group controls for public port and
   CIDR exposure, default and Launch Wizard groups, and excessive rule counts,
   using exact-group and bounded attachment reads.

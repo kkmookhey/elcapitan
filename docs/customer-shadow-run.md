@@ -41,6 +41,8 @@ provider-neutral while each service retains its exact evidence semantics.
 | AWS | `s3_bucket_lifecycle_enabled` | yes | no |
 | AWS | `s3_bucket_object_lock` | yes | no |
 | AWS | `s3_bucket_no_mfa_delete` | yes | no |
+| AWS | `ec2_ebs_volume_encryption` | yes | no |
+| AWS | `ec2_ebs_volume_snapshots_exists` | yes | no |
 | AWS | `rds_instance_backup_enabled` | yes | no |
 | AWS | `rds_instance_copy_tags_to_snapshots` | yes | no |
 | AWS | `rds_instance_enhanced_monitoring_enabled` | yes | no |
@@ -97,6 +99,12 @@ public port and CIDR exposure, default and Launch Wizard groups, and excessive
 permission-entry counts. Prowler's unused-group exclusion and duplicate
 all-port/specific-port suppression remain explicit. Both reads are required;
 denied, absent, mismatched, partial-empty, and malformed responses fail closed.
+
+The two EBS volume controls use one exact-ID volume read plus one owner-`self`,
+volume-filtered snapshot read capped after the first result. They retain only
+whether the volume is encrypted and whether an owned snapshot exists. Both are
+contract tested and validation-only. A denied, absent, multiple, mismatched,
+malformed, or empty-partial response remains unavailable evidence.
 
 An unknown provider rejects the entire intake batch before persistence. An
 unknown rule may be retained in the portfolio for coverage reporting, but the

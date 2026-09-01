@@ -15,6 +15,8 @@ const controlTitles = {
   s3_bucket_lifecycle_enabled: "S3 lifecycle configuration must be enabled",
   s3_bucket_object_lock: "S3 Object Lock must be enabled",
   s3_bucket_no_mfa_delete: "S3 MFA Delete must be enabled",
+  ec2_ebs_volume_encryption: "EBS volume encryption must be enabled",
+  ec2_ebs_volume_snapshots_exists: "EBS volume must have an owned snapshot",
   rds_instance_backup_enabled: "RDS automated backups must be enabled",
   rds_instance_copy_tags_to_snapshots: "RDS must copy tags to snapshots",
   rds_instance_enhanced_monitoring_enabled: "RDS enhanced monitoring must be enabled",

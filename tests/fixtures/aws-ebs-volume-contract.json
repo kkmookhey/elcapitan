@@ -1,0 +1,31 @@
+{
+  "resource_uid": "arn:aws:ec2:us-west-2:111122223333:volume/vol-0123456789abcdef0",
+  "volume_response": {
+    "Volumes": [
+      {
+        "VolumeId": "vol-0123456789abcdef0",
+        "Encrypted": false
+      }
+    ]
+  },
+  "snapshots_response": {
+    "Snapshots": []
+  },
+  "owned_snapshot_response": {
+    "Snapshots": [
+      {
+        "SnapshotId": "snap-0123456789abcdef0",
+        "VolumeId": "vol-0123456789abcdef0",
+        "OwnerId": "111122223333"
+      }
+    ]
+  },
+  "failing": {
+    "ebs_volume_encrypted": false,
+    "ebs_volume_owned_snapshot_present": false
+  },
+  "passing": {
+    "ebs_volume_encrypted": true,
+    "ebs_volume_owned_snapshot_present": true
+  }
+}

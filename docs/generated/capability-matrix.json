@@ -3,6 +3,38 @@
   "capabilities": [
     {
       "evidence_aspects": [
+        "ebs_volume_encrypted"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-ebs-volume",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "ebs_volume",
+      "resource_types": [
+        "awsec2volume"
+      ],
+      "rule_id": "ec2_ebs_volume_encryption"
+    },
+    {
+      "evidence_aspects": [
+        "ebs_volume_owned_snapshot_present"
+      ],
+      "evidence_grade": "contract_tested",
+      "live_execution": false,
+      "live_validation": true,
+      "pack_id": "aws-ebs-volume",
+      "provider": "aws",
+      "remediation_planning": false,
+      "resource_family": "ebs_volume",
+      "resource_types": [
+        "awsec2volume"
+      ],
+      "rule_id": "ec2_ebs_volume_snapshots_exists"
+    },
+    {
+      "evidence_aspects": [
         "ec2_sg_in_use",
         "ec2_sg_ingress_rules"
       ],
@@ -1167,16 +1199,16 @@
   "project_version": "0.1.0",
   "schema_version": 1,
   "summary": {
-    "controls": 70,
+    "controls": 72,
     "evidence_grades": {
-      "contract_tested": 35,
+      "contract_tested": 37,
       "contract_tested_export_observed": 5,
       "e2e_measured": 30
     },
     "live_execution": 2,
-    "live_validation": 70,
+    "live_validation": 72,
     "providers": {
-      "aws": 35,
+      "aws": 37,
       "azure": 35
     },
     "remediation_planning": 4

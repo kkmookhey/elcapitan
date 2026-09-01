@@ -3,12 +3,14 @@
 This file is generated from the installed control-pack registry. Do not edit it by hand.
 `elcapitan capabilities` is the machine-readable authority.
 
-Version: `0.1.0` · validation: 70 · planning: 4 · execution: 2
+Version: `0.1.0` · validation: 72 · planning: 4 · execution: 2
 
 Validation, planning, and execution are independent columns. Evidence grade describes the strongest completed proof; it does not grant mutation authority.
 
 | Provider | Control | Family | Validation | Planning | Execution | Evidence grade |
 |---|---|---|:---:|:---:|:---:|---|
+| AWS | `ec2_ebs_volume_encryption` | ebs volume | yes | no | no | Contract tested |
+| AWS | `ec2_ebs_volume_snapshots_exists` | ebs volume | yes | no | no | Contract tested |
 | AWS | `ec2_securitygroup_allow_ingress_from_internet_to_all_ports` | ec2 security group | yes | no | no | Contract tested |
 | AWS | `ec2_securitygroup_allow_ingress_from_internet_to_high_risk_tcp_ports` | ec2 security group | yes | no | no | Contract tested |
 | AWS | `ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_22` | ec2 security group | yes | no | no | Contract tested |

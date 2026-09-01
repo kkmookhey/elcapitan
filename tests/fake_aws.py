@@ -17,8 +17,9 @@ absent object-lock configuration exits 254 with
 `ObjectLockConfigurationNotFoundError`.
 
 The RDS and EC2 defaults are synthetic resources built from the official
-DescribeDBInstances, DescribeSecurityGroups, and DescribeNetworkInterfaces
-response contracts. They are intentionally not described as live measurements.
+DescribeDBInstances, DescribeSecurityGroups, DescribeNetworkInterfaces,
+DescribeVolumes, and DescribeSnapshots response contracts. They are
+intentionally not described as live measurements.
 
 The script deliberately locates its own response file relative to __file__
 rather than through an environment variable, because cloud.verification_env
@@ -35,6 +36,8 @@ BUCKET = "anna-assets"
 RDS_ARN = "arn:aws:rds:us-west-2:111122223333:db:elcapitan-fixture"
 EC2_SG_ARN = (
     "arn:aws:ec2:us-west-2:111122223333:security-group/sg-0123456789abcdef0")
+EBS_VOLUME_ARN = (
+    "arn:aws:ec2:us-west-2:111122223333:volume/vol-0123456789abcdef0")
 
 _SCRIPT = '''#!/usr/bin/env python3
 import json, os, sys
@@ -157,6 +160,17 @@ def default_responses() -> dict:
                     "GroupName": "launch-wizard-1",
                 }],
             }]}),
+            "exit": 0,
+        },
+        "describe-volumes": {
+            "stdout": json.dumps({"Volumes": [{
+                "VolumeId": "vol-0123456789abcdef0",
+                "Encrypted": False,
+            }]}),
+            "exit": 0,
+        },
+        "describe-snapshots": {
+            "stdout": json.dumps({"Snapshots": []}),
             "exit": 0,
         },
     }
