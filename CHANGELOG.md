@@ -6,6 +6,14 @@ All notable changes to El Capitan are recorded here. Dates use ISO 8601.
 
 ### Added
 
+- AWS S3 object-versioning evidence-to-review parity. A confirmed finding can
+  now link only to an exact `aws_s3_bucket_versioning` state address, materialize
+  only `Disabled`/`Suspended` to `Enabled`, admit only that one in-place plan
+  attribute change, and proceed through the existing SRE, window, rollback, and
+  mechanical human-review gate. AWS planning requires a separate short-lived
+  `ELCAP_PLANNER_AWS_*` credential set, ignores ambient/scanner/other-cloud
+  identities, persists no plan artifact, performs no apply, and adds no AWS
+  execution authority.
 - Evidence-minimized Layer 2 promotion for mixed resource cases. A promotion
   now binds only findings that are both live-confirmed and deterministically
   planning-capable, records every excluded sibling, and passes that exact

@@ -2,10 +2,11 @@
 
 **Prepared:** 2026-09-03
 
-**Checkpoint parent:** `7e2b0b4` (`feat(aws): add deterministic EBS validation`)
+**Checkpoint parent:** `f21a51e` (`feat(shadow): add guided evidence-to-outcome trial`)
 
 **Release direction:** self-hosted `v0.1.0` technical preview with explicit
-Azure/AWS validation breadth, Azure-only live execution, and evidence grades
+Azure/AWS validation breadth, AWS S3 evidence-to-review packaging, Azure-only
+live execution, and evidence grades
 
 This file is the durable context for a fresh Codex session. Read it completely,
 then read `README.md`, `docs/public-release-v0.1.md`,
@@ -16,13 +17,14 @@ completed work from an earlier conversation.
 ## Resume here — authoritative current checkpoint
 
 The Guided Shadow Trial, exact-resource asset-context prioritization, Azure live
-validation, and evidence-to-outcome UI checkpoint is complete on top of
-`7e2b0b4`. The owner authorized preserving it as one reviewable commit on
-2026-09-03 before beginning the next AWS-only evidence-to-review checkpoint.
-Do not reset, reconstruct, split, or overwrite it. The completed EBS volume
-checkpoint is already preserved in `7e2b0b4`; do not reconstruct or recommit
-it. The owner screen recording remains an untracked local review artifact and
-must not be committed.
+validation, and evidence-to-outcome UI checkpoint is preserved in `f21a51e`.
+The AWS-only evidence-to-review checkpoint is complete on top of that commit:
+S3 object versioning now has exact Terraform state/IaC linking, deterministic
+source materialization, a fail-closed nested plan-scope gate, provider-isolated
+planner credentials, and a contract-tested path through the canonical
+`HumanReviewPackage.v1` gate. Do not reset, reconstruct, split, or overwrite
+either checkpoint. The owner screen recording remains an untracked local review
+artifact and must not be committed.
 
 Current registry authority:
 
@@ -36,11 +38,13 @@ Current registry authority:
 - only S3 object versioning has AWS planning capability; no AWS control has
   live-execution capability.
 
-The current Guided Shadow Trial checkpoint passes **718 tests**, compile and
+The current AWS checkpoint passes **725 tests**, compile and
 the repository's narrow Ruff gates, JavaScript syntax checks, generated-matrix
 and release-tree checks, wheel/source builds, distribution inspection, and
-`git diff --check`. It made owner-authorized read-only Azure management-plane
-queries against one test subscription to build observed exposure context. That
+`git diff --check`. The AWS extension used only local recorded fixtures and made
+no AWS request. The preceding Guided Shadow pass made owner-authorized read-only
+Azure management-plane queries against one test subscription to build observed
+exposure context. That
 inventory pass made no cloud mutation, data-plane read, model call, approval,
 scheduling, deployment, tag, release, or publication. An authenticated local Chrome pass
 covered desktop, tablet, and mobile layouts; synthetic-sample and checked-in
@@ -88,13 +92,15 @@ git diff --check
 uv run python scripts/generate_capability_matrix.py --check
 ```
 
-Do not redo S3, RDS, EC2 security-group, EBS volume, Guided Shadow Trial, or
-asset-context prioritization work. The next authorized product objective is AWS
-only: reach evidence-to-review parity through deterministic validation,
-contextual priority, exact state-grounded Terraform planning, and a hash-bound
-review candidate. Do not add GCP or AWS execution authority. Any planning or
-execution expansion beyond that objective requires separate design, identity,
-operational, rollback, and authorization work.
+Do not redo S3, RDS, EC2 security-group, EBS volume, the AWS S3 review-package
+path, Guided Shadow Trial, or asset-context prioritization work. GCP is
+explicitly deferred. The next bounded AWS step, if the owner authorizes it, is a
+real non-production S3 shadow/promotion pilot with a dedicated scanner identity,
+authoritative IaC and sanitized state, a separate short-lived planner session,
+service/usage context, and named independent reviewer routes. Do not add AWS
+execution authority. Any further planning or execution expansion requires
+separate service-specific design, identity, operational, rollback, and
+authorization work.
 
 ## Product identity
 
@@ -764,3 +770,40 @@ review routes and select a future window, then run the normal preapproval stages
 and let `HumanReviewGate` issue the canonical package mechanically. No data-plane
 content, container, blob name, filename, key, connection string, or object
 content was read.
+
+## Completed checkpoint: AWS evidence to canonical human review
+
+On 2026-09-03 the owner authorized completing AWS—but not GCP—through the
+validated review-package boundary. The implementation retains all 37 AWS
+validators and advances only `s3_bucket_object_versioning`, the registry's sole
+AWS planning-capable control.
+
+The S3 planner now selects only `aws_s3_bucket_versioning`, including Terraform
+state IDs shaped as either a bucket name or `bucket,account`. It deterministically
+changes one literal status in the linked block and admits only one in-place plan
+change at `versioning_configuration[0].status` from `Disabled` or `Suspended` to
+`Enabled`. Create/delete/replacement, sibling changes, MFA Delete, and any other
+attribute fail closed. Raw state and plan artifacts remain ephemeral; durable
+records retain only exact address and digests.
+
+AWS Terraform subprocesses receive only a complete
+`ELCAP_PLANNER_AWS_ACCESS_KEY_ID`,
+`ELCAP_PLANNER_AWS_SECRET_ACCESS_KEY`, and
+`ELCAP_PLANNER_AWS_SESSION_TOKEN` set. Ambient profiles/roles, scanner variables,
+shared credential files, and the Azure planner identity are excluded. A missing
+field returns a failed planning check before Terraform runs.
+
+An end-to-end contract test proves Prowler OCSF intake, exact bucket correlation,
+contextual priority, deterministic live-state evaluation, exact state/IaC link,
+verified plan record, independent SRE/window/rollback records, model-diversity
+and evidence-chain policy checks, and issuance of `HumanReviewPackage.v1` in
+`awaiting_approval` with `execution_status: not_started`. The original repository
+remains unchanged. This proof uses recorded fixtures; it made no AWS request,
+model-provider call, apply, deployment, or mutation.
+
+The final checkpoint passes 725 tests, compile checks, the repository's narrow
+Ruff gate, generated capability-matrix and release-tree checks, hash-locked
+requirements comparison, wheel/source builds, distribution inspection, and
+`git diff --check`. See
+`docs/aws-evidence-to-review-checkpoint-2026-09-03.md`. GCP and AWS execution
+remain out of scope.

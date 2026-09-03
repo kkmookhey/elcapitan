@@ -66,6 +66,68 @@ resource "aws_s3_bucket" "assets" {
     assert link.source_path == "bucket.tf"
 
 
+def test_links_the_exact_s3_versioning_resource_for_planning(tmp_path):
+    write(tmp_path / "bucket.tf", '''
+resource "aws_s3_bucket" "assets" {
+  bucket = "training-assets"
+}
+
+resource "aws_s3_bucket_versioning" "assets" {
+  bucket = "training-assets"
+  versioning_configuration {
+    status = "Disabled"
+  }
+}
+''')
+    state = {
+        "version": 4,
+        "resources": [
+            {
+                "mode": "managed",
+                "type": "aws_s3_bucket",
+                "name": "assets",
+                "instances": [{"attributes": {
+                    "id": "training-assets", "bucket": "training-assets"}}],
+            },
+            {
+                "mode": "managed",
+                "type": "aws_s3_bucket_versioning",
+                "name": "assets",
+                "instances": [{"attributes": {
+                    "id": "training-assets,111122223333",
+                    "bucket": "training-assets"}}],
+            },
+        ],
+    }
+
+    link = link_terraform_resource(
+        tmp_path, provider="aws",
+        resource_uid="arn:aws:s3:::training-assets",
+        state_document=state,
+        resource_types=("aws_s3_bucket_versioning",),
+    )
+
+    assert link.resource_type == "aws_s3_bucket_versioning"
+    assert link.resource_address == "aws_s3_bucket_versioning.assets"
+    assert link.match_strategy == "terraform_state_resource_id"
+    assert len(link.state_sha256) == 64
+
+
+def test_s3_versioning_linker_requires_an_explicit_supported_type(tmp_path):
+    write(tmp_path / "bucket.tf", '''
+resource "aws_s3_bucket" "assets" {
+  bucket = "training-assets"
+}
+''')
+
+    with pytest.raises(TerraformLinkNotFound, match="aws_s3_bucket_versioning"):
+        link_terraform_resource(
+            tmp_path, provider="aws",
+            resource_uid="arn:aws:s3:::training-assets",
+            resource_types=("aws_s3_bucket_versioning",),
+        )
+
+
 def test_ambiguous_literal_owners_are_rejected(tmp_path):
     block = '''
 resource "azurerm_storage_account" "assets" {

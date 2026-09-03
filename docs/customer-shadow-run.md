@@ -87,8 +87,12 @@ than producing a partial result.
 
 The seven S3 controls reuse one bounded bucket-state capture. The six new
 controls are contract tested; only object versioning currently carries an
-E2E-measured evidence grade and remediation-planning capability. No AWS control
-has live-execution capability.
+E2E-measured validation grade and remediation-planning capability. Its
+state-grounded plan and canonical review-package path are contract tested: the
+only admitted Terraform change is one
+`aws_s3_bucket_versioning.versioning_configuration[0].status` transition from
+`Disabled` or `Suspended` to `Enabled`. No AWS control has live-execution
+capability.
 
 The eight RDS controls use one `DescribeDBInstances` call scoped to the exact
 DB-instance ARN and its ARN-derived region. They are contract tested and
@@ -326,3 +330,17 @@ it must not silently expand back to every scanner observation on the resource.
 Do not give the shadow web service those repository, model, observer, or
 execution credentials. That separation is an intentional product control, not
 a temporary UI omission.
+
+For AWS S3 planning, the isolated planning worker accepts only a complete,
+separate short-lived session:
+
+```text
+ELCAP_PLANNER_AWS_ACCESS_KEY_ID
+ELCAP_PLANNER_AWS_SECRET_ACCESS_KEY
+ELCAP_PLANNER_AWS_SESSION_TOKEN
+```
+
+It does not inherit `AWS_PROFILE`, shared credential files, scanner variables,
+or Azure planner identity. State is used ephemerally; the durable record retains
+only the exact Terraform address and state digest. The plan file is inspected
+for scope and then discarded. `terraform apply` is never invoked.

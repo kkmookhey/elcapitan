@@ -203,6 +203,14 @@ exactly one `{path, content}` complete-file replacement for the linked
 repository-relative path. Recorded results may also use the legacy path-to-text
 mapping accepted by the local adapter.
 
+AWS S3 object-versioning planning requires a complete, dedicated short-lived
+session in `ELCAP_PLANNER_AWS_ACCESS_KEY_ID`,
+`ELCAP_PLANNER_AWS_SECRET_ACCESS_KEY`, and
+`ELCAP_PLANNER_AWS_SESSION_TOKEN`. The planner ignores ambient AWS profiles and
+scanner credentials. For this control, state must resolve one
+`aws_s3_bucket_versioning` address and the policy admits only its in-place
+status transition from `Disabled` or `Suspended` to `Enabled`.
+
 Planning never edits the supplied repository and never runs `terraform apply`.
 It copies the repository into a case artifact workspace, rejects symlinks and
 path escapes, excludes common credential and Terraform-state files, records

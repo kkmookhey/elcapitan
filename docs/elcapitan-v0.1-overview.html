@@ -552,7 +552,7 @@
           <article class="metric"><small>Validation controls</small><strong>72</strong><span>35 Azure · 37 AWS</span></article>
           <article class="metric"><small>Planning controls</small><strong>4</strong><span>3 Azure Storage · 1 AWS S3</span></article>
           <article class="metric"><small>Execution controls</small><strong>2</strong><span>Azure Storage only</span></article>
-          <article class="metric"><small>Current verification</small><strong>718</strong><span>Working-tree tests passed</span></article>
+          <article class="metric"><small>Current verification</small><strong>725</strong><span>Working-tree tests passed</span></article>
         </div>
       </div>
     </section>
@@ -623,7 +623,7 @@
 
         <div class="capability-summary">
           <article class="capability-total"><small>Deterministic validation</small><strong>72</strong><p>Live, service-aware evaluation with typed evidence and denied/unknown states.</p></article>
-          <article class="capability-total plan"><small>Verified planning</small><strong>4</strong><p>Exact IaC linkage plus format, validation, and no-refresh plan checks.</p></article>
+          <article class="capability-total plan"><small>Verified planning</small><strong>4</strong><p>Exact IaC linkage plus format, validation, no-refresh plan, and provider-specific scope checks.</p></article>
           <article class="capability-total execute"><small>Live execution</small><strong>2</strong><p>Azure Storage only, with exact scope, checkpoint, monitoring, and rollback.</p></article>
         </div>
 
@@ -644,7 +644,7 @@
           <article class="cap-card" data-tags="azure"><div class="cap-top"><span class="provider">Azure</span><span class="control-count">1 control</span></div><h3>SQL Server</h3><p>Transparent data encryption using a customer-managed Azure Key Vault protector.</p><div class="cap-flags"><span class="flag">Validate 1</span></div></article>
           <article class="cap-card" data-tags="azure"><div class="cap-top"><span class="provider">Azure</span><span class="control-count">1 control</span></div><h3>Network</h3><p>Exact subnet security-group association with explicit platform-subnet exclusions.</p><div class="cap-flags"><span class="flag">Validate 1</span></div></article>
           <article class="cap-card" data-tags="azure"><div class="cap-top"><span class="provider">Azure</span><span class="control-count">1 control</span></div><h3>Azure OpenAI</h3><p>Public-network access posture with account-kind validation and fail-closed enum handling.</p><div class="cap-flags"><span class="flag">Validate 1</span></div></article>
-          <article class="cap-card" data-tags="aws planning"><div class="cap-top"><span class="provider">AWS</span><span class="control-count">7 controls</span></div><h3>S3</h3><p>Object versioning, KMS encryption, access logging, event notifications, lifecycle configuration, Object Lock, and MFA Delete.</p><div class="cap-flags"><span class="flag">Validate 7</span><span class="flag plan">Plan 1</span></div></article>
+          <article class="cap-card" data-tags="aws planning"><div class="cap-top"><span class="provider">AWS</span><span class="control-count">7 controls</span></div><h3>S3</h3><p>Object versioning, KMS encryption, access logging, event notifications, lifecycle configuration, Object Lock, and MFA Delete. Versioning alone can reach a state-grounded, scope-checked human-review package.</p><div class="cap-flags"><span class="flag">Validate 7</span><span class="flag plan">Plan 1</span><span class="flag">Review package 1</span></div></article>
           <article class="cap-card" data-tags="aws"><div class="cap-top"><span class="provider">AWS</span><span class="control-count">2 controls</span></div><h3>EBS volumes</h3><p>Exact-volume encryption state and existence of an account-owned recovery snapshot.</p><div class="cap-flags"><span class="flag">Validate 2</span></div></article>
           <article class="cap-card" data-tags="aws"><div class="cap-top"><span class="provider">AWS</span><span class="control-count">8 controls</span></div><h3>RDS DB instances</h3><p>Backups, snapshot tags, enhanced monitoring, IAM authentication, VPC placement, CloudWatch Logs, minor upgrades, and storage encryption.</p><div class="cap-flags"><span class="flag">Validate 8</span></div></article>
           <article class="cap-card" data-tags="aws"><div class="cap-top"><span class="provider">AWS</span><span class="control-count">20 controls</span></div><h3>EC2 security groups</h3><p>Internet-exposed ports, broad public CIDRs, default and Launch Wizard groups, attachment scope, and excessive rule counts.</p><div class="cap-flags"><span class="flag">Validate 20</span></div></article>
@@ -700,7 +700,7 @@
           <article class="verification-card">
             <h3>Current verification</h3>
             <div class="verification-list">
-              <div class="verification-item"><strong>718 tests</strong><span>Full Python suite passed with Guided Shadow Trial, exact-resource asset context, Azure File Service child-resource validation, and evidence-minimized planning handoff.</span></div>
+              <div class="verification-item"><strong>725 tests</strong><span>Full Python suite passed with Guided Shadow Trial, exact-resource asset context, Azure validation, and the AWS S3 evidence-to-review package path.</span></div>
               <div class="verification-item"><strong>Complete-history scan</strong><span>Zero findings with an empty baseline under three constrained false-positive rules.</span></div>
               <div class="verification-item"><strong>Packages inspected</strong><span>Wheel and source distribution built and passed content checks.</span></div>
               <div class="verification-item"><strong>Container scanned</strong><span>Linux amd64 runtime rejected high and critical fixed vulnerabilities.</span></div>
@@ -724,7 +724,7 @@
           <article class="roadmap-item"><span class="roadmap-time">Now · candidate</span><div><h3>Azure-first v0.1 foundation</h3><p>Complete the evidence-bound workflow, capability matrix, governance, packaging, security scans, synthetic quickstart, and narrow live-action proof.</p></div><span class="roadmap-status">Built</span></article>
           <article class="roadmap-item blocked"><span class="roadmap-time">Next · release</span><div><h3>Clear the external publication gates</h3><p>Receive GitHub confirmation that retained PR refs and cached views are purged; then configure public visibility and the protected release environment. Tagging and publication still require explicit final authorization.</p></div><span class="roadmap-status">Blocked externally</span></article>
           <article class="roadmap-item future"><span class="roadmap-time">Near term</span><div><h3>Build the CTEM context graph</h3><p>Add first-class Azure resources, Entra identities, Cortex endpoints, CVE threat context, and evidence-backed reachability while keeping asset, identity, endpoint, finding, and threat facts distinct.</p></div><span class="roadmap-status">Planned</span></article>
-          <article class="roadmap-item"><span class="roadmap-time">Now · expansion</span><div><h3>Broaden AWS validation safely</h3><p>AWS now has 37 validators across S3, RDS DB instances, EC2 security groups, and EBS volumes. Additional services will follow customer finding volume while planning, execution, and evidence grades remain independent.</p></div><span class="roadmap-status">37 AWS validators</span></article>
+          <article class="roadmap-item"><span class="roadmap-time">Now · AWS review</span><div><h3>Prove AWS evidence to human review</h3><p>AWS has 37 validators across S3, RDS DB instances, EC2 security groups, and EBS volumes. S3 object versioning now has the first exact state-grounded path to a canonical review package; the other 36 controls remain validation-only.</p></div><span class="roadmap-status">1 packaged path</span></article>
           <article class="roadmap-item future"><span class="roadmap-time">Later</span><div><h3>Harden identity and portable operations</h3><p>Add Microsoft Entra approval authentication, named-user audit, workload identity, CI/source-control workflows, customer notifications, and deployment options as concrete workflows justify them.</p></div><span class="roadmap-status">Deferred</span></article>
         </div>
 
@@ -750,7 +750,7 @@
         <div class="limits">
           <details open><summary>No unattended production remediation</summary><p>Human approval remains mandatory, and production execution requires separately proven identities, connectors, health contracts, checkpoints, and rollback paths.</p></details>
           <details><summary>No universal remediation engine</summary><p>The product does not claim generic VM or OS patching, arbitrary application-code changes, or execution for every validated control.</p></details>
-          <details><summary>No broad AWS execution</summary><p>AWS currently has seven S3, eight RDS, twenty EC2 security-group, and two EBS volume validation controls, but only S3 object versioning supports verified planning and no AWS control supports live execution. Validation breadth is not mutation authority.</p></details>
+          <details><summary>No AWS execution</summary><p>AWS currently has seven S3, eight RDS, twenty EC2 security-group, and two EBS volume validation controls. Only S3 object versioning supports exact planning and canonical human-review packaging, and no AWS control supports live execution. Validation breadth is not mutation authority.</p></details>
           <details><summary>No public multi-tenant SaaS guarantee</summary><p>v0.1 is self-hosted. Shared-token interfaces are demonstration and bounded-pilot bridges, not production customer identity.</p></details>
           <details><summary>No complete benchmark coverage</summary><p>Unsupported services and controls remain visible. Coverage is never inferred from neighboring resource types or related checks.</p></details>
           <details><summary>No inferred business or data sensitivity</summary><p>Owner, environment, criticality, and data classification must be supplied or visibly marked synthetic. Public networking does not by itself prove reachability, sensitive content, runtime use, or business impact.</p></details>

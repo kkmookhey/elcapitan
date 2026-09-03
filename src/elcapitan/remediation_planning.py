@@ -53,6 +53,20 @@ class TerraformChecksFailed(RemediationPlanningError):
         super().__init__(f"Terraform verification failed: {failed}")
 
 
+_CONTROL_RESOURCE_TYPES = {
+    ("aws", "s3_bucket_object_versioning"): ("aws_s3_bucket_versioning",),
+}
+
+
+def _planning_resource_types(provider: str, rule_ids: set[str]) -> tuple[str, ...]:
+    selected = {
+        resource_type
+        for rule_id in rule_ids
+        for resource_type in _CONTROL_RESOURCE_TYPES.get((provider, rule_id), ())
+    }
+    return tuple(sorted(selected))
+
+
 @dataclass(frozen=True)
 class TerraformCheck:
     name: str
@@ -260,23 +274,57 @@ class SubprocessTerraformRunner:
                         before[key], after[key], prefix=child))
             return tuple(paths)
         if isinstance(before, list) and isinstance(after, list):
-            return () if before == after else (prefix,)
+            if len(before) != len(after):
+                return (prefix,)
+            paths = []
+            for index, (before_item, after_item) in enumerate(zip(before, after)):
+                child = f"{prefix}[{index}]"
+                paths.extend(cls._changed_paths(
+                    before_item, after_item, prefix=child))
+            return tuple(paths)
         return () if before == after else (prefix,)
 
     @staticmethod
     def _allowed_target_change(target: str, change: Mapping,
                                changed_paths: tuple[str, ...]) -> bool:
-        """Fail closed around the only live remediation implemented today."""
-        if target.split(".", 1)[0] != "azurerm_storage_account":
-            return False
+        """Fail closed around exact, separately admitted control changes."""
+        resource_type = target.split(".", 1)[0]
         before, after = change.get("before"), change.get("after")
+        if not isinstance(before, Mapping) or not isinstance(after, Mapping):
+            return False
+        if resource_type == "azurerm_storage_account":
+            return (
+                changed_paths == ("public_network_access_enabled",)
+                and before.get("public_network_access_enabled") is True
+                and after.get("public_network_access_enabled") is False
+            )
+        if resource_type == "aws_s3_bucket_versioning":
+            before_configuration = before.get("versioning_configuration")
+            after_configuration = after.get("versioning_configuration")
+            return (
+                changed_paths == ("versioning_configuration[0].status",)
+                and isinstance(before_configuration, list)
+                and len(before_configuration) == 1
+                and isinstance(before_configuration[0], Mapping)
+                and before_configuration[0].get("status") in {
+                    "Disabled", "Suspended"}
+                and isinstance(after_configuration, list)
+                and len(after_configuration) == 1
+                and isinstance(after_configuration[0], Mapping)
+                and after_configuration[0].get("status") == "Enabled"
+            )
+        return False
+
+    @staticmethod
+    def _scope_requirement(target: str) -> str:
+        resource_type = target.split(".", 1)[0]
+        if resource_type == "aws_s3_bucket_versioning":
+            return (
+                "plan must contain exactly one in-place S3 bucket-versioning "
+                "status update from Disabled or Suspended to Enabled")
         return (
-            isinstance(before, Mapping)
-            and isinstance(after, Mapping)
-            and changed_paths == ("public_network_access_enabled",)
-            and before.get("public_network_access_enabled") is True
-            and after.get("public_network_access_enabled") is False
-        )
+            "plan must contain exactly the allowed public-network-access "
+            "update to the linked storage account")
 
     def _plan_scope(self, *, plan_path: Path, target: str, cwd: Path,
                     environment: Mapping[str, str]) -> TerraformCheck:
@@ -346,9 +394,7 @@ class SubprocessTerraformRunner:
         return TerraformCheck(
             "plan_scope", normalized_argv, 0 if passed else 1,
             stdout=json.dumps(summary, sort_keys=True, separators=(",", ":")),
-            stderr=("plan must contain exactly the allowed public-network-access "
-                    "update to the linked storage account"
-                    if not passed else ""),
+            stderr=(self._scope_requirement(target) if not passed else ""),
         )
 
     def check(self, workspace: Path, link: TerraformLink, *,
@@ -376,27 +422,46 @@ class SubprocessTerraformRunner:
                 "CHECKPOINT_DISABLE": "1",
                 "TF_INPUT": "0",
             }
-            # Only the explicitly configured planning identity may cross into the
-            # provider process. Ambient scanner, observer, and user credentials stay out.
-            planning_environment = {
-                "ARM_USE_MSI": os.environ.get("ELCAP_PLANNER_AZURE_USE_MSI", ""),
-                "ARM_CLIENT_ID": planner_client_id,
-                "ARM_SUBSCRIPTION_ID": os.environ.get(
-                    "ELCAP_PLANNER_AZURE_SUBSCRIPTION_ID", ""),
-                "ARM_TENANT_ID": os.environ.get(
-                    "ELCAP_PLANNER_AZURE_TENANT_ID", ""),
-                # Container Apps exposes an App Service-style identity endpoint,
-                # while AzureRM otherwise falls back to the VM IMDS address. Keep
-                # the platform endpoint and rotating header inside the isolated
-                # provider process and use the API version required by ACA.
-                "ARM_MSI_ENDPOINT": os.environ.get(
-                    "ELCAP_PLANNER_AZURE_MSI_ENDPOINT", "") or proxy_endpoint,
-                "ARM_MSI_API_VERSION": os.environ.get(
-                    "ELCAP_PLANNER_AZURE_MSI_API_VERSION", "") or (
-                        "2019-08-01" if identity_endpoint else ""),
-                "IDENTITY_ENDPOINT": os.environ.get("IDENTITY_ENDPOINT", ""),
-                "IDENTITY_HEADER": os.environ.get("IDENTITY_HEADER", ""),
-            }
+            # Only the explicitly configured identity for this provider may cross
+            # into Terraform. Ambient scanner, observer, and user credentials stay out.
+            planning_environment = {}
+            if link.resource_type.startswith("aws_"):
+                aws_mapping = {
+                    "AWS_ACCESS_KEY_ID": "ELCAP_PLANNER_AWS_ACCESS_KEY_ID",
+                    "AWS_SECRET_ACCESS_KEY": "ELCAP_PLANNER_AWS_SECRET_ACCESS_KEY",
+                    "AWS_SESSION_TOKEN": "ELCAP_PLANNER_AWS_SESSION_TOKEN",
+                }
+                missing = sorted(
+                    source for source in aws_mapping.values()
+                    if not os.environ.get(source))
+                if missing:
+                    return (TerraformCheck(
+                        "plan", (self.executable, "plan"), 1,
+                        stderr=("AWS planning credentials are not set: "
+                                + ", ".join(missing))),)
+                planning_environment.update({
+                    target: os.environ[source]
+                    for target, source in aws_mapping.items()
+                })
+            else:
+                planning_environment = {
+                    "ARM_USE_MSI": os.environ.get(
+                        "ELCAP_PLANNER_AZURE_USE_MSI", ""),
+                    "ARM_CLIENT_ID": planner_client_id,
+                    "ARM_SUBSCRIPTION_ID": os.environ.get(
+                        "ELCAP_PLANNER_AZURE_SUBSCRIPTION_ID", ""),
+                    "ARM_TENANT_ID": os.environ.get(
+                        "ELCAP_PLANNER_AZURE_TENANT_ID", ""),
+                    # Container Apps exposes an App Service-style identity endpoint,
+                    # while AzureRM otherwise falls back to the VM IMDS address.
+                    "ARM_MSI_ENDPOINT": os.environ.get(
+                        "ELCAP_PLANNER_AZURE_MSI_ENDPOINT", "") or proxy_endpoint,
+                    "ARM_MSI_API_VERSION": os.environ.get(
+                        "ELCAP_PLANNER_AZURE_MSI_API_VERSION", "") or (
+                            "2019-08-01" if identity_endpoint else ""),
+                    "IDENTITY_ENDPOINT": os.environ.get("IDENTITY_ENDPOINT", ""),
+                    "IDENTITY_HEADER": os.environ.get("IDENTITY_HEADER", ""),
+                }
             environment.update({
                 key: value for key, value in planning_environment.items() if value
             })
@@ -543,6 +608,29 @@ def _materialize_control_patch(*, original: str, proposed: str,
                 "linked source must contain exactly one literal "
                 "public_network_access_enabled = true assignment")
         return replacement, "deterministic_control_patch"
+    if (link.resource_type == "aws_s3_bucket_versioning"
+            and rule_ids == {"s3_bucket_object_versioning"}):
+        proposed_assignment = re.compile(
+            r'(?m)^\s*status\s*=\s*"Enabled"\s*(?:#.*)?$')
+        if not proposed_assignment.search(proposed):
+            raise RemediationPlanningError(
+                'agent proposal did not request versioning status = "Enabled"')
+        lines = original.splitlines(keepends=True)
+        start, end = link.start_line - 1, link.end_line
+        linked_block = "".join(lines[start:end])
+        current_assignment = re.compile(
+            r'(?m)^(?P<prefix>\s*status\s*=\s*)'
+            r'"(?:Disabled|Suspended)"(?P<suffix>\s*(?:#.*)?)$')
+        replacement_block, count = current_assignment.subn(
+            r'\g<prefix>"Enabled"\g<suffix>', linked_block)
+        if count != 1:
+            raise RemediationPlanningError(
+                "linked S3 versioning resource must contain exactly one literal "
+                'status = "Disabled" or status = "Suspended" assignment')
+        return (
+            "".join((*lines[:start], replacement_block, *lines[end:])),
+            "deterministic_control_patch",
+        )
     return proposed, "agent_source_replacement"
 
 
@@ -676,9 +764,13 @@ class RemediationPlanningService:
             raise RemediationPlanningError(
                 "artifact_root cannot be inside the source repository"
             )
+        rule_ids = {
+            str(item.record["ocsf"].get("rule_id", "")) for item in findings
+        }
         link = self.linker(
             repository_root, provider=provider, resource_uid=resource_uid,
             state_document=state_document,
+            resource_types=_planning_resource_types(provider, rule_ids),
         )
 
         feedback = None
@@ -834,9 +926,6 @@ class RemediationPlanningService:
             raise RemediationPlanningError("replacement Terraform source must be non-empty text")
         if len(proposed_replacement.encode("utf-8")) > 2 * 1024 * 1024:
             raise RemediationPlanningError("replacement Terraform source exceeds 2 MiB")
-        rule_ids = {
-            str(item.record["ocsf"].get("rule_id", "")) for item in findings
-        }
         replacement, source_materialization = _materialize_control_patch(
             original=original_source, proposed=proposed_replacement,
             link=link, rule_ids=rule_ids)

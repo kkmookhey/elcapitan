@@ -42,7 +42,11 @@ Use distinct identities; do not grant one identity all capabilities.
 2. **Metrics observer:** read-only access only to the approved metrics and log
    namespaces.
 3. **IaC planner:** read-only repository/state access and cloud Reader only when
-   Terraform refresh requires it.
+   Terraform provider initialization or planning requires it. For AWS S3, use
+   a dedicated short-lived session supplied only through
+   `ELCAP_PLANNER_AWS_ACCESS_KEY_ID`,
+   `ELCAP_PLANNER_AWS_SECRET_ACCESS_KEY`, and
+   `ELCAP_PLANNER_AWS_SESSION_TOKEN`; do not reuse the scanner session.
 4. **Executor:** not present during the shadow run. Add it only for a later,
    separately approved non-production action pilot, scoped to exact resource
    operations and exact resource IDs or tags.
@@ -83,6 +87,13 @@ permissions.
    immutable evidence record, unsupported or unavailable data fails closed, the
    Terraform diff is exact, reviewers are phase-correct, and no action identity
    exists in the shadow service.
+
+For the first AWS planning proof, select one confirmed
+`s3_bucket_object_versioning` case whose authoritative repository and state
+contain exactly one `aws_s3_bucket_versioning` owner. The admitted plan is one
+in-place status change to `Enabled`. All other AWS controls remain validated and
+prioritized review items until an equally exact service-specific planning
+contract is designed and tested.
 
 Only after those checks pass should a separate action pilot be proposed. Use a
 disposable or canary resource, an exact-scope executor, a checkpointed change,

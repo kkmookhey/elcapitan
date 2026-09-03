@@ -33,16 +33,28 @@ Validation coverage never implies mutation coverage. For example,
 `sqlserver_tde_encrypted_with_cmk` supports live validation but explicitly has
 no remediation-planning or execution capability.
 
-The AWS S3 pack validates seven bucket controls. Object versioning retains its
-existing E2E-measured validation and remediation-planning proof. Six additional
-controls validate KMS default encryption, server access logging, event
-notifications, at least one enabled lifecycle rule, Object Lock, and MFA
-Delete. They consume the S3 API documents already collected for the bucket, so
-they add no cloud calls or scanner permissions. Known not-configured error
-codes remain explicit absent evidence; an authorization failure, unknown enum,
-malformed document, or invented absent marker blocks validation instead of
-becoming a confirmed finding. The six additions are contract tested and have
-no remediation-planning or live-execution capability.
+The AWS S3 pack validates seven bucket controls. Object versioning has the one
+AWS evidence-to-review path: after live confirmation and contextual priority,
+the planner requires an exact Terraform state owner of type
+`aws_s3_bucket_versioning`. It materializes only a literal
+`Disabled`/`Suspended` to `Enabled` status change in that linked block. The
+ephemeral plan gate accepts exactly one in-place update and exactly the nested
+path `versioning_configuration[0].status`; create, delete, replacement, MFA
+Delete, sibling-resource, and additional-attribute changes fail closed. The
+provider-neutral SRE, window, rollback, model-diversity, evidence-chain, and
+human-review gates can then issue `HumanReviewPackage.v1` with execution still
+`not_started`. This planning/package contract is tested locally; it has not
+been measured against a live AWS Terraform estate and grants no AWS execution
+authority.
+
+The other six S3 controls validate KMS default encryption, server access
+logging, event notifications, at least one enabled lifecycle rule, Object
+Lock, and MFA Delete. They consume the S3 API documents already collected for
+the bucket, so they add no cloud calls or scanner permissions. Known
+not-configured error codes remain explicit absent evidence; an authorization
+failure, unknown enum, malformed document, or invented absent marker blocks
+validation instead of becoming a confirmed finding. The six additions are
+contract tested and have no remediation-planning or live-execution capability.
 
 The AWS RDS pack validates eight DB-instance controls from one exact-resource
 `DescribeDBInstances` read: automated backups, copying tags to snapshots,

@@ -264,11 +264,34 @@ def _state_resources(document: Mapping) -> tuple[tuple[str, str, str, Mapping], 
     return tuple(found)
 
 
-def _state_owner(document: Mapping, resource_uid: str) -> tuple[str, str, str] | None:
+def _state_identity_matches(*, provider: str, resource_uid: str,
+                            resource_type: str, values: Mapping) -> bool:
+    candidate = values.get("id")
+    if isinstance(candidate, str) and candidate.lower() == resource_uid.lower():
+        return True
+    identity = _cloud_identity(provider, resource_uid)
+    if (provider.lower() == "aws"
+            and resource_type in {"aws_s3_bucket", "aws_s3_bucket_versioning"}
+            and identity.name):
+        state_names = (values.get("bucket"), candidate)
+        return any(
+            isinstance(value, str)
+            and value.split(",", 1)[0].lower() == identity.name.lower()
+            for value in state_names
+        )
+    return False
+
+
+def _state_owner(document: Mapping, *, provider: str, resource_uid: str,
+                 resource_types: tuple[str, ...]
+                 ) -> tuple[str, str, str] | None:
     matches = []
     for address, resource_type, resource_name, values in _state_resources(document):
-        candidate = values.get("id")
-        if isinstance(candidate, str) and candidate.lower() == resource_uid.lower():
+        if resource_types and resource_type not in resource_types:
+            continue
+        if _state_identity_matches(
+                provider=provider, resource_uid=resource_uid,
+                resource_type=resource_type, values=values):
             matches.append((address, resource_type, resource_name))
     if len(matches) > 1:
         addresses = ", ".join(sorted(match[0] for match in matches))
@@ -279,11 +302,17 @@ def _state_owner(document: Mapping, resource_uid: str) -> tuple[str, str, str] |
 
 
 def _candidate(block: _Block, *, provider: str, resource_uid: str,
-               identity: _CloudIdentity) -> tuple[str, float] | None:
+               identity: _CloudIdentity,
+               resource_types: tuple[str, ...]) -> tuple[str, float] | None:
+    if resource_types and block.resource_type not in resource_types:
+        return None
     values = _literal_values(block)
     if any(value.lower() == resource_uid.lower() for value in values.values()):
         return "exact_resource_uid", 1.0
-    if identity.terraform_type is None or block.resource_type != identity.terraform_type:
+    eligible_types = resource_types or tuple(filter(None, (identity.terraform_type,)))
+    if eligible_types and block.resource_type not in eligible_types:
+        return None
+    if not eligible_types:
         return None
     name_attribute = "bucket" if provider.lower() == "aws" else "name"
     if values.get(name_attribute, "").lower() != identity.name.lower():
@@ -296,7 +325,8 @@ def _candidate(block: _Block, *, provider: str, resource_uid: str,
 
 
 def link_terraform_resource(repository, *, provider: str, resource_uid: str,
-                            state_document: Mapping | None = None) -> TerraformLink:
+                            state_document: Mapping | None = None,
+                            resource_types: tuple[str, ...] = ()) -> TerraformLink:
     """Return one unambiguous Terraform owner for a cloud resource."""
     root = Path(repository).resolve(strict=True)
     if not root.is_dir():
@@ -305,9 +335,18 @@ def link_terraform_resource(repository, *, provider: str, resource_uid: str,
         raise TerraformLinkError("provider and resource_uid are required")
     if state_document is not None and not isinstance(state_document, Mapping):
         raise TerraformLinkError("Terraform state document must be an object")
+    if (not isinstance(resource_types, tuple)
+            or any(not isinstance(item, str) or not item for item in resource_types)
+            or len(resource_types) != len(set(resource_types))):
+        raise TerraformLinkError(
+            "resource_types must be a tuple of unique non-empty strings")
     identity = _cloud_identity(provider, resource_uid)
+    eligible_state_types = (
+        resource_types or tuple(filter(None, (identity.terraform_type,))))
     state_owner = (
-        _state_owner(state_document, resource_uid)
+        _state_owner(
+            state_document, provider=provider, resource_uid=resource_uid,
+            resource_types=eligible_state_types)
         if state_document is not None else None
     )
     candidates: list[tuple[_Block, str, float]] = []
@@ -319,13 +358,15 @@ def link_terraform_resource(repository, *, provider: str, resource_uid: str,
             else:
                 matched = _candidate(
                     block, provider=provider, resource_uid=resource_uid,
-                    identity=identity,
+                    identity=identity, resource_types=resource_types,
                 )
             if matched:
                 candidates.append((block, *matched))
 
     if not candidates:
-        expected = identity.terraform_type or "a literal resource UID"
+        expected = (", ".join(resource_types)
+                    if resource_types else
+                    identity.terraform_type or "a literal resource UID")
         raise TerraformLinkNotFound(
             f"no Terraform block links {provider}:{resource_uid}; expected {expected}"
         )

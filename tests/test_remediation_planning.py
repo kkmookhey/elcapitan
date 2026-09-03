@@ -22,7 +22,7 @@ from elcapitan.product_records import ProductRecord, SqliteProductRecordStore
 from elcapitan.remediation_planning import (
     RemediationPlanningError, RemediationPlanningService,
     SubprocessTerraformRunner, TerraformCheck, TerraformChecksFailed,
-    _container_apps_identity_proxy,
+    _container_apps_identity_proxy, _materialize_control_patch,
 )
 from elcapitan.terraform_linker import TerraformLink
 
@@ -359,6 +359,163 @@ def test_state_grounded_runner_accepts_only_one_targeted_update(tmp_path, monkey
     }
     assert "-state=[EPHEMERAL_STATE]" in checks[-2].argv
     assert "-out=[EPHEMERAL_PLAN]" in checks[-2].argv
+
+
+def test_aws_s3_state_plan_accepts_only_versioning_enablement(
+        tmp_path, monkeypatch):
+    monkeypatch.setenv("ELCAP_PLANNER_AWS_ACCESS_KEY_ID", "planner-id")
+    monkeypatch.setenv("ELCAP_PLANNER_AWS_SECRET_ACCESS_KEY", "planner-secret")
+    monkeypatch.setenv("ELCAP_PLANNER_AWS_SESSION_TOKEN", "planner-session")
+    monkeypatch.setenv("AWS_PROFILE", "ambient-admin")
+    monkeypatch.setenv("AWS_ROLE_ARN", "arn:aws:iam::111122223333:role/ambient")
+    monkeypatch.setenv("ELCAP_SCANNER_AWS_ACCESS_KEY_ID", "scanner-id")
+    monkeypatch.setenv(
+        "ELCAP_PLANNER_AZURE_MANAGED_IDENTITY_CLIENT_ID",
+        "other-cloud-planner",
+    )
+    terraform = tmp_path / "terraform"
+    terraform.write_text(
+        "#!/bin/sh\n"
+        "[ \"$AWS_ACCESS_KEY_ID\" = \"planner-id\" ] || exit 41\n"
+        "[ \"$AWS_SECRET_ACCESS_KEY\" = \"planner-secret\" ] || exit 42\n"
+        "[ \"$AWS_SESSION_TOKEN\" = \"planner-session\" ] || exit 43\n"
+        "[ -z \"${AWS_PROFILE+x}\" ] || exit 44\n"
+        "[ -z \"${AWS_ROLE_ARN+x}\" ] || exit 45\n"
+        "[ -z \"${ELCAP_SCANNER_AWS_ACCESS_KEY_ID+x}\" ] || exit 46\n"
+        "[ -z \"${ARM_CLIENT_ID+x}\" ] || exit 47\n"
+        "if [ \"$1\" = \"plan\" ]; then for arg in \"$@\"; do "
+        "case \"$arg\" in -out=*) touch \"${arg#-out=}\";; esac; done; fi\n"
+        "if [ \"$1\" = \"show\" ]; then "
+        "printf '%s' '{\"resource_changes\":[{"
+        "\"address\":\"aws_s3_bucket_versioning.assets\","
+        "\"change\":{\"actions\":[\"update\"],"
+        "\"before\":{\"versioning_configuration\":[{"
+        "\"mfa_delete\":\"Disabled\",\"status\":\"Disabled\"}]},"
+        "\"after\":{\"versioning_configuration\":[{"
+        "\"mfa_delete\":\"Disabled\",\"status\":\"Enabled\"}]}}}]}'; fi\n"
+        "exit 0\n"
+    )
+    terraform.chmod(0o755)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "bucket.tf").write_text('''
+resource "aws_s3_bucket_versioning" "assets" {
+  bucket = "training-assets"
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+''')
+    link = TerraformLink(
+        resource_uid="arn:aws:s3:::training-assets",
+        source_path="bucket.tf", module_path=".",
+        resource_type="aws_s3_bucket_versioning", resource_name="assets",
+        start_line=2, end_line=7, match_strategy="terraform_state_resource_id",
+        confidence=1, source_sha256="a",
+        resource_address="aws_s3_bucket_versioning.assets", state_sha256="b",
+    )
+    state = {
+        "version": 4, "serial": 1, "lineage": "lineage", "outputs": {},
+        "resources": [],
+    }
+
+    checks = SubprocessTerraformRunner(str(terraform)).check(
+        workspace, link, state_document=state)
+
+    assert [item.name for item in checks] == [
+        "fmt", "init", "validate", "plan", "plan_scope"]
+    assert all(item.passed for item in checks)
+    assert json.loads(checks[-1].stdout)["observed_changes"] == [{
+        "actions": ["update"],
+        "address": "aws_s3_bucket_versioning.assets",
+        "changed_attribute_paths": ["versioning_configuration[0].status"],
+    }]
+
+
+def test_aws_s3_plan_rejects_an_mfa_delete_change(tmp_path):
+    terraform = tmp_path / "terraform"
+    terraform.write_text(
+        "#!/bin/sh\n"
+        "printf '%s' '{\"resource_changes\":[{"
+        "\"address\":\"aws_s3_bucket_versioning.assets\","
+        "\"change\":{\"actions\":[\"update\"],"
+        "\"before\":{\"versioning_configuration\":[{"
+        "\"mfa_delete\":\"Disabled\",\"status\":\"Disabled\"}]},"
+        "\"after\":{\"versioning_configuration\":[{"
+        "\"mfa_delete\":\"Enabled\",\"status\":\"Enabled\"}]}}}]}';\n"
+    )
+    terraform.chmod(0o755)
+    plan = tmp_path / "plan"
+    plan.write_bytes(b"opaque")
+
+    check = SubprocessTerraformRunner(str(terraform))._plan_scope(
+        plan_path=plan, target="aws_s3_bucket_versioning.assets",
+        cwd=tmp_path, environment={"PATH": ""})
+
+    assert check.passed is False
+    assert json.loads(check.stdout)["observed_changes"][0][
+        "changed_attribute_paths"] == [
+            "versioning_configuration[0].mfa_delete",
+            "versioning_configuration[0].status",
+        ]
+
+
+def test_aws_planning_requires_a_separate_complete_credential_set(
+        tmp_path, monkeypatch):
+    monkeypatch.setenv("ELCAP_PLANNER_AWS_ACCESS_KEY_ID", "planner-id")
+    monkeypatch.setenv("ELCAP_PLANNER_AWS_SECRET_ACCESS_KEY", "planner-secret")
+    link = TerraformLink(
+        resource_uid="arn:aws:s3:::training-assets",
+        source_path="bucket.tf", module_path=".",
+        resource_type="aws_s3_bucket_versioning", resource_name="assets",
+        start_line=1, end_line=1, match_strategy="terraform_state_resource_id",
+        confidence=1, source_sha256="a",
+        resource_address="aws_s3_bucket_versioning.assets", state_sha256="b",
+    )
+    (tmp_path / "bucket.tf").write_text(
+        'resource "aws_s3_bucket_versioning" "assets" {}\n')
+
+    checks = SubprocessTerraformRunner("terraform").check(
+        tmp_path, link, state_document={"version": 4, "resources": []})
+
+    assert len(checks) == 1
+    assert checks[0].name == "plan"
+    assert checks[0].passed is False
+    assert "ELCAP_PLANNER_AWS_SESSION_TOKEN" in checks[0].stderr
+
+
+def test_s3_versioning_patch_changes_only_the_linked_resource():
+    original = '''resource "aws_s3_bucket_versioning" "other" {
+  bucket = "other-bucket"
+  versioning_configuration {
+    status = "Disabled"
+  }
+}
+
+resource "aws_s3_bucket_versioning" "assets" {
+  bucket = "training-assets"
+  versioning_configuration {
+    status = "Suspended"
+  }
+}
+'''
+    proposed = original.replace('status = "Suspended"', 'status = "Enabled"')
+    link = TerraformLink(
+        resource_uid="arn:aws:s3:::training-assets",
+        source_path="bucket.tf", module_path=".",
+        resource_type="aws_s3_bucket_versioning", resource_name="assets",
+        start_line=8, end_line=13, match_strategy="provider_type_and_literal_name",
+        confidence=.9, source_sha256="a",
+    )
+
+    replacement, materialization = _materialize_control_patch(
+        original=original, proposed=proposed, link=link,
+        rule_ids={"s3_bucket_object_versioning"})
+
+    assert materialization == "deterministic_control_patch"
+    assert replacement.count('status = "Disabled"') == 1
+    assert replacement.count('status = "Enabled"') == 1
+    assert 'status = "Suspended"' not in replacement
 
 
 def test_container_apps_identity_proxy_injects_header_and_bounds_request():
