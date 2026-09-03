@@ -86,7 +86,9 @@ class PreApprovalOrchestrator:
                                 state_document: Mapping | None,
                                 service_context: Mapping,
                                 usage_samples: tuple[UsageSample, ...],
-                                window_policy: WindowPolicy) -> HumanReviewOutcome:
+                                window_policy: WindowPolicy,
+                                finding_ids: tuple[str, ...] | None = None,
+                                ) -> HumanReviewOutcome:
         """Resume the durable case from its last completed preapproval stage."""
         # Five stage advances reach the gate normally. One bounded checker-to-maker
         # rework adds four more. A started window can be invalidated and selected
@@ -95,7 +97,8 @@ class PreApprovalOrchestrator:
             state = self.case_store.get(case_id).state
             if state is CaseState.VALIDATED:
                 self._guard_agent_run(case_id, lambda: self.planning.prepare(
-                    case_id, repository=repository, state_document=state_document))
+                    case_id, repository=repository, state_document=state_document,
+                    finding_ids=finding_ids))
             elif state is CaseState.PLAN_READY:
                 outcome = self._guard_agent_run(
                     case_id, lambda: self.sre.review(
@@ -131,10 +134,12 @@ class PreApprovalOrchestrator:
     def prepare(self, case_id: str, *, repository,
                 state_document: Mapping | None, service_context: Mapping,
                 usage_samples: tuple[UsageSample, ...],
-                window_policy: WindowPolicy) -> PreApprovalOutcome:
+                window_policy: WindowPolicy,
+                finding_ids: tuple[str, ...] | None = None) -> PreApprovalOutcome:
         planning = self._guard_agent_run(
             case_id, lambda: self.planning.prepare(
-                case_id, repository=repository, state_document=state_document))
+                case_id, repository=repository, state_document=state_document,
+                finding_ids=finding_ids))
         sre = self._guard_agent_run(
             case_id, lambda: self.sre.review(
                 case_id, service_context=service_context))

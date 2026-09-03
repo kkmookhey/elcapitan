@@ -17,6 +17,7 @@ from .control_packs import ControlDefinition, builtin_registry
 from .finding_store import FindingStore, StoredFinding
 from .portfolio import PortfolioItem, PortfolioService
 from .product_records import ProductRecordStore
+from .priority import assess_priority
 from .workflow import CaseStore
 
 
@@ -160,6 +161,8 @@ class FleetCase:
     resource_uids: tuple[str, ...]
     finding_ids: tuple[str, ...]
     finding_titles: tuple[str, ...]
+    finding_sources: tuple[str, ...]
+    finding_formats: tuple[str, ...]
     rule_ids: tuple[str, ...]
     capabilities: tuple[Mapping, ...]
     synthetic: bool
@@ -167,6 +170,7 @@ class FleetCase:
     unsupported_findings: int
     validation_counts: Mapping[str, int]
     service_ids: tuple[str, ...]
+    asset_context: Mapping
     portfolio_rank: int | None
     effective_priority: float
     scheduling_status: str
@@ -178,11 +182,13 @@ class FleetCase:
     def to_dict(self) -> dict:
         value = asdict(self)
         for name in (
-            "resource_uids", "finding_ids", "finding_titles", "rule_ids",
-            "capabilities", "service_ids", "scheduling_reasons",
+            "resource_uids", "finding_ids", "finding_titles", "finding_sources",
+            "finding_formats", "rule_ids", "capabilities", "service_ids",
+            "scheduling_reasons",
         ):
             value[name] = list(value[name])
         value["validation_counts"] = dict(self.validation_counts)
+        value["asset_context"] = dict(self.asset_context)
         return value
 
 
@@ -198,6 +204,21 @@ class FleetSnapshot:
     shadow_policy: ShadowModePolicy
 
     def to_dict(self) -> dict:
+        source_counts = Counter(
+            source for case in self.cases for source in case.finding_sources)
+        format_counts = Counter(
+            source_format for case in self.cases
+            for source_format in case.finding_formats)
+        priority_counts = Counter(case.urgency for case in self.cases)
+        validation_counts: Counter[str] = Counter()
+        for case in self.cases:
+            validation_counts.update(case.validation_counts)
+        planning_capable_cases = sum(
+            any(capability.get("remediation_planning") for capability in case.capabilities)
+            for case in self.cases)
+        execution_capable_cases = sum(
+            any(capability.get("live_execution") for capability in case.capabilities)
+            for case in self.cases)
         return {
             "tenant_id": self.tenant_id,
             "summary": {
@@ -207,6 +228,12 @@ class FleetSnapshot:
                 "unsupported_findings": self.unsupported_findings,
                 "case_state_counts": dict(self.case_state_counts),
                 "provider_counts": dict(self.provider_counts),
+                "source_counts": dict(sorted(source_counts.items())),
+                "format_counts": dict(sorted(format_counts.items())),
+                "priority_counts": dict(sorted(priority_counts.items())),
+                "validation_outcome_counts": dict(sorted(validation_counts.items())),
+                "planning_capable_cases": planning_capable_cases,
+                "execution_capable_cases": execution_capable_cases,
             },
             "shadow_policy": self.shadow_policy.to_dict(),
             "cases": [case.to_dict() for case in self.cases],
@@ -226,7 +253,13 @@ class FleetSnapshotService:
 
     def _case(self, case: RemediationCase,
               portfolio: PortfolioItem | None) -> FleetCase:
-        findings = self.finding_store.list_for_case(case.case_id)
+        findings = tuple(sorted(
+            self.finding_store.list_for_case(case.case_id),
+            key=lambda item: (
+                -assess_priority("RISK-FLEET", item.priority_signals).score,
+                item.finding_id,
+            ),
+        ))
         controls = tuple(
             self.registry.get(
                 finding.provider,
@@ -251,6 +284,13 @@ class FleetSnapshotService:
         provider = findings[0].provider if findings else ""
         account = findings[0].account if findings else ""
         priority = case.priority
+        asset_context = next((
+            dict(context)
+            for finding in findings
+            if isinstance((context := (
+                finding.record.get("vendor_extensions") or {}
+            ).get("elcapitan_asset_context")), Mapping)
+        ), {})
         return FleetCase(
             case_id=case.case_id,
             state=case.state.value,
@@ -262,6 +302,8 @@ class FleetSnapshotService:
             finding_ids=tuple(item.finding_id for item in findings),
             finding_titles=tuple(
                 str(item.record["ocsf"].get("title", "")) for item in findings),
+            finding_sources=tuple(self._source(item) for item in findings),
+            finding_formats=tuple(self._format(item) for item in findings),
             rule_ids=tuple(dict.fromkeys(self._rule(item) for item in findings)),
             capabilities=capabilities,
             synthetic=any(self._is_synthetic(item) for item in findings),
@@ -269,6 +311,7 @@ class FleetSnapshotService:
             unsupported_findings=len(findings) - supported,
             validation_counts=dict(sorted(validation_counts.items())),
             service_ids=case.service_ids,
+            asset_context=asset_context,
             portfolio_rank=portfolio.rank if portfolio else None,
             effective_priority=(portfolio.effective_priority if portfolio
                                 else (priority.score if priority else 0)),
@@ -307,6 +350,22 @@ class FleetSnapshotService:
     @staticmethod
     def _rule(finding: StoredFinding) -> str:
         return str(finding.record["ocsf"].get("rule_id", ""))
+
+    @staticmethod
+    def _source(finding: StoredFinding) -> str:
+        provenance = finding.record.get("provenance") or {}
+        product = str(provenance.get("product") or "Unknown scanner").strip()
+        version = str(provenance.get("product_version") or "").strip()
+        return f"{product} {version}".strip()
+
+    @staticmethod
+    def _format(finding: StoredFinding) -> str:
+        extensions = finding.record.get("vendor_extensions") or {}
+        source_format = str(extensions.get("source_format") or "").strip()
+        if source_format:
+            return source_format.upper()
+        version = str(finding.record.get("ocsf", {}).get("version") or "").strip()
+        return f"OCSF {version}".strip()
 
     @staticmethod
     def _is_synthetic(finding: StoredFinding) -> bool:

@@ -108,6 +108,10 @@ def test_second_finding_on_asset_is_correlated_and_can_raise_priority(intake):
     assert second.finding_attached and second.priority_changed
     assert len(second.case.finding_ids) == 2
     assert second.case.priority.score > first.case.priority.score
+    assert "severity is critical" in second.case.priority.factors
+    assert "severity is high" not in second.case.priority.factors
+    assert second.case.priority.evidence_ids == (
+        second.finding.record["raw_event"]["evidence_id"],)
     assert [event.transition for event in case_store.events(first.case.case_id)] == [
         CaseTransition.PRIORITIZE,
         CaseTransition.ADD_FINDING,

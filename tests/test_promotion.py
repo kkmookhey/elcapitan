@@ -64,6 +64,7 @@ def test_confirmed_case_gets_stable_evidence_minimized_promotion(tmp_path):
     assert first["status"] == "ready_for_preapproval"
     assert first["confirmed_rule_ids"] == [
         "storage_account_public_network_access_disabled"]
+    assert first["excluded_finding_ids"] == []
     assert first["promotion_token"] == second["promotion_token"]
     assert first["safety_boundary"]["raw_finding_payload_included"] is False
     assert "record" not in first and "finding" not in first
@@ -76,6 +77,38 @@ def test_confirmed_case_gets_stable_evidence_minimized_promotion(tmp_path):
         service.require(
             tenant_id="TEN-PROMOTION", case_id=case_id,
             promotion_token="0" * 64)
+
+
+def test_unplannable_siblings_are_explicitly_excluded_not_case_blockers(tmp_path):
+    database = tmp_path / "product.db"
+    cases = SqliteCaseStore(database)
+    findings = SqliteFindingStore(database)
+    records = SqliteProductRecordStore(database)
+    intake = RemediationIntake(
+        case_store=cases, finding_store=findings,
+        artifact_root=tmp_path / "artifacts",
+        collector=Collector("test", "1", "scanner"), now=lambda: NOW,
+    )
+    supported = json.loads(FIXTURE.read_text())
+    unsupported = json.loads(FIXTURE.read_text())
+    unsupported["finding_info"]["analytic"]["uid"] = "not_implemented_yet"
+    unsupported["finding_info"]["title"] = "A sibling control without planning"
+    first = intake.ingest(supported, tenant_id="TEN-PROMOTION")
+    second = intake.ingest(unsupported, tenant_id="TEN-PROMOTION")
+    assert first.case.case_id == second.case.case_id
+
+    validate(tmp_path, cases, findings, records, first.case.case_id, "Enabled")
+    readiness = PromotionReadinessService(
+        case_store=cases, finding_store=findings, record_store=records,
+    ).inspect(tenant_id="TEN-PROMOTION", case_id=first.case.case_id)
+
+    assert readiness.status == "ready_for_preapproval"
+    assert readiness.eligible is True
+    assert readiness.confirmed_finding_ids == (first.finding.finding_id,)
+    assert readiness.excluded_finding_ids == (second.finding.finding_id,)
+    assert readiness.incomplete_finding_ids == (second.finding.finding_id,)
+    assert readiness.confirmed_without_planning_finding_ids == ()
+    assert readiness.validation_evidence_ids
 
 
 def test_cleared_case_cannot_be_promoted_and_tenant_is_enforced(tmp_path):

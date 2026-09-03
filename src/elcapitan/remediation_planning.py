@@ -618,21 +618,58 @@ class RemediationPlanningService:
         )
 
     def prepare(self, case_id: str, *, repository,
-                state_document: Mapping | None = None) -> RemediationPlanOutcome:
+                state_document: Mapping | None = None,
+                finding_ids: tuple[str, ...] | None = None,
+                ) -> RemediationPlanOutcome:
         case = self.case_store.get(case_id)
         if case.state is not CaseState.VALIDATED:
             raise RemediationPlanningError(
                 f"case {case_id} must be validated before planning; current state is {case.state}"
             )
-        findings = self.finding_store.list_for_case(case_id)
-        if not findings:
+        all_findings = self.finding_store.list_for_case(case_id)
+        if not all_findings:
             raise RemediationPlanningError(f"case {case_id} has no persisted findings")
+        by_id = {finding.finding_id: finding for finding in all_findings}
+        if finding_ids is None:
+            findings = all_findings
+        else:
+            requested_ids = tuple(dict.fromkeys(finding_ids))
+            if not requested_ids:
+                raise RemediationPlanningError(
+                    "planning scope must contain at least one finding")
+            missing = sorted(set(requested_ids) - set(by_id))
+            if missing:
+                raise RemediationPlanningError(
+                    "planning scope contains finding(s) outside the case: "
+                    + ", ".join(missing))
+            findings = tuple(by_id[finding_id] for finding_id in requested_ids)
         identities = {(finding.provider, finding.resource_uid) for finding in findings}
         if len(identities) != 1:
             raise RemediationPlanningError(
                 "the first planning slice requires all case findings to target one resource"
             )
         provider, resource_uid = next(iter(identities))
+
+        validation_id = case.record_ids.get("validation_result_id")
+        if not validation_id:
+            raise RemediationPlanningError("validated case has no validation result record")
+        validation = self.record_store.get(validation_id)
+        if validation.case_id != case_id or validation.record_type != "ValidationResult.v1":
+            raise RemediationPlanningError("case validation record has the wrong owner or type")
+        validation_findings = {
+            str(item.get("finding_id", "")): item
+            for item in validation.body.get("findings", ())
+            if isinstance(item, Mapping)
+        }
+        not_confirmed = sorted(
+            finding.finding_id for finding in findings
+            if str(validation_findings.get(finding.finding_id, {}).get(
+                "status", "")) != "confirmed")
+        if not_confirmed:
+            raise RemediationPlanningError(
+                "planning scope contains finding(s) not confirmed by live validation: "
+                + ", ".join(not_confirmed))
+
         repository_root = Path(repository).resolve(strict=True)
         artifact_root = self.artifact_root.resolve(strict=False)
         if artifact_root.is_relative_to(repository_root):
@@ -643,13 +680,6 @@ class RemediationPlanningService:
             repository_root, provider=provider, resource_uid=resource_uid,
             state_document=state_document,
         )
-
-        validation_id = case.record_ids.get("validation_result_id")
-        if not validation_id:
-            raise RemediationPlanningError("validated case has no validation result record")
-        validation = self.record_store.get(validation_id)
-        if validation.case_id != case_id or validation.record_type != "ValidationResult.v1":
-            raise RemediationPlanningError("case validation record has the wrong owner or type")
 
         feedback = None
         feedback_id = case.record_ids.get("review_feedback_id")
@@ -698,8 +728,19 @@ class RemediationPlanningService:
         )
         self.record_store.put(link_record)
 
+        scoped_validation_evidence = (
+            tuple(validation.evidence_ids) if finding_ids is None else
+            tuple(dict.fromkeys(
+                str(evidence_id)
+                for finding in findings
+                for evidence_id in validation_findings[
+                    finding.finding_id].get("evidence_ids", ())
+                if isinstance(evidence_id, str) and evidence_id
+            ))
+        )
         input_evidence = tuple(dict.fromkeys((
-            *validation.evidence_ids, source_ref.evidence_id, link_ref.evidence_id,
+            *scoped_validation_evidence,
+            source_ref.evidence_id, link_ref.evidence_id,
             *(feedback.evidence_ids if feedback else ()),
         )))
         input_records = tuple(filter(None, (
@@ -714,6 +755,9 @@ class RemediationPlanningService:
             "finding, policy drift, and rollback failure to retry, containment, or "
             "owned escalation without restoring the vulnerable pre-change state.",
         ))
+        scoped_validation = dict(validation.body)
+        scoped_validation["findings"] = [
+            validation_findings[finding.finding_id] for finding in findings]
         task = AgentTask(
             task_id=task_id,
             case_id=case_id,
@@ -739,7 +783,7 @@ class RemediationPlanningService:
                 "source_evidence_id": source_ref.evidence_id,
                 "link_evidence_id": link_ref.evidence_id,
                 "findings": [finding.record for finding in findings],
-                "validation": validation.body,
+                "validation": scoped_validation,
                 "review_feedback": feedback.body if feedback else None,
             },
         )
@@ -868,6 +912,12 @@ class RemediationPlanningService:
                 "before_sha256": before_sha256,
                 "after_sha256": after_sha256,
                 "materialization": source_materialization,
+            },
+            "scope": {
+                "finding_ids": [finding.finding_id for finding in findings],
+                "rule_ids": sorted(rule_ids),
+                "resource_uid": resource_uid,
+                "validation_record_id": validation_id,
             },
             "checks": [check.to_dict() for check in checks],
             "artifact_namespace": namespace,

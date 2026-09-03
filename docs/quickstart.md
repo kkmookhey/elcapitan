@@ -16,11 +16,32 @@ docker compose up --build --detach --wait
 ```
 
 Open `http://127.0.0.1:8770`, sign in with
-`local-preview-not-a-secret-00000000`, select **Load safe sample**, and submit
-it for tenant `SYNTHETIC-QUICKSTART`. The fleet shows a synthetic input,
-separate validation/planning/execution authority, and its E2E-measured control
-grade. Live validation stays unavailable because no cloud binary or scanner
-identity is present.
+`local-preview-not-a-secret-00000000`, and select **Try safe sample**. The
+console checks the sample locally and shows an import preview before retaining
+anything. Confirm **Import 1 finding** to open the results workspace. The
+finding remains labeled synthetic, and its detail separates cloud checking,
+planning, execution, and evidence authority. The cloud check stays unavailable
+because no cloud binary or scanner identity is present.
+
+To evaluate scanner compatibility instead, select **Choose scanner export**.
+The preview reports FAIL/PASS/MANUAL accounting, provider and format detection,
+resource and account counts, and supported versus unsupported findings. It
+makes no cloud or model request and retains no source data; only the explicit
+import confirmation creates findings and resource cases.
+
+To test business-aware ordering, expand **Add per-resource asset context** and
+choose a JSON manifest shaped like
+[`asset-context-manifest.example.json`](asset-context-manifest.example.json).
+The preview joins by exact resource ID, reports matched resources, finding
+resources without context, and asset rows without failing findings, and makes
+no cloud request. Azure ARM IDs compare case-insensitively; all other IDs remain
+exact. Context is never fuzzily assigned. Synthetic owner, environment, or
+criticality labels must set `synthetic_business_context` to `true`, while
+observed exposure must include its timestamp and evidence reference.
+
+The fallback finding fields apply only to resources without a matched asset
+row. Asset criticality now defaults to zero rather than silently treating
+unknown assets as medium criticality.
 
 The Compose file publishes only the shadow service on loopback. PostgreSQL is
 not published to the host. Its trust authentication and the documented access

@@ -14,12 +14,15 @@ Capitan. It answers four questions before any remediation authority exists:
 
 ## Hard boundary
 
-`serve-shadow` exposes finding intake, fleet inventory, connector readiness,
-case evidence, single-case validation, and bounded batch validation. It has no
-approval, schedule, deployment, rollback, or model endpoint. Its policy object
-cannot be constructed with any of those action permissions enabled. Do not
-attach an executor identity, Contributor role, model API key, or customer
-write credential to this service.
+`serve-shadow` exposes no-write intake preview, confirmed finding intake, fleet
+inventory, connector readiness, case evidence, single-case validation, and
+bounded batch validation. Preview uses the same normalization, source-identity,
+schema, and priority checks as intake, then removes its temporary evidence. It
+makes no cloud or model request and performs no persistent product write. The
+service has no approval, schedule, deployment, rollback, or model endpoint.
+Its policy object cannot be constructed with any of those action permissions
+enabled. Do not attach an executor identity, Contributor role, model API key,
+or customer write credential to this service.
 
 The first customer run should use a dedicated deployment and database. Do not
 reuse the public synthetic lifecycle demo's `/data` volume or cloud identity.
@@ -182,17 +185,30 @@ dependencies, exploitability, and business impact are supplied.
    personal data.
 2. Export findings from the scanner. Keep the source export unchanged for
    chain-of-custody purposes.
-3. Start `serve-shadow` with a fresh 24+ character access token, a dedicated
+3. Prepare an optional asset-context JSON manifest using
+   [`asset-context-manifest.example.json`](asset-context-manifest.example.json).
+   Use exact cloud resource IDs and identify the owner, environment,
+   criticality, services, context source, and evidence references. Mark trial
+   assignments synthetic. Do not infer reachability merely from a public
+   endpoint.
+4. Start `serve-shadow` with a fresh 24+ character access token, a dedicated
    work directory, and `ELCAPITAN_DATABASE_URL` set to a TLS-required PostgreSQL
    connection string.
-4. Import a small representative batch first. Confirm provider, account,
-   resource identifier, rule mapping, risk factors, and supported/unsupported
-   counts in the case drill-down.
-5. Confirm connector readiness. If it is offline, resolve the missing binary or
+5. Preview a small representative batch first. Confirm format, provider,
+   FAIL/PASS/MANUAL accounting, resource and account counts, and the supported
+   versus unsupported split. When a manifest is supplied, also confirm matched
+   resources, findings without context, inventory rows without findings,
+   critical resources, and observed internet exposure before choosing **Import
+   findings**. Preview does not retain the export or contact the customer cloud.
+6. After import, confirm account, resource identifier, rule mapping, risk
+   factors, and supported/unsupported counts in the result drill-down.
+7. Confirm connector readiness. If it is offline, resolve the missing binary or
    named environment variables; do not substitute a broader credential.
-6. Validate one non-production or low-risk case, inspect its evidence record,
-   then use **Validate eligible** for batches of at most 100 cases.
-7. Export or review the resulting prioritized fleet. Cases in `validated` are
+8. Check one non-production or low-risk finding, inspect its evidence record,
+   then use the enabled **Check N ready** action for batches of at most 100
+   resources. When no connector-backed resource can run, the disabled action
+   reads **No cloud checks ready**.
+9. Export or review the resulting prioritized fleet. Cases in `validated` are
    candidates for the existing `prepare-review` workflow; cases in
    `closed_no_action` are stale or already resolved, and `blocked` cases require
    evidence or control support.
@@ -214,6 +230,23 @@ resources. Intake therefore binds Prowler idempotency to the producer UID,
 rule ID, and resource UID together. The original UID remains preserved in the
 normalized evidence record; replaying one check/resource observation remains
 idempotent without collapsing distinct resources.
+
+Asset context is a separate input from scanner and threat context. A matched
+row supplies per-resource criticality, ownership, service, environment,
+exposure, runtime-dependency, and compensating-control signals. Exploit
+probability, known exploitation, and active exploitation remain finding-level
+signals; they must not be copied into an asset inventory merely to raise a
+score. Each stored context row includes a canonical SHA-256 digest, source,
+timestamp, evidence references, and an explicit synthetic-business-context
+flag. Unknown exposure remains unknown and falls back to explicit scanner
+categories; it is not converted to internal by absence.
+
+When several findings share one resource, the resource case uses the highest
+independent finding score; it does not sum finding scores. The result
+drill-down identifies that score-driving observation and lists the other
+grouped observations with their own scores. The case-level factors and evidence
+references also come only from that score-driving observation; lower-scoring
+findings remain visible but do not contaminate the score explanation.
 
 ## Data handling
 
@@ -282,6 +315,13 @@ validation record, and validation evidence references. It is not a bearer
 credential and grants no cloud access; it is a tamper/TOCTOU guard. A changed
 or incomplete validation boundary is rejected before model dispatch or
 Terraform work.
+
+For a mixed resource case, the handoff is intentionally narrower than the
+scanner case: it selects only findings that are both live-confirmed and marked
+planning-capable in the registry. Every unsupported, unavailable, cleared, or
+confirmed-but-unplannable sibling is returned as excluded scope. The planning
+worker receives the selected finding IDs and persists them in the plan record;
+it must not silently expand back to every scanner observation on the resource.
 
 Do not give the shadow web service those repository, model, observer, or
 execution credentials. That separation is an intentional product control, not

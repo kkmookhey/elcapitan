@@ -1814,6 +1814,15 @@ def test_the_file_service_document_is_queried_by_name_and_group(azure):
     assert fake_az.RESOURCE_GROUP in call["argv"]
 
 
+def test_file_service_child_resource_is_collected_through_parent_account(azure):
+    child = f"{fake_az.RESOURCE_UID}/fileServices/default"
+    state = azure(resource_uid=child)
+    values = {key: json.loads(value) for key, value in state.config}
+    assert state.resource_uid == child
+    assert values["file_service_status"] == "available"
+    assert values["file_smb_channel_encryption"] == []
+
+
 def test_file_service_denial_is_isolated_from_account_evidence(azure):
     responses = fake_az.default_responses()
     responses["storage account file-service-properties show"] = {

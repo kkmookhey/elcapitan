@@ -13,55 +13,91 @@
       <span class="brand-mark">EC</span>
       <span><strong>El Capitan</strong><small>Customer shadow fleet</small></span>
     </a>
-    <div class="boundary"><i></i><span><strong>Read-only boundary</strong><small>No approval · No scheduling · No execution</small></span></div>
+    <div class="boundary"><i></i><span><strong>Read-only workspace</strong><small>Checks cloud state · Never changes it</small></span></div>
   </header>
 
   <main>
-    <section class="hero">
-      <div>
-        <p class="eyebrow">AWS + Azure fleet intelligence</p>
-        <h1>Know what is real.<br>Know what comes next.</h1>
-        <p class="lede">Ingest scanner findings, validate them against live cloud configuration, and build an evidence-bound remediation queue without exposing a change path.</p>
+    <section class="onboarding" id="welcome-panel">
+      <div class="welcome-copy">
+        <p class="eyebrow">Guided shadow trial</p>
+        <h1>Start with findings.<br>Cloud access can wait.</h1>
+        <p class="lede">See what El Capitan understands before saving anything. Preview a scanner export locally, then choose whether to import it and run bounded read-only checks.</p>
+        <div class="tenant-control">
+          <label for="tenant">Workspace name</label>
+          <div><input id="tenant" maxlength="100" value="MY-TRIAL" autocomplete="off" aria-describedby="workspace-help"><button type="button" class="ghost" id="load-fleet">Open existing</button></div>
+          <small id="workspace-help">Use a project label—not a secret, email address, or customer data.</small>
+        </div>
       </div>
-      <div class="tenant-control">
-        <label for="tenant">Customer tenant</label>
-        <div><input id="tenant" maxlength="100" value="DEMO-CUSTOMER" autocomplete="off"><button type="button" class="primary" id="load-fleet">Open fleet</button></div>
+      <div class="start-paths" aria-label="Ways to begin">
+        <article class="start-card featured"><span>01 · Recommended</span><h2>Preview your export</h2><p>Choose OCSF or AWS Security Hub JSON. Nothing is retained until you confirm the preview.</p><button type="button" class="primary" id="start-upload">Choose scanner export</button></article>
+        <article class="start-card"><span>02 · No setup</span><h2>Try a safe sample</h2><p>Walk through the same preview and import flow with a clearly labeled synthetic Azure finding.</p><button type="button" class="ghost" id="start-sample">Try safe sample</button></article>
+        <article class="start-card"><span>03 · When ready</span><h2>Check cloud state</h2><p>Review the read-only connector requirements. Credentials are never entered in this browser.</p><button type="button" class="ghost" id="view-connectors">View connector status</button></article>
       </div>
+      <div class="journey" aria-label="Trial steps"><span><b>1</b> Preview</span><i></i><span><b>2</b> Normalize</span><i></i><span><b>3</b> Validate</span><i></i><span><b>4</b> Prioritize</span><i></i><span><b>5</b> Decide</span></div>
     </section>
 
-    <section class="control-strip">
-      <div><p class="section-label">Fleet mission</p><h2 id="mission">Waiting for a tenant</h2><p id="mission-detail">Select a tenant to load its isolated portfolio.</p></div>
-      <div class="actions"><button type="button" class="ghost" id="refresh">Refresh</button><button type="button" class="ghost" id="validate-eligible">Validate eligible</button><button type="button" class="primary" id="open-intake">Import findings</button></div>
+    <section class="control-strip hidden" id="fleet-controls">
+      <div><p class="section-label">Evidence-to-outcome workspace</p><h2 id="mission">Waiting for a workspace</h2><p id="mission-detail">Choose a scanner export to begin.</p></div>
+      <div class="actions"><button type="button" class="ghost" id="switch-workspace">Back to start</button><button type="button" class="ghost" id="refresh">Refresh</button><button type="button" class="ghost" id="validate-eligible" disabled>No cloud checks ready</button><button type="button" class="primary" id="open-intake">Add findings</button></div>
     </section>
 
-    <section class="metrics" aria-label="Fleet metrics">
-      <article><small>Cases</small><strong id="metric-cases">—</strong><span id="metric-states">No fleet loaded</span></article>
-      <article><small>Findings</small><strong id="metric-findings">—</strong><span id="metric-supported">Capability unknown</span></article>
-      <article><small>Validated cases</small><strong id="metric-validated">—</strong><span id="metric-validation-detail">No live evidence outcomes</span></article>
-      <article><small>Highest risk</small><strong id="metric-risk">—</strong><span id="metric-urgency">Not assessed</span></article>
+    <section class="lifecycle-board hidden" id="lifecycle-board" aria-labelledby="lifecycle-title">
+      <header class="lifecycle-heading">
+        <div><p class="section-label">Complete operating model</p><h2 id="lifecycle-title">From scanner signal to controlled change</h2></div>
+        <span class="mode-pill">Shadow mode · action locked</span>
+      </header>
+      <div class="lifecycle-layer">
+        <div class="layer-label"><span>Layer 1</span><strong>Understand the risk</strong><small>Available in this read-only workspace</small></div>
+        <div class="stage-track" id="evidence-stages">
+          <article class="stage complete"><span class="stage-index">01</span><small>Findings</small><strong id="stage-findings-value">—</strong><p id="stage-findings-detail">Waiting for a source</p></article>
+          <article class="stage complete"><span class="stage-index">02</span><small>Normalized</small><strong id="stage-normalized-value">—</strong><p id="stage-normalized-detail">No records yet</p></article>
+          <article class="stage current"><span class="stage-index">03</span><small>Validated</small><strong id="stage-validated-value">—</strong><p id="stage-validated-detail">Cloud check pending</p></article>
+          <article class="stage complete"><span class="stage-index">04</span><small>Prioritized</small><strong id="stage-prioritized-value">—</strong><p id="stage-prioritized-detail">No resource cases</p></article>
+          <article class="stage outcome"><span class="stage-index">05</span><small>Current outcome</small><strong id="stage-outcome-value">—</strong><p id="stage-outcome-detail">No decision yet</p></article>
+        </div>
+      </div>
+      <div class="authority-gate"><span>Human authority boundary</span><p>Evidence may nominate work. It cannot authorize a change.</p></div>
+      <div class="lifecycle-layer action-layer">
+        <div class="layer-label"><span>Layer 2</span><strong>Act safely</strong><small>Separate identities, services, and authorization</small></div>
+        <div class="stage-track action-track" id="action-stages">
+          <article class="stage locked"><span class="stage-index">06</span><small>Prepare plan</small><strong id="stage-plan-value">—</strong><p id="stage-plan-detail">Validation required</p></article>
+          <article class="stage locked"><span class="stage-index">07</span><small>Package change</small><strong id="stage-package-value">0</strong><p>IaC, SRE, window, rollback</p></article>
+          <article class="stage human"><span class="stage-index">08</span><small>Human review</small><strong id="stage-review-value">0</strong><p>Exact package hash</p></article>
+          <article class="stage locked"><span class="stage-index">09</span><small>Deploy</small><strong id="stage-deploy-value">Locked</strong><p id="stage-deploy-detail">No shadow action route</p></article>
+          <article class="stage locked"><span class="stage-index">10</span><small>Monitor</small><strong id="stage-monitor-value">—</strong><p>Verify or roll back</p></article>
+        </div>
+      </div>
+      <footer class="lifecycle-foot"><strong>Capability is not authority.</strong><span id="lifecycle-foot-detail">Validation, planning, and execution remain independently gated for every control.</span></footer>
+    </section>
+
+    <section class="metrics hidden" id="fleet-metrics" aria-label="Results summary">
+      <article><small>Resource cases</small><strong id="metric-cases">—</strong><span id="metric-states">No findings imported</span></article>
+      <article><small>Normalized findings</small><strong id="metric-findings">—</strong><span id="metric-supported">Support not assessed</span></article>
+      <article><small>Cloud checks completed</small><strong id="metric-validated">—</strong><span id="metric-validation-detail">No cloud checks run</span></article>
+      <article><small>Highest priority</small><strong id="metric-risk">—</strong><span id="metric-urgency">Not assessed</span></article>
     </section>
 
     <div class="workspace">
-      <section class="card fleet-card">
+      <section class="card fleet-card hidden" id="fleet-card">
         <div class="card-heading">
-          <div><p class="section-label">Prioritized portfolio</p><h2>Customer findings</h2></div>
-          <span class="record-count" id="case-count">0 cases</span>
+          <div><p class="section-label">Prioritized outcome queue</p><h2>What needs attention—and why</h2></div>
+          <span class="record-count" id="case-count">0 resources</span>
         </div>
         <div class="table-wrap">
           <table>
-            <caption class="sr-only">Prioritized customer findings and available read-only actions</caption>
-            <thead><tr><th scope="col">Priority</th><th scope="col">Finding / asset</th><th scope="col">Cloud</th><th scope="col">Validation</th><th scope="col">Scheduling intelligence</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
-            <tbody id="fleet-body"><tr><td colspan="6" class="empty">Open a tenant or import findings to begin.</td></tr></tbody>
+            <caption class="sr-only">Prioritized scanner observations grouped by resource, source, normalized scope, current validation result, and next outcome</caption>
+            <thead><tr><th scope="col">Priority</th><th scope="col">Finding and source</th><th scope="col">Normalized scope</th><th scope="col">Validation</th><th scope="col">Outcome</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+            <tbody id="fleet-body"><tr><td colspan="6" class="empty">Import findings to begin.</td></tr></tbody>
           </table>
         </div>
       </section>
 
-      <aside class="card connector-card">
-        <div class="card-heading"><div><p class="section-label">Live evidence</p><h2>Connector readiness</h2></div></div>
+      <aside class="card connector-card" id="connector-card">
+        <div class="card-heading"><div><p class="section-label">Optional cloud check</p><h2>Read-only connectors</h2></div></div>
         <div id="connectors" class="connectors"><p class="empty compact">Checking local read-only connectors…</p></div>
         <div class="guardrail">
-          <span>SHADOW</span>
-          <div><strong>Action plane disconnected</strong><p>This service has no route or policy capable of approval, scheduling, or deployment.</p></div>
+          <span>SAFE</span>
+          <div><strong>Cloud changes are unavailable</strong><p>This workspace can read supported configuration. It cannot approve, schedule, or deploy a change.</p></div>
         </div>
       </aside>
     </div>
@@ -79,16 +115,19 @@
       <button type="button" class="dialog-close" data-close="intake-dialog" aria-label="Close">×</button>
       <p class="section-label">Finding intake</p>
       <h2 id="intake-title">Import AWS or Azure findings</h2>
-      <p id="intake-description">Paste OCSF, AWS Security Hub ASFF, an array of findings, or a Security Hub response containing <code>Findings</code>. Provider scope, resource identity, normalization, schema, and priority inputs are checked for the entire batch before anything is written.</p>
-      <label class="upload-zone" for="finding-file"><strong>Choose a JSON export</strong><span id="file-label">or paste findings below · maximum 10 MiB / 1,000 findings</span><input id="finding-file" type="file" accept=".json,application/json"></label>
-      <label>Finding JSON<textarea id="finding-json" required spellcheck="false" placeholder='[{"class_uid":2004,...}]'></textarea></label>
-      <div class="form-grid">
-        <label>Asset criticality <input id="asset-criticality" type="number" min="0" max="1" step="0.05" value="0.5"></label>
-        <label>Exploit probability <input id="exploit-probability" type="number" min="0" max="1" step="0.05" value="0"></label>
-        <label>Service IDs <input id="service-ids" placeholder="payments, identity"></label>
-        <label class="check"><input id="reachable" type="checkbox"> Reachable vulnerable path</label>
-      </div>
-      <div class="dialog-actions"><button type="button" class="ghost" id="load-sample">Load safe sample</button><button class="primary" type="submit">Ingest into shadow fleet</button></div>
+      <p id="intake-description">Choose an OCSF or AWS Security Hub JSON export. El Capitan checks the entire batch and shows exactly what it understands before anything is retained.</p>
+      <label class="upload-zone" for="finding-file"><strong>Choose a scanner export</strong><span id="file-label">JSON only · maximum 10 MiB / 1,000 findings</span><input id="finding-file" type="file" accept=".json,application/json"></label>
+      <details class="paste-input"><summary>Or paste finding JSON</summary><label>Finding JSON<textarea id="finding-json" required spellcheck="false" placeholder='[{"class_uid":2004,...}]'></textarea></label></details>
+      <details class="asset-context-input"><summary>Add per-resource asset context <span id="asset-context-status">Optional</span></summary><p>Attach owner, environment, criticality, and observed exposure by exact resource ID. The preview shows every match and gap.</p><label class="upload-zone compact" for="asset-file"><strong>Choose an asset context manifest</strong><span id="asset-file-label">JSON array or {"assets": [...]}</span><input id="asset-file" type="file" accept=".json,application/json"></label><label>Or paste asset context JSON<textarea id="asset-json" spellcheck="false" placeholder='[{"resource_uid":"/subscriptions/...","environment":"production",...}]'></textarea></label></details>
+      <div class="preview-boundary"><span>PREVIEW</span><p><strong>No data saved</strong>No cloud or model request is made while reviewing this import.</p></div>
+      <section class="import-preview hidden" id="import-preview" aria-live="polite"></section>
+      <div class="dialog-actions"><button type="button" class="ghost" id="load-sample">Use safe sample</button><button type="button" class="primary" id="preview-intake">Review import</button><button class="primary hidden" type="submit" id="confirm-intake">Import findings</button></div>
+      <details class="advanced-context"><summary>Fallback finding context</summary><p>These values apply only where no per-resource asset row is matched. Unknown asset criticality remains zero.</p><div class="form-grid">
+          <label>Fallback asset criticality <input id="asset-criticality" type="number" min="0" max="1" step="0.05" value="0"></label>
+          <label>Exploit probability <input id="exploit-probability" type="number" min="0" max="1" step="0.05" value="0"></label>
+          <label>Service IDs <input id="service-ids" placeholder="payments, identity"></label>
+          <label class="check"><input id="reachable" type="checkbox"> Reachable vulnerable path</label>
+      </div></details>
     </form>
   </dialog>
 

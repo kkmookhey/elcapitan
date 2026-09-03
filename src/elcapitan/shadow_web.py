@@ -30,6 +30,12 @@ class _ShadowServer(_DemoServer):
 
 class ShadowRequestHandler(DemoRequestHandler):
     server: _ShadowServer
+    LOGIN_PAGE_TITLE = "El Capitan · Shadow trial access"
+    LOGIN_HEADING = "El Capitan shadow trial"
+    LOGIN_DESCRIPTION = (
+        "This read-only workspace is restricted. Enter the access token "
+        "supplied by the operator.")
+    LOGIN_BUTTON = "Open read-only workspace"
 
     def _read_shadow_json(self) -> dict:
         content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip()
@@ -85,6 +91,41 @@ class ShadowRequestHandler(DemoRequestHandler):
             raise ShadowControlError(
                 "context.service_ids entries must be 1 to 200 characters")
         return tuple(dict.fromkeys(result))
+
+    @classmethod
+    def _context(cls, body: dict) -> IntakeContext:
+        raw_context = body.get("context") or {}
+        if not isinstance(raw_context, dict):
+            raise ShadowControlError("context must be an object")
+        return IntakeContext(
+            asset_criticality=cls._number(raw_context, "asset_criticality"),
+            exploit_probability=cls._number(raw_context, "exploit_probability"),
+            internet_exposed=cls._optional_boolean(
+                raw_context, "internet_exposed"),
+            reachable=cls._boolean(raw_context, "reachable"),
+            known_exploited=cls._boolean(raw_context, "known_exploited"),
+            active_exploitation=cls._boolean(
+                raw_context, "active_exploitation"),
+            runtime_dependency=cls._boolean(
+                raw_context, "runtime_dependency"),
+            compensating_control_strength=cls._number(
+                raw_context, "compensating_control_strength"),
+            service_ids=cls._service_ids(raw_context),
+        )
+
+    @staticmethod
+    def _documents(body: dict) -> list:
+        supplied = body.get("findings")
+        return supplied if isinstance(supplied, list) else [supplied]
+
+    @staticmethod
+    def _asset_contexts(body: dict) -> list | None:
+        supplied = body.get("assets")
+        if supplied is None:
+            return None
+        if not isinstance(supplied, list):
+            raise ShadowControlError("assets must be an array")
+        return supplied
 
     def _asset(self, relative: str) -> None:
         if relative not in {"index.html", "fleet.css", "fleet.js"}:
@@ -148,6 +189,7 @@ class ShadowRequestHandler(DemoRequestHandler):
                         "GET /api/connectors",
                         "GET /api/cases/{case_id}?tenant=...",
                         "GET /api/promotions/{case_id}?tenant=...",
+                        "POST /api/intake-preview",
                         "POST /api/intake",
                         "POST /api/validate",
                         "POST /api/validate-batch",
@@ -194,35 +236,19 @@ class ShadowRequestHandler(DemoRequestHandler):
             return
         try:
             body = self._read_shadow_json()
-            if parsed.path == "/api/intake":
-                supplied = body.get("findings")
-                documents = supplied if isinstance(supplied, list) else [supplied]
-                raw_context = body.get("context") or {}
-                if not isinstance(raw_context, dict):
-                    raise ShadowControlError("context must be an object")
-                context = IntakeContext(
-                    asset_criticality=self._number(
-                        raw_context, "asset_criticality"),
-                    exploit_probability=self._number(
-                        raw_context, "exploit_probability"),
-                    internet_exposed=self._optional_boolean(
-                        raw_context, "internet_exposed"),
-                    reachable=self._boolean(raw_context, "reachable"),
-                    known_exploited=self._boolean(
-                        raw_context, "known_exploited"),
-                    active_exploitation=self._boolean(
-                        raw_context, "active_exploitation"),
-                    runtime_dependency=self._boolean(
-                        raw_context, "runtime_dependency"),
-                    compensating_control_strength=self._number(
-                        raw_context, "compensating_control_strength"),
-                    service_ids=self._service_ids(raw_context),
-                )
+            if parsed.path == "/api/intake-preview":
+                result = self.server.control.preview_intake(
+                    documents=self._documents(body),
+                    context=self._context(body),
+                    asset_contexts=self._asset_contexts(body),
+                ).to_dict()
+            elif parsed.path == "/api/intake":
                 result = self.server.control.intake(
                     tenant_id=str(body.get("tenant_id", "")),
-                    documents=documents,
-                    context=context,
+                    documents=self._documents(body),
+                    context=self._context(body),
                     identity=str(body.get("identity", "shadow-api-upload")),
+                    asset_contexts=self._asset_contexts(body),
                 ).to_dict()
             elif parsed.path == "/api/validate":
                 result = self.server.control.validate(

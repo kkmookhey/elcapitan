@@ -246,7 +246,7 @@
 
     .flow {
       display: grid;
-      grid-template-columns: repeat(6, 1fr);
+      grid-template-columns: repeat(5, 1fr);
       gap: 10px;
       position: relative;
     }
@@ -274,12 +274,32 @@
       background: var(--bg);
       font: 600 12px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
     }
-    .flow-card:last-child::after { display: none; }
+    .flow-card.end::after { display: none; }
     .flow-card .num { color: var(--faint); font: 700 10px/1 ui-monospace, SFMono-Regular, Consolas, monospace; }
     .flow-card h3 { margin: 24px 0 8px; font-size: 15px; }
     .flow-card p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.58; }
     .flow-card.gated { border-color: #4e5233; background: linear-gradient(155deg, rgba(60, 54, 25, .32), rgba(12, 25, 29, .82)); }
     .flow-card.gated .num { color: var(--amber); }
+    .flow-layer-heading { display: flex; align-items: baseline; gap: 13px; margin: 28px 0 13px; }
+    .flow-layer-heading span { color: var(--green); font: 750 10px/1 ui-monospace, SFMono-Regular, Consolas, monospace; text-transform: uppercase; letter-spacing: .09em; }
+    .flow-layer-heading strong { font-size: 16px; }
+    .flow-layer-heading small { color: var(--muted); font-size: 11px; }
+    .flow-card.outcome { border-color: #365a70; background: linear-gradient(155deg, rgba(28, 65, 88, .3), rgba(12, 25, 29, .82)); }
+    .flow-card.outcome .num { color: var(--blue); }
+    .flow-gate { display: flex; align-items: center; gap: 14px; margin: 22px 0 0; padding: 13px 16px; border-block: 1px solid #655833; color: var(--muted); background: var(--amber-soft); font-size: 12px; }
+    .flow-gate strong { color: var(--amber); font: 750 10px/1 ui-monospace, SFMono-Regular, Consolas, monospace; text-transform: uppercase; letter-spacing: .08em; }
+
+    .trial-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .trial-stat { padding: 20px; border: 1px solid var(--line); border-radius: 14px; background: rgba(12, 25, 29, .8); }
+    .trial-stat small,.trial-stat strong,.trial-stat span { display: block; }
+    .trial-stat small { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+    .trial-stat strong { margin-top: 11px; color: var(--green); font: 560 31px/1 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .trial-stat span { margin-top: 7px; color: var(--faint); font-size: 11px; line-height: 1.45; }
+    .trial-findings { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 18px; }
+    .trial-finding { padding: 22px; border: 1px solid var(--line); border-radius: 14px; background: rgba(8, 19, 23, .7); }
+    .trial-finding b { color: var(--green); font: 700 10px/1 ui-monospace, SFMono-Regular, Consolas, monospace; text-transform: uppercase; letter-spacing: .08em; }
+    .trial-finding h3 { margin: 15px 0 8px; font-size: 17px; }
+    .trial-finding p { margin: 0; color: var(--muted); font-size: 12px; }
 
     .principles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 18px; }
     .principle { padding: 20px; border: 1px solid var(--line); border-radius: 14px; background: rgba(8, 19, 23, .68); }
@@ -427,7 +447,8 @@
       .hero-grid, .section-head, .evidence-layout { grid-template-columns: 1fr; }
       .hero-grid { gap: 42px; }
       .flow { grid-template-columns: repeat(3, 1fr); }
-      .flow-card:nth-child(3)::after { display: none; }
+      .trial-stats { grid-template-columns: repeat(3, 1fr); }
+      .trial-findings { grid-template-columns: 1fr; }
       .capability-grid { grid-template-columns: 1fr 1fr; }
       .benefit-grid { grid-template-columns: repeat(3, 1fr); }
       .roadmap-item { grid-template-columns: 120px 1fr; }
@@ -448,7 +469,6 @@
       .section { padding: 70px 0; }
       .section-head { gap: 20px; }
       .flow { grid-template-columns: 1fr 1fr; }
-      .flow-card:nth-child(3)::after { display: grid; }
       .flow-card:nth-child(even)::after { display: none; }
       .principles, .capability-grid, .use-grid, .limits { grid-template-columns: 1fr; }
       .benefit-grid { grid-template-columns: 1fr 1fr; }
@@ -460,7 +480,7 @@
       .footer-meta { text-align: left; }
     }
     @media (max-width: 470px) {
-      .metrics, .capability-summary, .benefit-grid, .flow { grid-template-columns: 1fr; }
+      .metrics, .capability-summary, .benefit-grid, .flow, .trial-stats { grid-template-columns: 1fr; }
       .metric { border-right: 0; border-bottom: 1px solid var(--line); }
       .metric:last-child { border-bottom: 0; }
       .flow-card::after { display: none !important; }
@@ -489,6 +509,7 @@
       </a>
       <nav class="nav" aria-label="Briefing sections">
         <a href="#product">Product</a>
+        <a href="#azure-trial">Azure trial</a>
         <a href="#capabilities">Capabilities</a>
         <a href="#value">Customer value</a>
         <a href="#roadmap">Roadmap</a>
@@ -513,7 +534,7 @@
 
           <aside class="boundary-panel" aria-label="Product trust boundary">
             <div class="boundary-head">
-              <div class="signal"><i aria-hidden="true"></i><span>v0.1 foundation · AWS expansion</span></div>
+              <div class="signal"><i aria-hidden="true"></i><span>v0.1 foundation · guided shadow trial</span></div>
               <h2>Safe by separation</h2>
               <p>The product separates evidence, decisions, human approval, and action authority.</p>
             </div>
@@ -531,7 +552,7 @@
           <article class="metric"><small>Validation controls</small><strong>72</strong><span>35 Azure · 37 AWS</span></article>
           <article class="metric"><small>Planning controls</small><strong>4</strong><span>3 Azure Storage · 1 AWS S3</span></article>
           <article class="metric"><small>Execution controls</small><strong>2</strong><span>Azure Storage only</span></article>
-          <article class="metric"><small>Current verification</small><strong>703</strong><span>Working-tree tests passed</span></article>
+          <article class="metric"><small>Current verification</small><strong>718</strong><span>Working-tree tests passed</span></article>
         </div>
       </div>
     </section>
@@ -543,13 +564,22 @@
           <p class="section-intro">El Capitan coordinates scanner intake, live validation, evidence, operational review, approval, and guarded execution. Deterministic code owns state, retries, credentials, scheduling, rollback, and audit; optional models are confined to typed specialist work.</p>
         </div>
 
-        <div class="flow" aria-label="El Capitan workflow">
-          <article class="flow-card"><span class="num">01 / INTAKE</span><h3>Normalize findings</h3><p>Import OCSF or Security Hub ASFF with exact FAIL, PASS, and MANUAL accounting.</p></article>
-          <article class="flow-card"><span class="num">02 / VALIDATE</span><h3>Re-query reality</h3><p>Use bounded read-only cloud identities to confirm, clear, or block supported findings.</p></article>
-          <article class="flow-card"><span class="num">03 / EVIDENCE</span><h3>Record the proof</h3><p>Persist minimized, typed, immutable evidence with provenance and explicit availability.</p></article>
-          <article class="flow-card"><span class="num">04 / PREPARE</span><h3>Build the package</h3><p>Link exact Terraform, verify the proposal, and run SRE, window, and rollback review.</p></article>
-          <article class="flow-card gated"><span class="num">05 / HUMAN GATE</span><h3>Decide deliberately</h3><p>Approve or reject one immutable package hash through a separate review plane.</p></article>
-          <article class="flow-card"><span class="num">06 / ACTION</span><h3>Execute narrowly</h3><p>Checkpoint, deploy, monitor, verify, roll back if needed, and issue a completion record.</p></article>
+        <div class="flow-layer-heading"><span>Layer 1</span><strong>Understand the risk</strong><small>Read-only evidence and decision support</small></div>
+        <div class="flow" aria-label="Evidence-to-outcome workflow">
+          <article class="flow-card"><span class="num">01 / FINDINGS</span><h3>Name every source</h3><p>Preview Prowler OCSF or Security Hub ASFF with exact FAIL, PASS, and MANUAL accounting.</p></article>
+          <article class="flow-card"><span class="num">02 / NORMALIZE</span><h3>Create stable records</h3><p>Normalize, deduplicate, correlate exact resources, and retain scanner provenance.</p></article>
+          <article class="flow-card"><span class="num">03 / VALIDATE</span><h3>Re-query reality</h3><p>Use bounded read-only identities to confirm, clear, or block supported controls.</p></article>
+          <article class="flow-card"><span class="num">04 / PRIORITIZE</span><h3>Add asset context</h3><p>Combine severity with exact-resource criticality, exposure, threat, and control evidence.</p></article>
+          <article class="flow-card outcome end"><span class="num">05 / OUTCOME</span><h3>Explain what matters</h3><p>Show confirmed, cleared, unavailable, unsupported, and review-needed outcomes without summing findings.</p></article>
+        </div>
+        <div class="flow-gate"><strong>Human authority boundary</strong><span>The queue may nominate work. It cannot authorize a cloud change.</span></div>
+        <div class="flow-layer-heading"><span>Layer 2</span><strong>Act safely</strong><small>Separate services, identities, and authorization</small></div>
+        <div class="flow" aria-label="Plan-to-monitor workflow">
+          <article class="flow-card"><span class="num">06 / PREPARE</span><h3>Build the plan</h3><p>Link one exact Terraform resource and verify the isolated proposal without editing source.</p></article>
+          <article class="flow-card"><span class="num">07 / PACKAGE</span><h3>Assemble the change</h3><p>Bind IaC, SRE, change-window, verification, and rollback records into one package.</p></article>
+          <article class="flow-card gated"><span class="num">08 / HUMAN REVIEW</span><h3>Hold for a decision</h3><p>Approve or reject one immutable package hash through a separate review plane.</p></article>
+          <article class="flow-card"><span class="num">09 / DEPLOY</span><h3>Execute narrowly</h3><p>Require a separately proven connector, exact scope, checkpoint, and authorized identity.</p></article>
+          <article class="flow-card end"><span class="num">10 / MONITOR</span><h3>Verify or recover</h3><p>Watch health, revalidate the control, roll back on failure, and issue a completion record.</p></article>
         </div>
 
         <div class="principles">
@@ -557,6 +587,30 @@
           <article class="principle"><span>Authority is explicit</span><h3>Capabilities never blur</h3><p>Validation, remediation planning, and live execution are independent permissions—not one generic “supported” badge.</p></article>
           <article class="principle"><span>Humans retain control</span><h3>Approval is a boundary</h3><p>No model can approve its own work, grant credentials, skip a stage, or turn a recommendation into a cloud change.</p></article>
         </div>
+      </div>
+    </section>
+
+    <section class="section" id="azure-trial">
+      <div class="shell">
+        <div class="section-head">
+          <div><p class="section-label">Realistic Azure shadow trial</p><h2>Asset context and live evidence now change the queue—without changing the trust model.</h2></div>
+          <p class="section-intro">An owner-authorized Prowler export from a test subscription was paired with read-only Azure configuration observations, a temporary Reader-scoped scanner identity, and clearly marked synthetic business context. Exact ARM-ID joins enriched matching resources while gaps remained visible and unaltered.</p>
+        </div>
+        <div class="trial-stats" aria-label="Azure trial results">
+          <article class="trial-stat"><small>Source observations</small><strong>274</strong><span>179 FAIL · 91 PASS · 4 MANUAL from Prowler OCSF</span></article>
+          <article class="trial-stat"><small>Resource cases</small><strong>59</strong><span>Findings grouped by exact cloud resource identity</span></article>
+          <article class="trial-stat"><small>Asset inventory</small><strong>45</strong><span>Owner, environment, criticality, and observed exposure</span></article>
+          <article class="trial-stat"><small>Contextualized failures</small><strong>123</strong><span>26 exact matches; every mismatch remains explicit</span></article>
+          <article class="trial-stat"><small>Priority outcome</small><strong>2 / 44 / 13</strong><span>High / normal / low; zero urgent without threat evidence</span></article>
+          <article class="trial-stat"><small>Live validation</small><strong>23 cases</strong><span>93 of 95 supported findings confirmed · 2 unavailable</span></article>
+          <article class="trial-stat"><small>Planning handoff</small><strong>6 candidates</strong><span>Exact confirmed scopes · 0 plans until authoritative IaC and human routes arrive</span></article>
+        </div>
+        <div class="trial-findings">
+          <article class="trial-finding"><b>Owner calibrated</b><h3>Equivalent SSH exposure now ranks equally</h3><p>Two broad inbound SSH findings originally differed only because of synthetic criticality. Owner review aligned them, and the manifest records that provenance.</p></article>
+          <article class="trial-finding"><b>Evidence restrained</b><h3>Inactive demo exposure is not production impact</h3><p>A public demo-tagged Cognitive Services account had no deployments and no calls in the observed 90-day window. Exposure is real; business criticality remains a separate owner decision.</p></article>
+          <article class="trial-finding"><b>Impact left unknown</b><h3>Configuration risk is separate from data sensitivity</h3><p>An Azure ML datastore allowed public-network authentication while anonymous blobs remained disabled. Object content was not inferred when data-plane RBAC denied inventory access.</p></article>
+        </div>
+        <p class="evidence-note"><strong>The stronger evidence contract:</strong> strict asset rows, canonical context digests, exact case matching, independently scored observations, a single visible score driver, and bounded live checks through a dedicated Reader identity. Twenty-one cases advanced to validated; two stayed blocked because their live Azure resource kind did not satisfy the OpenAI-specific contract. Six mixed Azure Storage cases can now hand off only their exact confirmed, planning-capable findings while every excluded sibling remains explicit. No plan, package, or result is fabricated from unavailable evidence.</p>
       </div>
     </section>
 
@@ -606,8 +660,8 @@
           <p class="section-intro">El Capitan creates value in read-only shadow mode, then supports progressively stronger workflows only where evidence, customer policy, identity, and rollback readiness permit.</p>
         </div>
         <div class="use-grid">
-          <article class="use-card"><span class="index">USE CASE 01</span><h3>Validate scanner findings</h3><p>Turn a long export into a live, evidence-backed picture of what is confirmed, cleared, unavailable, or unsupported.</p><ul><li>OCSF and Security Hub ASFF intake</li><li>Replay-safe deduplication and exact-asset correlation</li><li>Bounded read-only Azure and AWS collectors</li></ul></article>
-          <article class="use-card"><span class="index">USE CASE 02</span><h3>Prioritize a cloud remediation fleet</h3><p>Rank resource-oriented cases with transparent factors instead of treating scanner severity as the entire business decision.</p><ul><li>Severity, exposure, exploitability, and reachability</li><li>Asset criticality and compensating controls</li><li>Tenant isolation and service/window collision visibility</li></ul></article>
+          <article class="use-card"><span class="index">USE CASE 01</span><h3>Validate scanner findings</h3><p>Turn a long export into a live, evidence-backed picture of what is confirmed, cleared, unavailable, or unsupported.</p><ul><li>No-write OCSF and Security Hub ASFF preview before import</li><li>Replay-safe deduplication and exact-asset correlation</li><li>Bounded read-only Azure and AWS collectors</li></ul></article>
+          <article class="use-card"><span class="index">USE CASE 02</span><h3>Prioritize a cloud remediation fleet</h3><p>Rank resource-oriented cases with transparent factors instead of treating scanner severity as the entire business decision.</p><ul><li>Exact-resource asset-context preview with visible match and gap counts</li><li>Severity, observed exposure, asset criticality, and compensating controls</li><li>One score-driving observation with every grouped finding scored independently</li></ul></article>
           <article class="use-card"><span class="index">USE CASE 03</span><h3>Prepare an auditable change</h3><p>Link a supported finding to one exact Terraform resource and produce a complete review package without modifying the source repository.</p><ul><li>Conservative literal or state-backed source linkage</li><li>Real Terraform format, validation, and plan gates</li><li>Independent SRE, window, and rollback reviews</li></ul></article>
           <article class="use-card"><span class="index">USE CASE 04</span><h3>Prove safe execution patterns</h3><p>For the two supported Azure Storage actions, demonstrate tightly scoped execution with recovery built into the lifecycle.</p><ul><li>Package-bound approval and durable scheduling</li><li>Checkpoint, health monitoring, and post-change validation</li><li>Automatic rollback, certificate, and originator handoff</li></ul></article>
         </div>
@@ -646,14 +700,14 @@
           <article class="verification-card">
             <h3>Current verification</h3>
             <div class="verification-list">
-              <div class="verification-item"><strong>703 tests</strong><span>Full Python suite passed with the exact-resource AWS EBS volume expansion.</span></div>
+              <div class="verification-item"><strong>718 tests</strong><span>Full Python suite passed with Guided Shadow Trial, exact-resource asset context, Azure File Service child-resource validation, and evidence-minimized planning handoff.</span></div>
               <div class="verification-item"><strong>Complete-history scan</strong><span>Zero findings with an empty baseline under three constrained false-positive rules.</span></div>
               <div class="verification-item"><strong>Packages inspected</strong><span>Wheel and source distribution built and passed content checks.</span></div>
               <div class="verification-item"><strong>Container scanned</strong><span>Linux amd64 runtime rejected high and critical fixed vulnerabilities.</span></div>
               <div class="verification-item"><strong>Quickstart passed</strong><span>Authenticated PostgreSQL and UI acceptance completed in CI.</span></div>
               <div class="verification-item"><strong>Azure lifecycle proven</strong><span>Success and automatic rollback exercised for both live Storage controls.</span></div>
             </div>
-            <p class="verification-meta">WORKTREE VERIFIED 2026-08-31 · BASE COMMIT F441DE9 · VERSION 0.1.0 FOUNDATION</p>
+            <p class="verification-meta">WORKTREE VERIFIED 2026-09-01 · BASE COMMIT 7E2B0B4 · VERSION 0.1.0 FOUNDATION</p>
           </article>
         </div>
       </div>
@@ -669,9 +723,9 @@
         <div class="roadmap">
           <article class="roadmap-item"><span class="roadmap-time">Now · candidate</span><div><h3>Azure-first v0.1 foundation</h3><p>Complete the evidence-bound workflow, capability matrix, governance, packaging, security scans, synthetic quickstart, and narrow live-action proof.</p></div><span class="roadmap-status">Built</span></article>
           <article class="roadmap-item blocked"><span class="roadmap-time">Next · release</span><div><h3>Clear the external publication gates</h3><p>Receive GitHub confirmation that retained PR refs and cached views are purged; then configure public visibility and the protected release environment. Tagging and publication still require explicit final authorization.</p></div><span class="roadmap-status">Blocked externally</span></article>
-          <article class="roadmap-item future"><span class="roadmap-time">Near term</span><div><h3>Harden customer identity and pilot operations</h3><p>Add Microsoft Entra approval authentication, production-grade named-user audit, and a separately authorized read-only customer shadow pilot with explicit data handling.</p></div><span class="roadmap-status">Planned</span></article>
+          <article class="roadmap-item future"><span class="roadmap-time">Near term</span><div><h3>Build the CTEM context graph</h3><p>Add first-class Azure resources, Entra identities, Cortex endpoints, CVE threat context, and evidence-backed reachability while keeping asset, identity, endpoint, finding, and threat facts distinct.</p></div><span class="roadmap-status">Planned</span></article>
           <article class="roadmap-item"><span class="roadmap-time">Now · expansion</span><div><h3>Broaden AWS validation safely</h3><p>AWS now has 37 validators across S3, RDS DB instances, EC2 security groups, and EBS volumes. Additional services will follow customer finding volume while planning, execution, and evidence grades remain independent.</p></div><span class="roadmap-status">37 AWS validators</span></article>
-          <article class="roadmap-item future"><span class="roadmap-time">Later</span><div><h3>Enterprise integrations and portable operations</h3><p>Extend workload identity, CI and source-control workflows, customer notifications, and deployment options only as concrete customer workflows justify them.</p></div><span class="roadmap-status">Deferred</span></article>
+          <article class="roadmap-item future"><span class="roadmap-time">Later</span><div><h3>Harden identity and portable operations</h3><p>Add Microsoft Entra approval authentication, named-user audit, workload identity, CI/source-control workflows, customer notifications, and deployment options as concrete workflows justify them.</p></div><span class="roadmap-status">Deferred</span></article>
         </div>
 
         <aside class="release-gate" id="release-gate">
@@ -699,6 +753,7 @@
           <details><summary>No broad AWS execution</summary><p>AWS currently has seven S3, eight RDS, twenty EC2 security-group, and two EBS volume validation controls, but only S3 object versioning supports verified planning and no AWS control supports live execution. Validation breadth is not mutation authority.</p></details>
           <details><summary>No public multi-tenant SaaS guarantee</summary><p>v0.1 is self-hosted. Shared-token interfaces are demonstration and bounded-pilot bridges, not production customer identity.</p></details>
           <details><summary>No complete benchmark coverage</summary><p>Unsupported services and controls remain visible. Coverage is never inferred from neighboring resource types or related checks.</p></details>
+          <details><summary>No inferred business or data sensitivity</summary><p>Owner, environment, criticality, and data classification must be supplied or visibly marked synthetic. Public networking does not by itself prove reachability, sensitive content, runtime use, or business impact.</p></details>
           <details><summary>No unbounded model autonomy</summary><p>Optional model workers have strict typed contracts, timeouts, retry budgets, idempotent replay, and circuit breakers. They cannot control workflow state or credentials.</p></details>
         </div>
       </div>
@@ -708,7 +763,7 @@
   <footer>
     <div class="shell footer-grid">
       <p>El Capitan is an evidence-bound cloud remediation control plane. This living briefing tracks the current build on the v0.1.0 foundation and intentionally keeps validation, planning, execution, and proof grade separate.</p>
-      <div class="footer-meta">UPDATED 2026-08-31<br>BASE COMMIT F441DE9<br>STATUS UNRELEASED</div>
+      <div class="footer-meta">UPDATED 2026-09-01<br>BASE COMMIT 7E2B0B4<br>STATUS UNRELEASED</div>
     </div>
   </footer>
 

@@ -1,8 +1,8 @@
 # El Capitan — fresh-session handoff
 
-**Prepared:** 2026-08-31
+**Prepared:** 2026-09-03
 
-**Current source base:** `f441de9ecaa8d947a24e33acbd4b5e000c46bd88`
+**Checkpoint parent:** `7e2b0b4` (`feat(aws): add deterministic EBS validation`)
 
 **Release direction:** self-hosted `v0.1.0` technical preview with explicit
 Azure/AWS validation breadth, Azure-only live execution, and evidence grades
@@ -15,10 +15,14 @@ completed work from an earlier conversation.
 
 ## Resume here — authoritative current checkpoint
 
-The `main` worktree is intentionally dirty on source base `f441de9`. It contains
-one completed, uncommitted validation-only EBS volume checkpoint; none of its
-modified or untracked files are disposable. Do not reset, reconstruct, split,
-or overwrite it before reviewing the diff.
+The Guided Shadow Trial, exact-resource asset-context prioritization, Azure live
+validation, and evidence-to-outcome UI checkpoint is complete on top of
+`7e2b0b4`. The owner authorized preserving it as one reviewable commit on
+2026-09-03 before beginning the next AWS-only evidence-to-review checkpoint.
+Do not reset, reconstruct, split, or overwrite it. The completed EBS volume
+checkpoint is already preserved in `7e2b0b4`; do not reconstruct or recommit
+it. The owner screen recording remains an untracked local review artifact and
+must not be committed.
 
 Current registry authority:
 
@@ -32,11 +36,39 @@ Current registry authority:
 - only S3 object versioning has AWS planning capability; no AWS control has
   live-execution capability.
 
-The completed checkpoint passes **703 tests**, the repository's narrow Ruff
-gate, compile checks, wheel/source builds, distribution inspection,
-generated-matrix verification, release-tree checks, and `git diff --check`. No
-cloud call, model call, customer-data access, external write, tag, release, or
-publication was performed while building the EBS slice.
+The current Guided Shadow Trial checkpoint passes **718 tests**, compile and
+the repository's narrow Ruff gates, JavaScript syntax checks, generated-matrix
+and release-tree checks, wheel/source builds, distribution inspection, and
+`git diff --check`. It made owner-authorized read-only Azure management-plane
+queries against one test subscription to build observed exposure context. That
+inventory pass made no cloud mutation, data-plane read, model call, approval,
+scheduling, deployment, tag, release, or publication. An authenticated local Chrome pass
+covered desktop, tablet, and mobile layouts; synthetic-sample and checked-in
+ASFF native-file and paste preview/import; supported and unsupported results;
+evidence detail; keyboard paths; workspace persistence; and
+connector-offline/fail-closed behavior. A subsequent owner screen recording
+also drove the final supported-versus-ready, disabled batch-action,
+return-to-start, import-destination, and grouped-observation corrections. See
+`docs/guided-shadow-trial-browser-acceptance-2026-08-31.md`.
+
+A second authenticated Chrome acceptance used the owner's 274-observation
+Prowler Azure test export and a generated 45-row asset inventory. Exact joins
+contextualized 123 failing observations on 26 resources while preserving 33
+finding-context gaps and 19 inventory rows without failures. The final 59-case
+portfolio contains 2 high, 44 normal, and 13 low priorities. The drill-down now
+identifies one score-driving observation and lists the other grouped findings
+independently. See `docs/azure-asset-context-trial-2026-09-01.md`.
+
+The local shadow UI now presents the product in two explicit layers. The
+read-only layer shows finding source and format, normalized resource cases,
+validation outcomes, transparent priority, and the current outcome. A visible
+human-authority boundary separates it from remediation preparation, package
+assembly, human review, deployment, and monitoring. Those downstream stages
+are descriptive and locked in shadow mode; the shadow API still exposes no
+approval, scheduling, or execution route. Fleet summaries now report source,
+format, priority, validation-outcome, planning-capable, and execution-capable
+counts. An optional `tenant` query parameter selects a local review workspace
+without weakening authentication.
 
 Read these current authorities before acting:
 
@@ -56,11 +88,13 @@ git diff --check
 uv run python scripts/generate_capability_matrix.py --check
 ```
 
-Do not redo S3, RDS, EC2 security-group, or EBS volume work. Before implementing
-anything new, get an explicit choice between committing this complete
-checkpoint and starting another bounded validation-only service slice. Planning
-or execution expansion is a materially different objective and requires
-separate design, identity, operational, rollback, and authorization work.
+Do not redo S3, RDS, EC2 security-group, EBS volume, Guided Shadow Trial, or
+asset-context prioritization work. The next authorized product objective is AWS
+only: reach evidence-to-review parity through deterministic validation,
+contextual priority, exact state-grounded Terraform planning, and a hash-bound
+review candidate. Do not add GCP or AWS execution authority. Any planning or
+execution expansion beyond that objective requires separate design, identity,
+operational, rollback, and authorization work.
 
 ## Product identity
 
@@ -516,9 +550,9 @@ authorized.
 This completed parity checkpoint is preserved in commit `f441de9`. Do not
 reconstruct or repeat it.
 
-## Current uncommitted checkpoint: AWS EBS volume validation
+## Committed checkpoint: AWS EBS volume validation
 
-This checkpoint was added on 2026-08-31 from source base `f441de9`. It:
+This checkpoint was committed on 2026-08-31 as `7e2b0b4`. It:
 
 - adds the validation-only `aws-ebs-volume` pack for
   `ec2_ebs_volume_encryption` and `ec2_ebs_volume_snapshots_exists`;
@@ -544,8 +578,189 @@ This checkpoint was added on 2026-08-31 from source base `f441de9`. It:
   distribution inspection, generated-matrix verification, release-tree checks,
   and `git diff --check` without a cloud or model call.
 
-This checkpoint is ready for a fresh session. Preserve it exactly, run the
-read-only resume checks above, and ask whether to commit it or begin a new
-bounded validation-only service slice. Do not carry the instruction to continue
-automatically into planning, execution, cloud operations, customer data, model
-calls, release work, or publication.
+Do not reconstruct or recommit this completed checkpoint.
+
+## Completed checkpoint: Guided Shadow Trial and asset context
+
+This checkpoint was added on 2026-08-31 from source base `7e2b0b4`. It:
+
+- replaces the first-use marketing-heavy hero with three concrete entry paths:
+  preview a scanner export, try a safe synthetic sample, or inspect read-only
+  connector status;
+- adds authenticated `POST /api/intake-preview`, which reuses the exact intake
+  provider, source-identity, outcome, normalization, schema, resource, control,
+  and priority checks without a persistent product write;
+- reports submitted and accepted failures, skipped PASS/MANUAL results, input
+  formats, providers, accounts, resources, supported findings, and unsupported
+  controls before the user confirms import;
+- removes every temporary preview artifact before returning and explicitly
+  reports that preview made no persistent write, cloud request, model call, or
+  execution request;
+- keeps durable intake as a separate explicit confirmation and re-runs the
+  fail-closed preflight before writing;
+- changes the portfolio and drill-down language to customer outcomes including
+  **Confirmed in cloud**, **No longer detected**, **Could not check**, and **Not
+  supported yet**, while retaining capability grades, immutable evidence,
+  timelines, and exact safety boundaries under progressively disclosed detail;
+- adds responsive onboarding, preview, empty, supported, unsupported, and
+  connector-offline states without introducing a new frontend framework;
+- updates the changelog, quickstart, customer shadow-run guide, API tests, and
+  control-plane tests;
+- accepts a strict per-resource asset-context manifest keyed by exact normalized
+  ARM ID, rejects duplicates, ambiguous types, unknown fields, and unsupported
+  environments, and binds a canonical SHA-256 row digest to every enriched
+  finding;
+- previews exact asset matches, finding resources without context, inventory
+  rows without failures, contextualized findings, critical resources, observed
+  exposure, and synthetic business labels without retaining data or querying a
+  cloud;
+- replaces the UI's implicit 0.5 asset criticality with a zero fallback for
+  unmatched resources and shows owner, environment, criticality, exposure,
+  source, synthetic status, and digest in each enriched result;
+- orders grouped observations by independent deterministic score, identifies
+  the score-driving observation, and states explicitly that resource-case
+  scores use the maximum rather than summing vulnerabilities;
+- generates private mode-0600 trial inputs outside the repository from one
+  owner-authorized Azure test export and read-only management-plane inventory,
+  with synthetic business labels separated from observed exposure and no
+  invented reachability or dependency evidence;
+- passes 717 tests, compile and narrow Ruff gates, JavaScript syntax checks,
+  generated-matrix verification, release-tree checks, wheel/source builds,
+  distribution inspection, and `git diff --check`; and
+- completes authenticated Chrome acceptance across default desktop, 1024 × 768
+  tablet, and 390-pixel-class mobile layouts, including safe-sample and
+  checked-in ASFF native-file and paste preview/import, supported and
+  unsupported results, evidence disclosure, workspace switching and reload
+  persistence, keyboard paths, and connector-offline/fail-closed behavior.
+
+The browser pass found and corrected preview placement, overly internal result
+language, narrow-screen result ordering/layout, workspace persistence, stale
+status, unsupported-control next-step, and shadow-login-copy defects. After
+enabling file-URL access for the Chrome automation extension, the native file
+chooser also selected the checked-in ASFF fixture and rendered the expected
+no-write preview. A 2026-09-01 owner recording then exposed and corrected the
+remaining supported-versus-ready contradiction, enabled batch action with no
+runnable resources, misleading workspace-return label, implicit import
+destination, and unexplained multi-observation resource grouping. See
+`docs/guided-shadow-trial-browser-acceptance-2026-08-31.md`.
+
+The realistic Azure pass then corrected an expanded manifest editor that hid
+the useful preview, synthetic dependency points without dependency evidence,
+and a grouped-resource detail that showed the first finding instead of the
+score-driving finding. See `docs/azure-asset-context-trial-2026-09-01.md`.
+
+The evidence-to-outcome UI and living overview were then refreshed around the
+same private Azure test trial. The tracked repository contains only aggregate
+trial numbers and sanitized learnings; the export, exact resource identifiers,
+asset manifest, and populated shadow database remain private local artifacts.
+The authenticated live API confirms 179 `Prowler 5.36.0` / `OCSF 1.5.0`
+findings grouped into 59 cases with the expected 2 high, 44 normal, and 13 low
+distribution, while approval, scheduling, and execution remain prohibited.
+
+The owner then explicitly authorized real validation against the same test
+subscription. A temporary `elcapitan-test-shadow-scanner` service principal
+was created with Reader on only that subscription because no dedicated scanner
+identity existed and the product correctly rejected the ambient human Azure
+CLI session. After the read-only evidence collection finished, the Reader role
+assignment, service principal, application registration, credential file, and
+cleanup metadata were removed on 2026-09-03 and verified absent. This temporary
+identity setup and its cleanup were the only cloud-side mutations in this pass.
+
+All 23 cases containing supported controls were queried through that isolated
+Reader identity. The active local workspace now contains 93 confirmed and 2
+unavailable supported findings: 21 cases advanced to validated and 2 stayed
+blocked because the live account kind was `CognitiveServices`, outside the
+OpenAI evaluator's admitted `AIServices`/`OpenAI` kinds. Nineteen unsupported
+sibling findings remain explicit in mixed cases, and 36 unsupported-only cases
+remain prioritized. The pass made no data-plane read, resource-configuration
+change, model call, plan, approval, scheduling, deployment, or execution
+request. It also corrected File Service child-resource collection and the
+semantics of an explicitly absent optional container-retention policy. The
+first live run and pre-validation database are preserved privately under
+`/private/tmp`; do not commit them.
+
+The Layer 2 handoff now treats mixed-resource cases as scoped promotions rather
+than all-or-nothing bundles. Six validated Azure Storage cases are preparation
+candidates. Each promotion token binds only the exact findings that are both
+confirmed and planning-capable, includes only their validation evidence, and
+reports every incomplete or confirmed-but-unplannable sibling as excluded.
+The downstream planner receives that same finding-ID scope and persists it in
+the plan record. This corrects the earlier misleading `0 ready` display without
+claiming that a plan exists.
+
+No authoritative IaC checkout for those six private test resources exists in
+this repository. The two checked-in Azure review-input directories target
+different prior lab resources and must not be substituted. Therefore the
+active trial correctly contains 6 preparation candidates, 0 prepared plans,
+0 packages, and 0 cases awaiting human review. Continue only after the owner
+supplies the actual IaC/state (or explicitly authorizes a clearly labeled
+generated baseline), service ownership and health context, usage telemetry,
+and distinct maker/SRE/window/rollback reviewer routes. Do not infer approval,
+run a model, deploy, mutate cloud configuration, use production data, publish,
+or perform release work from this checkpoint.
+
+The owner subsequently authorized a clearly labeled generated baseline for
+the first single-control Azure Storage pilot. A fresh read-only management-
+plane query confirmed that the planning target is public network access while
+the account already has anonymous access disabled, HTTPS-only and TLS 1.2,
+blob versioning, and 90-day blob/container retention. The private baseline is
+stored outside the repository under `/private/tmp/elcapitan-generated-baseline-*`
+with a mode-`0700` directory, an explicit non-authoritative marker,
+`prevent_destroy`, no embedded subscription ID, and no credentials. Terraform
+1.15.8 initialized AzureRM 4.81.0 and validated the configuration. The provider
+cache was moved outside the baseline directory after validation.
+
+No Terraform import, state write, plan, apply, Azure mutation, model call,
+package assembly, or review decision occurred. Do not run a plan against this
+baseline as if it owned the existing resource: without an owner-approved state
+mapping it would misleadingly propose creation. The next authority decision is
+whether to generate a clearly labeled read-only state mapping for this pilot or
+replace the baseline with authoritative IaC/state supplied by the owner.
+
+The owner then authorized a disposable state mapping and remediation plan for
+that pilot. The first Terraform import attempt failed closed because default
+Shared Key behavior requested `listKeys`; the Reader identity was not broadened.
+AzureRM's Azure AD storage mode then produced a one-resource local state without
+any access key or connection string. The state, plan, plan JSON, source, review
+document, and checksums are private mode-`0600` artifacts in a mode-`0700`
+workspace under `/private/tmp/elcapitan-remediation-plan-*`.
+
+The saved `-refresh=false`, exact-target plan passed the scope gate: one in-place
+update, zero creates, zero deletes, and only
+`public_network_access_enabled: true -> false`. A first candidate plan was
+rejected because it also attempted to materialize Azure's implicit network-rule
+default; the redundant block was removed and the plan rerun before acceptance.
+
+The plan is technically verified. A final read-only configuration check found
+no private endpoint connections, virtual-network rules, or IP rules, so
+disabling public access removes the only configured network path. The owner
+subsequently confirmed that the test resource is unused and authorized human-
+review package preparation. This attestation resolves the dependency question
+for package preparation but is not approval to schedule or execute a change.
+No `terraform apply`, Azure resource mutation, model call, approval, scheduling,
+or deployment occurred.
+
+At the owner's request, a subsequent 30-day Azure Monitor assessment checked
+recent usage without reading storage objects. It found 15 total transactions
+across four hourly buckets: 13 Account Key service-property reads and 2 OAuth
+service-property reads, with no object/blob read, write, list, or delete API in
+the dimensioned series. The OAuth reads coincide with the disposable Terraform
+mapping workflow. Latest and maximum used capacity was 374 bytes; Azure Activity
+Log returned no resource events in the same window. This pattern is consistent
+with scanner/provider inspection rather than workload use, but it does not prove
+intentional abandonment or identify an owner.
+
+The private remediation workspace now contains the hash-bound usage assessment,
+owner attestation, cleanup record, machine-readable review body, review guide,
+and large-type HTML review page under `review-package/`. The candidate body has
+canonical SHA-256
+`40b5547350985d20ab26a99f9d17492447eaeea3a2b1a076e9c62e7ab1b19d8f`.
+It is deliberately `HumanReviewPackageCandidate.v1`, not an admitted
+`HumanReviewPackage.v1`: the shadow case remains `validated`, and formal
+`IaCLink.v1`, `RemediationPlan.v1`, independent `SREReview.v1`, future
+`ChangeWindowRecommendation.v1`, independent `RollbackReview.v1`, and model-
+diversity checks remain pending. The next bounded step is to name the independent
+review routes and select a future window, then run the normal preapproval stages
+and let `HumanReviewGate` issue the canonical package mechanically. No data-plane
+content, container, blob name, filename, key, connection string, or object
+content was read.

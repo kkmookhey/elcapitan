@@ -111,7 +111,7 @@ def assess_priority(assessment_id: str, signals: PrioritySignals, *,
         (policy.active_exploitation_weight if signals.active_exploitation else 0,
          "active exploitation is observed"),
         (policy.runtime_dependency_weight if signals.runtime_dependency else 0,
-         "asset has an observed runtime dependency"),
+         "asset has a supplied runtime dependency"),
         (-signals.compensating_control_strength * policy.compensating_control_weight,
          f"compensating-control strength is {signals.compensating_control_strength:.2f}"),
     ]

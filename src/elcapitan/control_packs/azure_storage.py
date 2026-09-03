@@ -128,8 +128,18 @@ def _default_entra_authorization(values) -> ControlEvaluation:
 
 
 def _container_soft_delete(values) -> ControlEvaluation:
-    policy = _object(values, "blob_container_delete_retention_policy")
-    enabled = policy.get("enabled")
+    policy = require(values, "blob_container_delete_retention_policy")
+    # The ARM blob-service contract makes this policy optional. Its explicit
+    # absence in a complete response means container soft delete is not
+    # configured, which is the same failing state Prowler reports.
+    if policy is None:
+        enabled = False
+    elif isinstance(policy, dict):
+        enabled = policy.get("enabled")
+    else:
+        raise ValueError(
+            "live storage state has invalid "
+            f"blob_container_delete_retention_policy {policy!r}")
     if enabled is not None and not isinstance(enabled, bool):
         raise ValueError("live storage container-delete policy has invalid enabled state")
     return ControlEvaluation(

@@ -4,13 +4,14 @@ from __future__ import annotations
 import json
 import hashlib
 import hmac
+import html
 import mimetypes
 import os
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.resources import files
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from .demo_control import DemoControlError, DemoControlPlane
 
@@ -33,6 +34,13 @@ class _DemoServer(ThreadingHTTPServer):
 
 
 class DemoRequestHandler(BaseHTTPRequestHandler):
+    LOGIN_PAGE_TITLE = "El Capitan · Demo access"
+    LOGIN_HEADING = "El Capitan demo"
+    LOGIN_DESCRIPTION = (
+        "This environment is restricted. Enter the demonstration access token "
+        "supplied by the operator.")
+    LOGIN_BUTTON = "Enter control plane"
+
     server: _DemoServer
 
     def log_message(self, format: str, *args) -> None:
@@ -73,11 +81,28 @@ class DemoRequestHandler(BaseHTTPRequestHandler):
         host = self.headers.get("Host", "")
         return origin in {f"https://{host}", f"http://{host}"}
 
-    def _login_page(self, *, failed: bool = False) -> None:
+    @staticmethod
+    def _safe_login_target(value: str) -> str:
+        if not value or len(value) > 512 or "\r" in value or "\n" in value:
+            return "/"
+        parsed = urlparse(value)
+        if parsed.scheme or parsed.netloc or parsed.fragment:
+            return "/"
+        if parsed.path not in {"/", "/index.html"}:
+            return "/"
+        return parsed.path + (f"?{parsed.query}" if parsed.query else "")
+
+    def _login_page(self, *, failed: bool = False,
+                    next_target: str = "") -> None:
         error = "<p class='error'>That access token is not valid.</p>" if failed else ""
+        target = self._safe_login_target(next_target or self.path)
+        next_input = (
+            f"<input type='hidden' name='next' value='{html.escape(target, quote=True)}'>"
+            if target != "/" else ""
+        )
         body = f"""<!doctype html><html lang='en'><head><meta charset='utf-8'>
 <meta name='viewport' content='width=device-width,initial-scale=1'>
-<title>El Capitan · Demo access</title><style nonce='elcapitan-login'>
+<title>{self.LOGIN_PAGE_TITLE}</title><style nonce='elcapitan-login'>
 :root{{color-scheme:dark;font-family:Inter,ui-sans-serif,-apple-system,sans-serif}}
 *{{box-sizing:border-box}}body{{margin:0;min-height:100vh;display:grid;place-items:center;
 background:#071013;color:#e8eef2}}main{{width:min(430px,calc(100vw - 32px));padding:32px;
@@ -89,11 +114,11 @@ label{{display:block;color:#8fa0aa;font-size:10px;margin-top:24px}}
 input{{width:100%;margin:8px 0 14px;padding:12px;border:1px solid #31464c;border-radius:8px;
 background:#071013;color:#e8eef2}}button{{width:100%;padding:12px;border:0;border-radius:8px;
 background:#60e6a8;color:#062016;font-weight:700;cursor:pointer}}.error{{color:#ff9d9d}}
-</style></head><body><main><div class='mark'>EC</div><h1>El Capitan demo</h1>
-<p>This environment is restricted. Enter the demonstration access token supplied by the operator.</p>
-{error}<form method='post' action='/login'><label>Access token
+</style></head><body><main><div class='mark'>EC</div><h1>{self.LOGIN_HEADING}</h1>
+<p>{self.LOGIN_DESCRIPTION}</p>
+{error}<form method='post' action='/login'>{next_input}<label>Access token
 <input type='password' name='token' required autocomplete='current-password'></label>
-<button type='submit'>Enter control plane</button></form></main></body></html>""".encode()
+<button type='submit'>{self.LOGIN_BUTTON}</button></form></main></body></html>""".encode()
         self._headers(HTTPStatus.UNAUTHORIZED if failed else HTTPStatus.OK,
                       "text/html; charset=utf-8", len(body))
         self.wfile.write(body)
@@ -101,13 +126,14 @@ background:#60e6a8;color:#062016;font-weight:700;cursor:pointer}}.error{{color:#
     def _login(self) -> None:
         length = min(int(self.headers.get("Content-Length", "0")), 4096)
         body = self.rfile.read(length).decode("utf-8", errors="replace")
-        from urllib.parse import parse_qs
-        supplied = parse_qs(body).get("token", [""])[0]
+        fields = parse_qs(body)
+        supplied = fields.get("token", [""])[0]
+        target = self._safe_login_target(fields.get("next", [""])[0])
         if not hmac.compare_digest(supplied, self.server.access_token):
-            self._login_page(failed=True)
+            self._login_page(failed=True, next_target=target)
             return
         self.send_response(HTTPStatus.SEE_OTHER)
-        self.send_header("Location", "/")
+        self.send_header("Location", target)
         self.send_header(
             "Set-Cookie",
             f"elcapitan_demo={self.server.authenticated_cookie}; Path=/; Max-Age=28800; "

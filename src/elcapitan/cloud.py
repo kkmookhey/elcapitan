@@ -1527,6 +1527,18 @@ def _capture_azure(resource_uid: str, region: str, env: dict) -> tuple[tuple[str
     # deliberately unused: an ARM resource id already names the subscription
     # and resource group, so there is nothing for a region to disambiguate.
     subscription, resource_group, arm_type, name = _arm_parts(resource_uid)
+    # Prowler emits the File Service child as the primary resource for its SMB
+    # control while normalizing the resource type to the owning storage
+    # account. The bounded collector needs the parent account for the account,
+    # blob-service, and file-service reads, but capture_cloud_state deliberately
+    # retains the original child UID in the evidence envelope.
+    if arm_type.lower() == "microsoft.storage/storageaccounts/fileservices":
+        if name.lower() != "default":
+            raise ValueError(
+                "Azure Storage File Service validation requires the canonical "
+                f"default child, got {name!r}")
+        resource_uid = resource_uid.rsplit("/", 2)[0]
+        subscription, resource_group, arm_type, name = _arm_parts(resource_uid)
     if arm_type.lower() not in AZURE_SUPPORTED_TYPES:
         raise ValueError(
             f"cloud-state verification is not implemented for Azure resource type "

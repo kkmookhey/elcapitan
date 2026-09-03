@@ -153,7 +153,7 @@ def service(prepared, runtime, runner):
 
 
 def test_verified_agent_change_advances_case_without_mutating_source(prepared):
-    _, cases, _, records, _, validated, repository, source, replacement = prepared
+    _, cases, findings, records, _, validated, repository, source, replacement = prepared
     (repository / ".env").write_text("ARM_CLIENT_SECRET=do-not-copy\n")
     (repository / "terraform.tfstate").write_text('{"sensitive": true}\n')
     original = source.read_text()
@@ -167,6 +167,12 @@ def test_verified_agent_change_advances_case_without_mutating_source(prepared):
     assert outcome.case.change_plan.plan_id == outcome.plan_record.record_id
     assert outcome.plan_record.record_type == "RemediationPlan.v1"
     assert outcome.plan_record.body["status"] == "verified"
+    assert dict(outcome.plan_record.body["scope"]) == {
+        "finding_ids": tuple(validated.finding_ids),
+        "rule_ids": ("storage_account_public_network_access_disabled",),
+        "resource_uid": findings.list_for_case(validated.case_id)[0].resource_uid,
+        "validation_record_id": validated.record_ids["validation_result_id"],
+    }
     assert records.get(outcome.link_record.record_id).record_type == "IaCLink.v1"
     assert source.read_text() == original
     workspace = runner.calls[0][0]

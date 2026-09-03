@@ -23,9 +23,12 @@
 ## What is included
 
 - OCSF and AWS Security Hub ASFF intake with exact FAIL/PASS/MANUAL accounting,
-  replay deduplication, tenant isolation, correlation, and transparent priority.
+  replay deduplication, tenant isolation, correlation, transparent priority,
+  and optional exact-resource asset-context enrichment with a no-write match
+  and gap preview.
 - Authenticated read-only fleet console with explicit source, outcome,
-  validation, planning, execution, and evidence-grade labels.
+  validation, planning, execution, and evidence-grade labels; guided sample and
+  scanner-export entry paths; and a no-write import preview before confirmation.
 - Bounded Azure and AWS collectors with minimized typed evidence and
   deterministic fail-closed evaluation.
 - Conservative Terraform linkage, isolated complete-file proposals, and real
@@ -69,6 +72,13 @@ The subsequent EBS volume checkpoint was built from source commit
 narrow Ruff checks, generated-matrix and release-tree verification,
 wheel/source builds, distribution inspection, and `git diff --check`. It used
 only synthetic AWS contract fixtures and made no cloud or model call.
+
+The Guided Shadow Trial working-tree checkpoint builds from committed EBS base
+`7e2b0b4`. It adds a no-write/no-cloud intake preview, guided first-use paths,
+plain-language results, exact-resource asset context, and score-driving
+observation detail without adding approval, scheduling, model, or execution
+routes. Its realistic Azure test acceptance is recorded in
+[`azure-asset-context-trial-2026-09-01.md`](azure-asset-context-trial-2026-09-01.md).
 
 This evidence is not release approval. Before the version is tagged, the
 GitHub Support must confirm retained PR-ref/cache cleanup, the approved public

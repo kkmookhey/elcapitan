@@ -149,11 +149,19 @@ def test_fleet_snapshot_includes_supported_and_unsupported_cases(tmp_path):
         "unsupported_findings": 1,
         "case_state_counts": {"prioritized": 1, "validated": 1},
         "provider_counts": {"azure": 2},
+        "source_counts": {"scanner 1": 2},
+        "format_counts": {"OCSF 1.5.0": 2},
+        "priority_counts": {"low": 1, "normal": 1},
+        "validation_outcome_counts": {"confirmed": 1},
+        "planning_capable_cases": 1,
+        "execution_capable_cases": 1,
     }
     assert document["cases"][0]["validation_counts"] == {"confirmed": 1}
     assert document["cases"][0]["portfolio_rank"] == 1
     assert document["cases"][0]["scheduling_status"] == "awaiting_plan"
     assert document["cases"][0]["synthetic"] is False
+    assert document["cases"][0]["finding_sources"] == ["scanner 1"]
+    assert document["cases"][0]["finding_formats"] == ["OCSF 1.5.0"]
     assert document["cases"][0]["capabilities"] == [
         CapabilityRegistry().get(
             "azure", "storage_account_public_network_access_disabled"

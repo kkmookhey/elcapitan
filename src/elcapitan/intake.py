@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import secrets
 import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -91,11 +91,11 @@ def _merge_priority(assessment_id: str, current: RiskAssessment,
     winner = incoming if incoming.score > current.score else current
     return RiskAssessment(
         assessment_id=assessment_id,
-        score=max(current.score, incoming.score),
+        score=winner.score,
         urgency=winner.urgency,
-        factors=tuple(dict.fromkeys((*current.factors, *incoming.factors))),
-        confidence=min(current.confidence, incoming.confidence),
-        evidence_ids=tuple(dict.fromkeys((*current.evidence_ids, *incoming.evidence_ids))),
+        factors=winner.factors,
+        confidence=winner.confidence,
+        evidence_ids=winner.evidence_ids,
     )
 
 
@@ -113,7 +113,8 @@ class RemediationIntake:
         self.workflow = WorkflowCoordinator(case_store)
 
     def ingest(self, raw: dict, *, tenant_id: str,
-               context: IntakeContext = IntakeContext()) -> IntakeOutcome:
+               context: IntakeContext = IntakeContext(),
+               asset_context: Mapping | None = None) -> IntakeOutcome:
         if not tenant_id:
             raise ValueError("tenant_id is required")
         outcome = prowler_outcome(raw)
@@ -149,7 +150,8 @@ class RemediationIntake:
         else:
             finding, finding_created = self._store_finding(
                 raw, tenant_id=tenant_id, provider=provider, account=account,
-                original_uid=original_uid, context=context)
+                original_uid=original_uid, context=context,
+                asset_context=asset_context)
         asset_id = canonical_asset_id(
             finding.provider, finding.account, finding.resource_uid)
         current = self.case_store.find_active_by_asset(tenant_id, asset_id)
@@ -227,7 +229,9 @@ class RemediationIntake:
 
     def _store_finding(self, raw: dict, *, tenant_id: str, provider: str,
                        account: str, original_uid: str,
-                       context: IntakeContext) -> tuple[StoredFinding, bool]:
+                       context: IntakeContext,
+                       asset_context: Mapping | None = None
+                       ) -> tuple[StoredFinding, bool]:
         finding_id = self.id_factory("FIND")
         namespace = f"findings/{finding_id}"
         run_dir = self.artifact_root / namespace
@@ -236,6 +240,11 @@ class RemediationIntake:
         record = normalise_ocsf(
             raw, run_dir=run_dir, finding_id=finding_id,
             collector=self.collector, now=now)
+        if asset_context is not None:
+            record["vendor_extensions"] = {
+                **record["vendor_extensions"],
+                "elcapitan_asset_context": dict(asset_context),
+            }
         failures = validate_doc("finding-record", record)
         if failures:
             raise ValueError("normalized finding is invalid: " + "; ".join(failures))

@@ -394,6 +394,8 @@ def test_pack_rejects_a_definition_owned_by_another_pack():
         ("storage_ensure_soft_delete_is_enabled", {
             "blob_container_delete_retention_policy": {"enabled": False}}, True),
         ("storage_ensure_soft_delete_is_enabled", {
+            "blob_container_delete_retention_policy": None}, True),
+        ("storage_ensure_soft_delete_is_enabled", {
             "blob_container_delete_retention_policy": {"enabled": True}}, False),
         ("storage_ensure_azure_services_are_trusted_to_access_is_enabled", {
             "network_rule_set": {"bypass": "None"}}, True),

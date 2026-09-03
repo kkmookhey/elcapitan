@@ -246,7 +246,7 @@ def prepare_review(*, tenant_id: str, case_id: str, promotion_token: str,
             "review_package": product_record_to_dict(package),
             "safety_boundary": "No infrastructure change has been applied.",
         }
-    PromotionReadinessService(
+    readiness = PromotionReadinessService(
         case_store=cases, finding_store=findings, record_store=records,
     ).require(
         tenant_id=tenant_id, case_id=case_id,
@@ -272,6 +272,7 @@ def prepare_review(*, tenant_id: str, case_id: str, promotion_token: str,
                 case_id, repository=repository, state_document=state,
                 service_context=service_context, usage_samples=usage_samples,
                 window_policy=_window_policy(service_context),
+                finding_ids=readiness.confirmed_finding_ids,
             )
         except PreApprovalError:
             stopped = _policy_stop_payload(cases.get(case_id), records)

@@ -10,6 +10,7 @@ from elcapitan.intake import IntakeContext
 from elcapitan.shadow_control import ShadowControlError, ShadowFleetControlPlane
 
 FIXTURE = Path(__file__).parent / "fixtures" / "prowler-ocsf-azure-sample.json"
+ASFF_FIXTURE = Path(__file__).parent / "fixtures" / "securityhub-asff-real.json"
 
 
 def findings():
@@ -72,6 +73,140 @@ def test_shadow_intake_creates_tenant_fleet_and_is_idempotent(tmp_path):
     assert replay["duplicates"] == 2
     assert replay["fleet"]["summary"]["total_findings"] == 2
     assert control.health()["state_store"] == "sqlite"
+
+
+def test_shadow_case_detail_orders_findings_by_score_driver(tmp_path):
+    documents = findings()
+    documents[1]["severity"] = "Critical"
+    control = ShadowFleetControlPlane(tmp_path, host_env={})
+    outcome = control.intake(tenant_id="TEN-DRIVER", documents=documents)
+
+    detail = control.case_detail(
+        tenant_id="TEN-DRIVER", case_id=outcome.case_ids[0])
+
+    assert detail["findings"][0]["record"]["severity"] == "Critical"
+    assert detail["findings"][0]["priority"]["score"] == 50
+    assert detail["findings"][1]["priority"]["score"] == 40
+    assert detail["case"]["priority"]["score"] == 50
+
+
+def test_shadow_intake_preview_is_fail_closed_and_persists_nothing(tmp_path):
+    supported = findings()[0]
+    unsupported = json.loads(json.dumps(supported))
+    unsupported["finding_info"]["uid"] += "-UNSUPPORTED"
+    unsupported["resources"][0]["uid"] += "-UNSUPPORTED"
+    unsupported["finding_info"]["analytic"]["uid"] = "unknown_customer_control"
+    passed = json.loads(json.dumps(supported))
+    passed["finding_info"]["uid"] += "-PASS"
+    passed["resources"][0]["uid"] += "-PASS"
+    passed["status_code"] = "PASS"
+    manual = json.loads(json.dumps(supported))
+    manual["finding_info"]["uid"] += "-MANUAL"
+    manual["resources"][0]["uid"] += "-MANUAL"
+    manual["status_code"] = "MANUAL"
+    control = ShadowFleetControlPlane(tmp_path, host_env={})
+
+    result = control.preview_intake(
+        documents=[supported, unsupported, passed, manual]).to_dict()
+
+    assert result == {
+        "submitted": 4,
+        "accepted_failures": 2,
+        "skipped": {"pass": 1, "manual": 1},
+        "provider_counts": {"azure": 2},
+        "format_counts": {"OCSF": 4},
+        "resource_count": 2,
+        "account_count": 1,
+        "supported_findings": 1,
+        "unsupported_findings": 1,
+        "supported_controls": ["storage_account_public_network_access_disabled"],
+        "unsupported_controls": ["unknown_customer_control"],
+        "asset_context": {
+            "rows": 0,
+            "matched_rows": 0,
+            "unmatched_rows": 0,
+            "matched_resources": 0,
+            "unmatched_resources": 2,
+            "contextualized_findings": 0,
+            "internet_exposed_resources": 0,
+            "critical_resources": 0,
+            "synthetic_context_resources": 0,
+        },
+        "safety_boundary": {
+            "persistent_writes": False,
+            "cloud_requests": False,
+            "external_models": False,
+            "execution": False,
+        },
+    }
+    assert control.snapshot(tenant_id="TEN-PREVIEW")["summary"][
+        "total_findings"] == 0
+    assert list((tmp_path / "artifacts").iterdir()) == []
+
+
+def test_shadow_asset_context_preview_and_intake_are_exact_and_evidence_bound(
+        tmp_path):
+    document = findings()[0]
+    resource_uid = document["resources"][0]["uid"]
+    asset = {
+        "resource_uid": resource_uid.upper(),
+        "environment": "production",
+        "owner": "payments-platform",
+        "asset_criticality": .9,
+        "internet_exposed": True,
+        "reachable": True,
+        "runtime_dependency": True,
+        "compensating_control_strength": .1,
+        "service_ids": ["payments"],
+        "context_source": "synthetic-trial-assignment",
+        "observed_at": "2026-09-01T20:00:00Z",
+        "evidence_references": ["azure-config:publicNetworkAccess=Enabled"],
+        "synthetic_business_context": True,
+    }
+    unmatched = {**asset, "resource_uid": resource_uid + "/unmatched"}
+    control = ShadowFleetControlPlane(tmp_path, host_env={})
+
+    preview = control.preview_intake(
+        documents=[document], asset_contexts=[asset, unmatched]).to_dict()
+
+    assert preview["asset_context"] == {
+        "rows": 2,
+        "matched_rows": 1,
+        "unmatched_rows": 1,
+        "matched_resources": 1,
+        "unmatched_resources": 0,
+        "contextualized_findings": 1,
+        "internet_exposed_resources": 1,
+        "critical_resources": 1,
+        "synthetic_context_resources": 1,
+    }
+    assert control.snapshot(tenant_id="TEN-ASSET")["summary"]["total_findings"] == 0
+
+    outcome = control.intake(
+        tenant_id="TEN-ASSET", documents=[document],
+        asset_contexts=[asset]).to_dict()
+    case = outcome["fleet"]["cases"][0]
+    assert case["asset_context"]["owner"] == "payments-platform"
+    assert case["asset_context"]["synthetic_business_context"] is True
+    assert case["service_ids"] == ["payments"]
+    assert case["risk_score"] > 30
+    detail = control.case_detail(
+        tenant_id="TEN-ASSET", case_id=case["case_id"])
+    stored = detail["findings"][0]["record"]["vendor_extensions"][
+        "elcapitan_asset_context"]
+    assert stored["evidence_references"] == [
+        "azure-config:publicNetworkAccess=Enabled"]
+
+
+def test_shadow_intake_preview_identifies_security_hub_asff(tmp_path):
+    result = ShadowFleetControlPlane(tmp_path, host_env={}).preview_intake(
+        documents=[json.loads(ASFF_FIXTURE.read_text())]).to_dict()
+
+    assert result["accepted_failures"] == 1
+    assert result["provider_counts"] == {"aws": 1}
+    assert result["format_counts"] == {"AWS Security Hub ASFF": 1}
+    assert result["supported_findings"] == 0
+    assert result["unsupported_findings"] == 1
 
 
 def test_shadow_export_intake_accepts_only_explicit_prowler_failures(tmp_path):

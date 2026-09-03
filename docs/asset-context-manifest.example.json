@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "notes": [
+    "Example only. Replace every value with authorized customer context and evidence."
+  ],
+  "assets": [
+    {
+      "asset_criticality": 0.9,
+      "compensating_control_strength": 0.0,
+      "context_source": "customer-asset-inventory+read-only-cloud-observation",
+      "environment": "production",
+      "evidence_references": [
+        "asset-inventory:record-123",
+        "azure-config:storage;publicNetworkAccess=Enabled;defaultAction=Allow"
+      ],
+      "internet_exposed": true,
+      "observed_at": "2026-09-01T20:00:00Z",
+      "owner": "payments-platform",
+      "reachable": false,
+      "resource_uid": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/example/providers/Microsoft.Storage/storageAccounts/example",
+      "runtime_dependency": true,
+      "service_ids": [
+        "payments"
+      ],
+      "synthetic_business_context": false
+    }
+  ]
+}

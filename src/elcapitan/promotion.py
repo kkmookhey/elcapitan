@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 
 from .cases import CaseState
@@ -24,6 +25,9 @@ class PromotionReadiness:
     resource_uids: tuple[str, ...]
     confirmed_finding_ids: tuple[str, ...]
     confirmed_rule_ids: tuple[str, ...]
+    excluded_finding_ids: tuple[str, ...]
+    incomplete_finding_ids: tuple[str, ...]
+    confirmed_without_planning_finding_ids: tuple[str, ...]
     validation_record_id: str
     validation_evidence_ids: tuple[str, ...]
     required_inputs: tuple[str, ...]
@@ -34,7 +38,10 @@ class PromotionReadiness:
         value = asdict(self)
         for name in (
             "blockers", "resource_uids", "confirmed_finding_ids",
-            "confirmed_rule_ids", "validation_evidence_ids", "required_inputs",
+            "confirmed_rule_ids", "excluded_finding_ids",
+            "incomplete_finding_ids",
+            "confirmed_without_planning_finding_ids",
+            "validation_evidence_ids", "required_inputs",
         ):
             value[name] = list(value[name])
         value["safety_boundary"] = {
@@ -97,27 +104,50 @@ class PromotionReadinessService:
                         or validation.record_type != "ValidationResult.v1"):
                     blockers.append("bound validation result has the wrong owner or type")
 
+        validation_findings = tuple(
+            item for item in (
+                validation.body.get("findings", ()) if validation else ())
+            if isinstance(item, Mapping)
+        )
         statuses = {
             str(item.get("finding_id", "")): str(item.get("status", ""))
-            for item in (validation.body.get("findings", ()) if validation else ())
+            for item in validation_findings
         }
         by_id = {item.finding_id: item for item in findings}
         unvalidated = sorted(set(by_id) - set(statuses))
         if validation and unvalidated:
             blockers.append(
                 "validation does not cover finding(s): " + ", ".join(unvalidated))
-        confirmed_ids = tuple(sorted(
+        all_confirmed_ids = tuple(sorted(
             finding_id for finding_id, status in statuses.items()
             if status == "confirmed" and finding_id in by_id))
-        if validation and not confirmed_ids:
+        if validation and not all_confirmed_ids:
             blockers.append("live validation confirms no finding in this case")
-        incomplete = sorted(
+        incomplete_ids = tuple(sorted(
             finding_id for finding_id, status in statuses.items()
-            if status in {"unsupported", "unavailable"})
-        if incomplete:
+            if status in {"unsupported", "unavailable"}))
+        planning_confirmed_ids = tuple(sorted(
+            finding_id for finding_id in all_confirmed_ids
+            if (capability := self.registry.get(
+                by_id[finding_id].provider,
+                str(by_id[finding_id].record["ocsf"].get("rule_id", "")),
+                str(by_id[finding_id].record.get("resource", {}).get("type", ""))))
+            and capability.remediation_planning
+        ))
+        confirmed_without_planning_ids = tuple(sorted(
+            set(all_confirmed_ids) - set(planning_confirmed_ids)))
+        if validation and all_confirmed_ids and not planning_confirmed_ids:
             blockers.append(
-                "validation is incomplete for finding(s): " + ", ".join(incomplete))
+                "live validation confirms no finding with deterministic planning "
+                "capability")
 
+        # Promotion is an evidence-minimized handoff, not a claim that every
+        # scanner observation on the resource can be remediated at once. Bind
+        # only the exact findings that are both confirmed and planning-capable;
+        # keep unsupported, unavailable, cleared, and confirmed-but-unplannable
+        # siblings visible as explicitly excluded scope.
+        confirmed_ids = planning_confirmed_ids
+        excluded_ids = tuple(sorted(set(by_id) - set(confirmed_ids)))
         confirmed = [by_id[finding_id] for finding_id in confirmed_ids]
         providers = {item.provider for item in confirmed}
         resources = tuple(sorted({item.resource_uid for item in confirmed}))
@@ -128,20 +158,16 @@ class PromotionReadinessService:
         rules = tuple(sorted({
             str(item.record["ocsf"].get("rule_id", "")) for item in confirmed
         }))
-        unsupported = sorted({
-            str(item.record["ocsf"].get("rule_id", ""))
-            for item in confirmed
-            if not (capability := self.registry.get(
-                item.provider, str(item.record["ocsf"].get("rule_id", "")),
-                str(item.record.get("resource", {}).get("type", ""))))
-            or not capability.remediation_planning
-        })
-        if unsupported:
-            blockers.append(
-                "no deterministic planning capability for: " + ", ".join(unsupported))
 
         provider = next(iter(providers), "")
-        evidence_ids = tuple(validation.evidence_ids) if validation else ()
+        selected = set(confirmed_ids)
+        evidence_ids = tuple(dict.fromkeys(
+            str(evidence_id)
+            for item in validation_findings
+            if str(item.get("finding_id", "")) in selected
+            for evidence_id in item.get("evidence_ids", ())
+            if isinstance(evidence_id, str) and evidence_id
+        ))
         token_document = {
             "case_id": case_id,
             "tenant_id": tenant_id,
@@ -172,6 +198,10 @@ class PromotionReadinessService:
             resource_uids=resources,
             confirmed_finding_ids=confirmed_ids,
             confirmed_rule_ids=rules,
+            excluded_finding_ids=excluded_ids,
+            incomplete_finding_ids=incomplete_ids,
+            confirmed_without_planning_finding_ids=(
+                confirmed_without_planning_ids),
             validation_record_id=validation_id,
             validation_evidence_ids=evidence_ids,
             required_inputs=self.REQUIRED_INPUTS,

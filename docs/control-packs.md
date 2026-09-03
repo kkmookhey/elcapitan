@@ -146,7 +146,15 @@ unsupported, or malformed File Service read marks only this control
 unavailable, so it cannot suppress independently complete account/blob
 validations. The response shape was measured read-only on 2026-08-28 against
 the Eiger lab account; `channelEncryption` was null and correctly normalized
-to an empty failing list. Planning and execution are disabled.
+to an empty failing list. Prowler exports may identify the canonical
+`fileServices/default` child as the primary resource; the collector resolves
+only that exact child to its owning account for bounded reads while retaining
+the child ARM ID in the evidence envelope. Planning and execution are disabled.
+
+The blob-service ARM contract makes `containerDeleteRetentionPolicy` optional.
+Its explicit absence in a complete response therefore confirms that container
+soft delete is not configured; malformed non-null policy shapes still fail
+closed as unavailable evidence.
 
 Semantics are pinned to Prowler's [Azure Storage check
 implementations](https://github.com/prowler-cloud/prowler/tree/master/prowler/providers/azure/services/storage)

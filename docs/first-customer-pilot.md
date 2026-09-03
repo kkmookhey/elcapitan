@@ -27,6 +27,9 @@ deployment and one non-production cloud boundary.
 - Named service owner, environment, business criticality, dependencies,
   maintenance policy, rollback expectations, and observable health signals for
   the resources selected for planning.
+- An exact-resource asset-context manifest for the scanned boundary. Preview
+  match and gap counts before import; never use fuzzy names to assign business
+  context to a cloud resource. Mark any trial-only business labels synthetic.
 - At least seven days of hourly usage or request metrics, with timestamps and
   timezone, or a separately scoped metrics-observer identity.
 
@@ -64,11 +67,13 @@ permissions.
 
 ## Pilot sequence and acceptance
 
-1. Ingest 5–10 findings and verify tenant, account, resource ID, rule mapping,
-   risk factors, and synthetic/real labels manually.
-2. Validate one supported finding live and compare El Capitan evidence with the
+1. Preview 5–10 findings and verify format, provider, outcome accounting,
+   resource count, and supported/unsupported coverage before import. Then
+   verify workspace, account, resource ID, rule mapping, risk factors, and
+   synthetic/real labels manually.
+2. Check one supported finding live and compare El Capitan evidence with the
    cloud console or scanner.
-3. Validate the remaining eligible batch, capped at 100 cases.
+3. Check the remaining eligible batch, capped at 100 resources.
 4. Review false-positive closure, unavailable evidence, unsupported coverage,
    and portfolio ordering with the customer owner.
 5. Promote one confirmed, low-impact case into the isolated planning plane only
