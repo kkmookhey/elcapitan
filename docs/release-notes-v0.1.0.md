@@ -80,8 +80,14 @@ observation detail without adding approval, scheduling, model, or execution
 routes. Its realistic Azure test acceptance is recorded in
 [`azure-asset-context-trial-2026-09-01.md`](azure-asset-context-trial-2026-09-01.md).
 
-This evidence is not release approval. Before the version is tagged, the
-GitHub Support must confirm retained PR-ref/cache cleanup, the approved public
+The AWS S3 evidence-to-review checkpoint is preserved in `a736e5b`. It passes
+725 tests and the compile, narrow Ruff, generated-matrix, release-tree,
+wheel/source build, distribution-inspection, locked-requirements, and diff
+checks. It uses only recorded contract fixtures and grants no AWS execution
+authority.
+
+This evidence is not release approval. GitHub Support confirmed retained
+PR-ref cleanup on 2026-09-03. Before the version is tagged, the approved public
 visibility change and protected release environment must be configured, and a
 committed digest-bound release approval must authorize the exact tag. The
 changelog date and release artifacts must then be regenerated for that tag.

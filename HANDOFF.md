@@ -271,9 +271,9 @@ into one generic "supported" claim.
 - Apache-2.0 and the El Capitan name were explicitly approved by Transilience,
   Inc. on 2026-08-30 and are recorded in
   `docs/owner-decisions-2026-08-30.md`. Historical-secret adjudication,
-  GitHub's retained PR-ref/cache cleanup, protected release-environment
-  configuration, signing, and public artifact publication/provenance remain
-  external release gates.
+  including GitHub's retained PR-ref/cache cleanup, is complete. Protected
+  release-environment configuration, exact release authorization, signing, and
+  public artifact publication/provenance remain separate release gates.
 - The authorized historical-secret review found two generated
   Azure Storage account keys duplicated across Trap-2 state and backup files,
   plus one false positive on a Container App secret-name identifier. The
@@ -287,10 +287,11 @@ into one generic "supported" claim.
   count remains. A final exact-line review found that the Anna detector matched
   model termination metadata following the phrase `API calls`, not a
   credential. All 22 fingerprints are dispositioned, `.gitleaksignore` is
-  empty, and the isolated all-ref scan passes. GitHub Support ticket `#4715479`
-  is open for removal of the eight affected read-only PR refs and cached views.
-  Keep the repository private until GitHub confirms cleanup. No credential
-  value was printed. See
+  empty, and the isolated all-ref scan passes. GitHub Support confirmed
+  deletion and unreferenced-commit cleanup under ticket `#4715479` on
+  2026-09-03. Independent checks found zero pull requests, zero advertised
+  pull refs, and no access to the first rewritten commit. No credential value
+  was printed. See
   `docs/historical-secret-review-2026-08-30.md`.
 
 ## Non-negotiable safety boundaries
@@ -460,9 +461,9 @@ and remaining visual-browser limitation are in
    scanning, clean packaging metadata, reproducible container inputs,
    SBOM/provenance generation, capability/evidence matrix generation,
    PostgreSQL quickstart, and release-candidate rehearsal.
-2. Do not tag or publish until GitHub Support confirms PR-ref/cache cleanup,
-   the repository is made public under the recorded owner authorization, and
-   the protected `release` environment is configured with required reviewer
+2. GitHub Support confirmed PR-ref/cache cleanup on 2026-09-03. Do not tag or
+   publish until the repository is made public under the recorded owner
+   authorization and the protected `release` environment is configured with required reviewer
    `kkmookhey`. Keep self-review prevention disabled unless a different
    reviewer is approved. Record the completed gates in a committed
    `RELEASE_APPROVAL.json` based on the checked-in example and pass its exact
@@ -476,11 +477,12 @@ and remaining visual-browser limitation are in
    crops, and run the live-lab demo segment only after its exact non-production
    resource and read-only identity are approved. Recording and publication are
    external writes and remain unapproved.
-5. The private repository's current GitHub plan does not expose protected
-   environments or rulesets. The owner authorized public visibility on
-   2026-08-31, but only after GitHub Support ticket `#4715479` confirms removal
-   of the retained PR refs and cached views. Do not change visibility or weaken
-   the guarded release workflow before that confirmation.
+5. The condition attached to the owner's 2026-08-31 public-visibility decision
+   was satisfied by GitHub Support's 2026-09-03 cleanup confirmation. Public
+   visibility and the required-reviewer `release` environment are now
+   authorized setup steps. They do not authorize a tag, workflow run, package
+   or image publication, or launch announcement; do not weaken the guarded
+   release workflow.
 
 The retired Claude/Hermes capability probe remains on
 `archive/claude-code-probe-2026-08-25`. It is not part of the product runtime,

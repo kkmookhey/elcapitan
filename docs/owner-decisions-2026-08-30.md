@@ -1,10 +1,10 @@
 # Public-release owner decisions — 2026-08-30
 
 This record preserves explicit owner decisions for the `v0.1.0` release gate.
-It is not the final publication authorization: GitHub's retained pull-request
-refs and cached views still require Support-side cleanup, and the protected
-`release` environment remains incomplete, so `RELEASE_APPROVAL.json` must not
-yet be created.
+It is not the final publication authorization. GitHub confirmed the required
+server-side cleanup on 2026-09-03, but the protected `release` environment and
+the exact release approval remain separate gates, so `RELEASE_APPROVAL.json`
+must not yet be created.
 
 ## License
 
@@ -98,3 +98,17 @@ the workflow initiator, self-review prevention must remain disabled unless a
 different required reviewer is separately approved. This decision authorizes
 the visibility and environment configuration steps; it does not authorize a
 tag, release workflow run, package/image publication, or public launch.
+
+## Conditional visibility authorization became actionable — 2026-09-03
+
+GitHub Support confirmed deletion and cleanup under ticket `#4715479`, and
+independent read-only checks found no pull requests, advertised pull-request
+refs, or accessible copy of the first rewritten commit. The condition attached
+to the 2026-08-31 visibility decision is therefore satisfied. The owner
+confirmed that the remaining authorized repository-visibility and protected-
+environment setup may proceed.
+
+The authority remains limited to making this repository public and configuring
+the `release` environment with required reviewer `kkmookhey` and self-review
+prevention disabled. It still does not authorize creating a tag, running the
+release workflow, publishing a package or image, or announcing a public launch.

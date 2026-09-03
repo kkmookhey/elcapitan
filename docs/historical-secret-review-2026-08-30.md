@@ -124,6 +124,15 @@ prefix, assignment, or free-form line.
 an ignore file reports zero findings under the three exact-field
 false-positive rules.
 
+## GitHub server-side completion — 2026-09-03
+
+GitHub Support confirmed under ticket `#4715479` that the affected pull-request
+material was deleted and the unreferenced commits were cleared. A separate
+read-only verification found zero pull requests, zero advertised
+`refs/pull/*` refs, and no local or GitHub API access to the first rewritten
+commit. This records the server-side outcome without preserving the Support
+email, message headers, addresses, or any sensitive historical value.
+
 ## Required completion evidence
 
 Historical-secret response is complete only after all 22 original fingerprints
@@ -134,5 +143,7 @@ the two generated credentials belonged to a destroyed test resource and were
 purged through the completed Eiger rewrite, the baseline is zero, and the
 complete-history scan passes without an ignore file. GitHub Support ticket
 `#4715479` was opened on 2026-08-31 to remove the retained refs and cached views
-for pull requests `#1` through `#8`. The ticket remains open, and the repository
-must remain private until GitHub confirms that server-side cleanup.
+for pull requests `#1` through `#8`; Support confirmed the server-side cleanup
+on 2026-09-03, and the independent remote checks above found no remaining
+affected pull-request ref or accessible rewritten commit. The historical-secret
+response is complete. This completion is not tag or publication authorization.

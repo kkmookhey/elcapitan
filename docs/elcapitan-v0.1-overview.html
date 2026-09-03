@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="El Capitan current product, capability, customer-value, and roadmap briefing, built on the v0.1.0 foundation.">
+  <meta name="description" content="El Capitan's fully updated Azure and AWS evidence-to-outcome capabilities, trust boundaries, customer value, and roadmap.">
   <meta name="color-scheme" content="dark">
   <title>El Capitan — Current Product Briefing</title>
   <style>
@@ -56,6 +56,7 @@
       mask-image: linear-gradient(to bottom, black, transparent 78%);
     }
     a { color: inherit; }
+    code { color: #b9d9ff; font: .92em/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
     button { font: inherit; }
     .shell { width: min(var(--max), calc(100% - 40px)); margin-inline: auto; }
 
@@ -505,11 +506,12 @@
     <div class="shell topbar-inner">
       <a class="brand" href="#top" aria-label="El Capitan product briefing home">
         <span class="brand-mark" aria-hidden="true">EC</span>
-        <span class="brand-copy"><strong>El Capitan</strong><span>living product briefing · v0.1 foundation</span></span>
+        <span class="brand-copy"><strong>El Capitan</strong><span>living capability briefing · Azure + AWS checkpoint</span></span>
       </a>
       <nav class="nav" aria-label="Briefing sections">
         <a href="#product">Product</a>
-        <a href="#azure-trial">Azure trial</a>
+        <a href="#azure-trial">Azure proof</a>
+        <a href="#aws-review">AWS review</a>
         <a href="#capabilities">Capabilities</a>
         <a href="#value">Customer value</a>
         <a href="#roadmap">Roadmap</a>
@@ -525,7 +527,7 @@
           <div>
             <p class="eyebrow">Evidence-bound cloud remediation</p>
             <h1>Know what is real.<br>Control what happens next.</h1>
-            <p class="lede">El Capitan turns noisy cloud findings into a validated, prioritized, auditable remediation queue—then keeps human authority and deterministic safety gates in control of every consequential step.</p>
+            <p class="lede">El Capitan turns Azure and AWS scanner findings into exact resource cases, re-checks supported risks against cloud configuration, explains their business priority, and prepares tightly bounded remediation packages—while keeping human authority in control of every consequential step.</p>
             <div class="hero-actions">
               <a class="button primary" href="#product">See how it works <span aria-hidden="true">↓</span></a>
               <a class="button" href="generated/capability-matrix.md">Open the capability matrix</a>
@@ -534,7 +536,7 @@
 
           <aside class="boundary-panel" aria-label="Product trust boundary">
             <div class="boundary-head">
-              <div class="signal"><i aria-hidden="true"></i><span>v0.1 foundation · guided shadow trial</span></div>
+              <div class="signal"><i aria-hidden="true"></i><span>v0.1 foundation · Azure + AWS evidence to review</span></div>
               <h2>Safe by separation</h2>
               <p>The product separates evidence, decisions, human approval, and action authority.</p>
             </div>
@@ -575,10 +577,10 @@
         <div class="flow-gate"><strong>Human authority boundary</strong><span>The queue may nominate work. It cannot authorize a cloud change.</span></div>
         <div class="flow-layer-heading"><span>Layer 2</span><strong>Act safely</strong><small>Separate services, identities, and authorization</small></div>
         <div class="flow" aria-label="Plan-to-monitor workflow">
-          <article class="flow-card"><span class="num">06 / PREPARE</span><h3>Build the plan</h3><p>Link one exact Terraform resource and verify the isolated proposal without editing source.</p></article>
-          <article class="flow-card"><span class="num">07 / PACKAGE</span><h3>Assemble the change</h3><p>Bind IaC, SRE, change-window, verification, and rollback records into one package.</p></article>
+          <article class="flow-card"><span class="num">06 / PREPARE</span><h3>Build the plan</h3><p>For admitted controls, link one exact Terraform resource and verify the isolated proposal without editing source.</p></article>
+          <article class="flow-card"><span class="num">07 / PACKAGE</span><h3>Assemble the change</h3><p>Bind validation, risk, IaC, SRE, change-window, verification, and rollback records into one package.</p></article>
           <article class="flow-card gated"><span class="num">08 / HUMAN REVIEW</span><h3>Hold for a decision</h3><p>Approve or reject one immutable package hash through a separate review plane.</p></article>
-          <article class="flow-card"><span class="num">09 / DEPLOY</span><h3>Execute narrowly</h3><p>Require a separately proven connector, exact scope, checkpoint, and authorized identity.</p></article>
+          <article class="flow-card"><span class="num">09 / DEPLOY</span><h3>Execute narrowly</h3><p>Available only for two Azure Storage controls; every other path remains locked at review.</p></article>
           <article class="flow-card end"><span class="num">10 / MONITOR</span><h3>Verify or recover</h3><p>Watch health, revalidate the control, roll back on failure, and issue a completion record.</p></article>
         </div>
 
@@ -603,14 +605,37 @@
           <article class="trial-stat"><small>Contextualized failures</small><strong>123</strong><span>26 exact matches; every mismatch remains explicit</span></article>
           <article class="trial-stat"><small>Priority outcome</small><strong>2 / 44 / 13</strong><span>High / normal / low; zero urgent without threat evidence</span></article>
           <article class="trial-stat"><small>Live validation</small><strong>23 cases</strong><span>93 of 95 supported findings confirmed · 2 unavailable</span></article>
-          <article class="trial-stat"><small>Planning handoff</small><strong>6 candidates</strong><span>Exact confirmed scopes · 0 plans until authoritative IaC and human routes arrive</span></article>
+          <article class="trial-stat"><small>Planning handoff</small><strong>6 candidates</strong><span>1 disposable state-grounded plan and review candidate · no deployment</span></article>
         </div>
         <div class="trial-findings">
           <article class="trial-finding"><b>Owner calibrated</b><h3>Equivalent SSH exposure now ranks equally</h3><p>Two broad inbound SSH findings originally differed only because of synthetic criticality. Owner review aligned them, and the manifest records that provenance.</p></article>
           <article class="trial-finding"><b>Evidence restrained</b><h3>Inactive demo exposure is not production impact</h3><p>A public demo-tagged Cognitive Services account had no deployments and no calls in the observed 90-day window. Exposure is real; business criticality remains a separate owner decision.</p></article>
           <article class="trial-finding"><b>Impact left unknown</b><h3>Configuration risk is separate from data sensitivity</h3><p>An Azure ML datastore allowed public-network authentication while anonymous blobs remained disabled. Object content was not inferred when data-plane RBAC denied inventory access.</p></article>
         </div>
-        <p class="evidence-note"><strong>The stronger evidence contract:</strong> strict asset rows, canonical context digests, exact case matching, independently scored observations, a single visible score driver, and bounded live checks through a dedicated Reader identity. Twenty-one cases advanced to validated; two stayed blocked because their live Azure resource kind did not satisfy the OpenAI-specific contract. Six mixed Azure Storage cases can now hand off only their exact confirmed, planning-capable findings while every excluded sibling remains explicit. No plan, package, or result is fabricated from unavailable evidence.</p>
+        <p class="evidence-note"><strong>The stronger Azure evidence contract:</strong> strict asset rows, canonical context digests, exact case matching, independently scored observations, a single visible score driver, and bounded live checks through a dedicated Reader identity. Twenty-one cases advanced to validated; two stayed blocked because their live Azure resource kind did not satisfy the OpenAI-specific contract. Six mixed Azure Storage cases can hand off only their exact confirmed, planning-capable findings while every excluded sibling remains explicit. One owner-confirmed unused test account progressed through a generated baseline, disposable state mapping, exact no-refresh plan, 30-day usage assessment, and hash-bound review candidate. It is not represented as a canonical approved package or an executed change.</p>
+      </div>
+    </section>
+
+    <section class="section" id="aws-review">
+      <div class="shell">
+        <div class="section-head">
+          <div><p class="section-label">AWS evidence-to-review checkpoint</p><h2>Thirty-seven validators. One deliberately narrow path to a complete review package.</h2></div>
+          <p class="section-intro">AWS findings use the same evidence-bound intake, exact-resource correlation, asset-context priority, and fail-closed validation model as Azure. S3 object versioning is the first AWS control to continue through authoritative Terraform linkage, exact plan inspection, independent operational reviews, and the canonical human gate. The other 36 controls remain validation-only.</p>
+        </div>
+        <div class="trial-stats" aria-label="AWS capability results">
+          <article class="trial-stat"><small>AWS validators</small><strong>37</strong><span>7 S3 · 8 RDS · 20 EC2 security group · 2 EBS</span></article>
+          <article class="trial-stat"><small>Accepted sources</small><strong>2</strong><span>Prowler OCSF and AWS Security Hub ASFF</span></article>
+          <article class="trial-stat"><small>Planning controls</small><strong>1</strong><span>S3 object versioning only</span></article>
+          <article class="trial-stat"><small>Exact plan scope</small><strong>1 field</strong><span>Versioning status: Disabled/Suspended → Enabled</span></article>
+          <article class="trial-stat"><small>Review outcome</small><strong>Canonical</strong><span>HumanReviewPackage.v1 · awaiting approval · execution not started</span></article>
+          <article class="trial-stat"><small>AWS execution</small><strong>0</strong><span>No apply, deploy, mutation, or execution identity</span></article>
+        </div>
+        <div class="trial-findings">
+          <article class="trial-finding"><b>Exact cloud evidence</b><h3>Service-aware validation—not generic field matching</h3><p>S3, RDS, security-group, and EBS collectors bind reads to the finding's exact ARN, account, and region. Denied, missing, multiple, mismatched, partial, or malformed responses stay unavailable instead of becoming conclusions.</p></article>
+          <article class="trial-finding"><b>Transparent priority</b><h3>Scanner severity is only one signal</h3><p>Exact asset context can add criticality, exposure, reachability, exploit evidence, runtime dependency, and compensating controls. Each factor and its evidence remain visible to the reviewer.</p></article>
+          <article class="trial-finding"><b>State-grounded plan</b><h3>The S3 change cannot quietly expand</h3><p>The planner selects one <code>aws_s3_bucket_versioning</code> state address, changes only its status, rejects create/delete/replacement and sibling fields such as MFA Delete, and discards the inspected plan artifact.</p></article>
+        </div>
+        <p class="evidence-note"><strong>The complete AWS review contract:</strong> confirmed validation, contextual risk, exact state and source digests, deterministic source materialization, Terraform format/init/validate/plan checks, one allowed nested plan change, independent SRE review, a future low-usage window, independently checked rollback, model-diversity policy, and an immutable evidence chain. A separate short-lived <code>ELCAP_PLANNER_AWS_*</code> session is required and ambient profiles, scanner credentials, shared files, and the Azure planner identity are excluded. This package lifecycle is contract tested locally; the checkpoint made no AWS request and grants no AWS execution authority.</p>
       </div>
     </section>
 
@@ -618,12 +643,12 @@
       <div class="shell">
         <div class="section-head">
           <div><p class="section-label">Current capabilities</p><h2>Broad read-only insight. Narrow action authority.</h2></div>
-          <p class="section-intro">The v0.1 foundation now has 72 exact controls across twelve service packs: 35 Azure and 37 AWS. AWS covers seven S3, eight RDS DB-instance, twenty EC2 security-group, and two EBS volume controls. Verified planning remains limited to four controls, and live execution remains limited to two independently proven Azure Storage changes.</p>
+          <p class="section-intro">The v0.1 foundation has 72 deterministic controls across twelve service packs: 35 Azure and 37 AWS. Four controls have planning capability—three Azure Storage and one AWS S3 object-versioning control. S3 versioning can now reach the canonical review gate; live execution remains limited to two independently proven Azure Storage changes.</p>
         </div>
 
         <div class="capability-summary">
           <article class="capability-total"><small>Deterministic validation</small><strong>72</strong><p>Live, service-aware evaluation with typed evidence and denied/unknown states.</p></article>
-          <article class="capability-total plan"><small>Verified planning</small><strong>4</strong><p>Exact IaC linkage plus format, validation, no-refresh plan, and provider-specific scope checks.</p></article>
+          <article class="capability-total plan"><small>Verified planning</small><strong>4</strong><p>Exact IaC linkage plus format, validation, no-refresh plan, and provider-specific scope checks. One AWS path reaches canonical review.</p></article>
           <article class="capability-total execute"><small>Live execution</small><strong>2</strong><p>Azure Storage only, with exact scope, checkpoint, monitoring, and rollback.</p></article>
         </div>
 
@@ -662,7 +687,7 @@
         <div class="use-grid">
           <article class="use-card"><span class="index">USE CASE 01</span><h3>Validate scanner findings</h3><p>Turn a long export into a live, evidence-backed picture of what is confirmed, cleared, unavailable, or unsupported.</p><ul><li>No-write OCSF and Security Hub ASFF preview before import</li><li>Replay-safe deduplication and exact-asset correlation</li><li>Bounded read-only Azure and AWS collectors</li></ul></article>
           <article class="use-card"><span class="index">USE CASE 02</span><h3>Prioritize a cloud remediation fleet</h3><p>Rank resource-oriented cases with transparent factors instead of treating scanner severity as the entire business decision.</p><ul><li>Exact-resource asset-context preview with visible match and gap counts</li><li>Severity, observed exposure, asset criticality, and compensating controls</li><li>One score-driving observation with every grouped finding scored independently</li></ul></article>
-          <article class="use-card"><span class="index">USE CASE 03</span><h3>Prepare an auditable change</h3><p>Link a supported finding to one exact Terraform resource and produce a complete review package without modifying the source repository.</p><ul><li>Conservative literal or state-backed source linkage</li><li>Real Terraform format, validation, and plan gates</li><li>Independent SRE, window, and rollback reviews</li></ul></article>
+          <article class="use-card"><span class="index">USE CASE 03</span><h3>Prepare an auditable change</h3><p>Link an admitted finding to one exact Terraform resource and produce a complete review package without modifying the source repository.</p><ul><li>Conservative literal or state-backed source linkage</li><li>Real Terraform format, validation, and provider-specific plan-scope gates</li><li>Independent SRE, window, and rollback reviews</li><li>Canonical package remains awaiting human approval with execution not started</li></ul></article>
           <article class="use-card"><span class="index">USE CASE 04</span><h3>Prove safe execution patterns</h3><p>For the two supported Azure Storage actions, demonstrate tightly scoped execution with recovery built into the lifecycle.</p><ul><li>Package-bound approval and durable scheduling</li><li>Checkpoint, health monitoring, and post-change validation</li><li>Automatic rollback, certificate, and originator handoff</li></ul></article>
         </div>
       </div>
@@ -696,6 +721,7 @@
             <div class="proof-row"><strong>E2E measured</strong><p>Collector and evaluator ran through a least-privilege identity against an authorized disposable or non-production resource.</p></div>
             <div class="proof-row"><strong>Contract tested</strong><p>Official response shapes and sanitized fixtures cover success, failure, malformed, denied, and absent-property branches.</p></div>
             <div class="proof-row"><strong>Export observed</strong><p>An authorized scanner export established rule and resource shape offline; no customer cloud request is implied.</p></div>
+            <div class="proof-row"><strong>Package verified</strong><p>The complete validation-to-human-review lifecycle passed its typed records and mechanical gates using recorded fixtures; no deployment is implied.</p></div>
           </article>
           <article class="verification-card">
             <h3>Current verification</h3>
@@ -707,7 +733,7 @@
               <div class="verification-item"><strong>Quickstart passed</strong><span>Authenticated PostgreSQL and UI acceptance completed in CI.</span></div>
               <div class="verification-item"><strong>Azure lifecycle proven</strong><span>Success and automatic rollback exercised for both live Storage controls.</span></div>
             </div>
-            <p class="verification-meta">WORKTREE VERIFIED 2026-09-01 · BASE COMMIT 7E2B0B4 · VERSION 0.1.0 FOUNDATION</p>
+            <p class="verification-meta">CHECKPOINT VERIFIED 2026-09-03 · COMMIT A736E5B · VERSION 0.1.0 FOUNDATION</p>
           </article>
         </div>
       </div>
@@ -721,19 +747,19 @@
         </div>
 
         <div class="roadmap">
-          <article class="roadmap-item"><span class="roadmap-time">Now · candidate</span><div><h3>Azure-first v0.1 foundation</h3><p>Complete the evidence-bound workflow, capability matrix, governance, packaging, security scans, synthetic quickstart, and narrow live-action proof.</p></div><span class="roadmap-status">Built</span></article>
-          <article class="roadmap-item blocked"><span class="roadmap-time">Next · release</span><div><h3>Clear the external publication gates</h3><p>Receive GitHub confirmation that retained PR refs and cached views are purged; then configure public visibility and the protected release environment. Tagging and publication still require explicit final authorization.</p></div><span class="roadmap-status">Blocked externally</span></article>
+          <article class="roadmap-item"><span class="roadmap-time">Now · foundation</span><div><h3>Azure + AWS evidence-to-outcome platform</h3><p>The evidence-bound workflow, capability matrix, governance, packaging, security scans, synthetic quickstart, Azure live-action proof, and first AWS canonical review path are complete.</p></div><span class="roadmap-status">Built</span></article>
+          <article class="roadmap-item"><span class="roadmap-time">Now · AWS review</span><div><h3>Prove AWS evidence to human review</h3><p>AWS has 37 validators across S3, RDS DB instances, EC2 security groups, and EBS volumes. S3 object versioning has the first exact state-grounded path to a canonical review package; the other 36 controls remain validation-only.</p></div><span class="roadmap-status">Built</span></article>
+          <article class="roadmap-item blocked"><span class="roadmap-time">Next · release</span><div><h3>Finish the controlled release gate</h3><p>GitHub confirmed retained-ref cleanup on 3 September. Public visibility and the protected release environment are now authorized setup; tagging and publication still require an exact, separately committed final approval.</p></div><span class="roadmap-status">Setup authorized</span></article>
           <article class="roadmap-item future"><span class="roadmap-time">Near term</span><div><h3>Build the CTEM context graph</h3><p>Add first-class Azure resources, Entra identities, Cortex endpoints, CVE threat context, and evidence-backed reachability while keeping asset, identity, endpoint, finding, and threat facts distinct.</p></div><span class="roadmap-status">Planned</span></article>
-          <article class="roadmap-item"><span class="roadmap-time">Now · AWS review</span><div><h3>Prove AWS evidence to human review</h3><p>AWS has 37 validators across S3, RDS DB instances, EC2 security groups, and EBS volumes. S3 object versioning now has the first exact state-grounded path to a canonical review package; the other 36 controls remain validation-only.</p></div><span class="roadmap-status">1 packaged path</span></article>
           <article class="roadmap-item future"><span class="roadmap-time">Later</span><div><h3>Harden identity and portable operations</h3><p>Add Microsoft Entra approval authentication, named-user audit, workload identity, CI/source-control workflows, customer notifications, and deployment options as concrete workflows justify them.</p></div><span class="roadmap-status">Deferred</span></article>
         </div>
 
         <aside class="release-gate" id="release-gate">
           <div class="release-gate-head"><h3>The candidate is ready; publication is not yet authorized.</h3><span class="gate-pill">Fail-closed gate</span></div>
-          <p>GitHub Support ticket #4715479 remains open. The repository must remain private until GitHub confirms the purge. No tag, release workflow, package, image, or public launch may proceed without explicit final authorization.</p>
+          <p>GitHub Support confirmed deletion and unreferenced-commit cleanup under ticket #4715479 on 3 September 2026. Independent checks found no pull request, advertised pull ref, or accessible copy of the first rewritten commit. Public repository visibility and a reviewer-protected release environment are authorized next; no tag, release workflow, package, image, or launch may proceed without explicit final authorization.</p>
           <div class="gate-steps" aria-label="Remaining release gates">
-            <div class="gate-step"><strong>01 · WAIT</strong>GitHub confirms PR-ref and cache cleanup</div>
-            <div class="gate-step"><strong>02 · CONFIGURE</strong>Public visibility and protected release environment</div>
+            <div class="gate-step"><strong>01 · COMPLETE</strong>GitHub PR-ref and commit cleanup confirmed</div>
+            <div class="gate-step"><strong>02 · CONFIGURE</strong>Public visibility and reviewer-protected release environment</div>
             <div class="gate-step"><strong>03 · AUTHORIZE</strong>Receive explicit final tag and publication approval</div>
             <div class="gate-step"><strong>04 · RECORD + RUN</strong>Commit the approval record, verify its digest, then run the guarded release</div>
           </div>
@@ -763,7 +789,7 @@
   <footer>
     <div class="shell footer-grid">
       <p>El Capitan is an evidence-bound cloud remediation control plane. This living briefing tracks the current build on the v0.1.0 foundation and intentionally keeps validation, planning, execution, and proof grade separate.</p>
-      <div class="footer-meta">UPDATED 2026-09-01<br>BASE COMMIT 7E2B0B4<br>STATUS UNRELEASED</div>
+      <div class="footer-meta">UPDATED 2026-09-03<br>AWS CHECKPOINT A736E5B<br>STATUS UNRELEASED</div>
     </div>
   </footer>
 
