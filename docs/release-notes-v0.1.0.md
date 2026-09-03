@@ -86,8 +86,13 @@ wheel/source build, distribution-inspection, locked-requirements, and diff
 checks. It uses only recorded contract fixtures and grants no AWS execution
 authority.
 
+The public runtime, CI, and release workflow use pinned Terraform 1.16.1. The
+upgrade replaces Terraform 1.16.0's fixed-high vulnerable embedded gRPC-Go with
+upstream's patched gRPC-Go 1.83.1; the rebuilt non-root image passes fresh
+Trivy 0.70.0 high/critical scanning locally.
+
 This evidence is not release approval. GitHub Support confirmed retained
-PR-ref cleanup on 2026-09-03. Before the version is tagged, the approved public
-visibility change and protected release environment must be configured, and a
-committed digest-bound release approval must authorize the exact tag. The
-changelog date and release artifacts must then be regenerated for that tag.
+PR-ref cleanup on 2026-09-03; the repository is now public, and the protected
+`release` environment requires reviewer `kkmookhey`. Before the version is
+tagged, a committed digest-bound release approval must authorize the exact tag.
+The changelog date and release artifacts must then be regenerated for that tag.

@@ -55,6 +55,13 @@ also drove the final supported-versus-ready, disabled batch-action,
 return-to-start, import-destination, and grouped-observation corrections. See
 `docs/guided-shadow-trial-browser-acceptance-2026-08-31.md`.
 
+The first CI run after public visibility caught fixed-high
+`CVE-2026-84304` in Terraform 1.16.0's embedded gRPC-Go 1.82.1. The public
+runtime, CI, and release workflow now pin upstream Terraform 1.16.1 from exact
+source commit and archive checksum; the rebuilt binary embeds patched gRPC-Go
+1.83.1. A fresh local Trivy 0.70.0 scan of the non-root Linux arm64 image found
+zero fixed high/critical vulnerabilities. Do not revert or waive this gate.
+
 A second authenticated Chrome acceptance used the owner's 274-observation
 Prowler Azure test export and a generated 45-row asset inventory. Exact joins
 contextualized 123 failing observations on 26 resources while preserving 33
@@ -187,7 +194,7 @@ The browser/release-gate slice passes **546 tests** locally after the final
 manual-browser corrections. The authenticated
 PostgreSQL quickstart now checks the hardened session cookie, UI assets and
 semantic labels, cross-origin rejection, and absence of a shadow execution
-route. The public runtime rebuilds pinned Terraform 1.16.0 source with patched
+route. The public runtime rebuilds pinned Terraform 1.16.1 source with patched
 Go 1.26.6 and a refreshed Python base; Trivy 0.70.0 reports zero fixed
 high/critical findings in the local Linux arm64 image. See
 `docs/release-verification-2026-08-29.md`. Manual Chromium acceptance completed
@@ -461,11 +468,10 @@ and remaining visual-browser limitation are in
    scanning, clean packaging metadata, reproducible container inputs,
    SBOM/provenance generation, capability/evidence matrix generation,
    PostgreSQL quickstart, and release-candidate rehearsal.
-2. GitHub Support confirmed PR-ref/cache cleanup on 2026-09-03. Do not tag or
-   publish until the repository is made public under the recorded owner
-   authorization and the protected `release` environment is configured with required reviewer
-   `kkmookhey`. Keep self-review prevention disabled unless a different
-   reviewer is approved. Record the completed gates in a committed
+2. GitHub Support confirmed PR-ref/cache cleanup on 2026-09-03. The repository
+   is public, and the `release` environment requires reviewer `kkmookhey` with
+   self-review prevention disabled as approved. Do not tag or publish until an
+   exact final authorization is recorded in a committed
    `RELEASE_APPROVAL.json` based on the checked-in example and pass its exact
    SHA-256 to the manual release workflow; the release-tree check now rejects
    missing, pending, mismatched, or baseline-waiving records.
@@ -478,11 +484,11 @@ and remaining visual-browser limitation are in
    resource and read-only identity are approved. Recording and publication are
    external writes and remain unapproved.
 5. The condition attached to the owner's 2026-08-31 public-visibility decision
-   was satisfied by GitHub Support's 2026-09-03 cleanup confirmation. Public
-   visibility and the required-reviewer `release` environment are now
-   authorized setup steps. They do not authorize a tag, workflow run, package
-   or image publication, or launch announcement; do not weaken the guarded
-   release workflow.
+   was satisfied by GitHub Support's 2026-09-03 cleanup confirmation. The
+   authorized public visibility and required-reviewer `release` environment
+   were configured and verified on 2026-09-03. They do not authorize a tag,
+   workflow run, package or image publication, or launch announcement; do not
+   weaken the guarded release workflow.
 
 The retired Claude/Hermes capability probe remains on
 `archive/claude-code-probe-2026-08-25`. It is not part of the product runtime,

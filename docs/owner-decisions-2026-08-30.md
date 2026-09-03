@@ -112,3 +112,16 @@ The authority remains limited to making this repository public and configuring
 the `release` environment with required reviewer `kkmookhey` and self-review
 prevention disabled. It still does not authorize creating a tag, running the
 release workflow, publishing a package or image, or announcing a public launch.
+
+## Authorized repository setup completed — 2026-09-03
+
+After the pre-publication suite, distribution, release-tree, generated-matrix,
+locked-dependency, static, and redacted complete-history secret gates passed,
+the repository was changed to public. The `release` environment was then
+created with required reviewer `kkmookhey`, self-review prevention disabled,
+and no deployment branch-policy restriction. Read-only verification confirmed
+those settings.
+
+There was no tag, release workflow run, package or image publication, or launch
+announcement. Those actions still require a separate exact final decision and
+the committed digest-bound approval record.

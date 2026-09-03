@@ -194,11 +194,19 @@ def test_public_runtime_rebuilds_pinned_terraform_with_patched_go():
     dockerfile = (ROOT / "Dockerfile").read_text()
 
     assert "golang:1.26.6-alpine@sha256:" in dockerfile
-    assert "terraform/archive/bfe8a941dc45f9f39227b2cd0adc21069ba99319" in dockerfile
-    assert "ADD --checksum=sha256:" in dockerfile
+    assert "terraform/archive/58e916f6706597d9d87898f9ecedf811b68c6f29" in dockerfile
+    assert (
+        "ADD --checksum=sha256:"
+        "091ca86edd29d325d5400c80c110cb51847a092c37c16d101607fc3321ae183b"
+        in dockerfile
+    )
     assert "GOTOOLCHAIN=local go build" in dockerfile
     assert "python:3.12-slim-bookworm@sha256:" in dockerfile
     assert "USER 10001" in dockerfile
+
+    for workflow_name in ("ci.yml", "release.yml"):
+        workflow = (ROOT / ".github" / "workflows" / workflow_name).read_text()
+        assert 'terraform_version: "1.16.1"' in workflow
 
 
 def test_workflow_actions_are_commit_pinned():

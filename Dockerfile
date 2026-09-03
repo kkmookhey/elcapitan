@@ -1,8 +1,8 @@
 FROM golang:1.26.6-alpine@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS terraform
 
 WORKDIR /src
-ADD --checksum=sha256:df8bcacb10dcb2b1083a564356b55bfd73c14a32959fbf39bc1bf6659daa5fb8 \
-    https://github.com/hashicorp/terraform/archive/bfe8a941dc45f9f39227b2cd0adc21069ba99319.tar.gz \
+ADD --checksum=sha256:091ca86edd29d325d5400c80c110cb51847a092c37c16d101607fc3321ae183b \
+    https://github.com/hashicorp/terraform/archive/58e916f6706597d9d87898f9ecedf811b68c6f29.tar.gz \
     /tmp/terraform.tar.gz
 RUN tar -xzf /tmp/terraform.tar.gz --strip-components=1 -C /src \
     && CGO_ENABLED=0 GOTOOLCHAIN=local go build -trimpath \
