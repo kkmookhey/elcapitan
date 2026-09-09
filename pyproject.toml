@@ -31,10 +31,10 @@ Issues = "https://github.com/transilienceai/elcapitan/issues"
 Repository = "https://github.com/transilienceai/elcapitan"
 
 [dependency-groups]
-dev = ["pytest==8.3.3"]
+dev = ["pytest==9.1.1"]
 
 [build-system]
-requires = ["setuptools==75.1.0"]
+requires = ["setuptools==84.0.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
