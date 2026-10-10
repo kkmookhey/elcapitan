@@ -1,6 +1,6 @@
 FROM hashicorp/terraform:1.15.8@sha256:7ae513256f7ce67879e218ae8593d6fbe216ec9e123abe6c94e4e10704857963 AS terraform
 
-FROM mcr.microsoft.com/azure-cli:2.86.0@sha256:925b5871029fe16b82650c8298201e5dd91ac8122c7af1d150b57edc8c9f316a
+FROM mcr.microsoft.com/azure-cli:2.91.0@sha256:933eb8dcb81aecb6f77e03c5b8660f0a1dfa9e1d16525763a27f86ff3b83a044
 
 ENV PATH=/opt/elcapitan/bin:$PATH \
     HOME=/data \
