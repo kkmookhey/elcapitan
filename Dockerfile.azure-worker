@@ -1,4 +1,4 @@
-FROM hashicorp/terraform:1.15.8@sha256:7ae513256f7ce67879e218ae8593d6fbe216ec9e123abe6c94e4e10704857963 AS terraform
+FROM hashicorp/terraform:1.17.0@sha256:4d1b496a256f2989bccdb04b9104a4ede97234b10fba90259e173e905ec4fb58 AS terraform
 
 FROM mcr.microsoft.com/azure-cli:2.86.0@sha256:925b5871029fe16b82650c8298201e5dd91ac8122c7af1d150b57edc8c9f316a
 
