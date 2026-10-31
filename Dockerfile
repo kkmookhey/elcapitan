@@ -9,7 +9,7 @@ RUN tar -xzf /tmp/terraform.tar.gz --strip-components=1 -C /src \
       -ldflags="-s -w -X github.com/hashicorp/terraform/version.dev=no" \
       -o /bin/terraform .
 
-FROM python:3.12-slim-bookworm@sha256:0f5b26b9518d002b6173fd61daad821fa340635ebfec5bba471013f9ca114579
+FROM python:3.15-slim-bookworm@sha256:4e03260adeeebafccd084f3584e6b84823aba5651cfb53ef8a078ed441ddf9cd
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
